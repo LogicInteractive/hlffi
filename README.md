@@ -7,7 +7,7 @@
 
 ---
 
-`hlffi` rolls **the entire HashLink VM API** into a single, drop‑in header (`hlffi.h`). It blends the minimal, hot‑path performance of the original *o3* work with Claude’s ergonomic layers—boxed values, static calls, rich error codes, UE macros—and puts you in charge with simple `#define` switches.
+`hlffi` rolls **the entire HashLink VM API** into a single, drop‑in header (`hlffi.h`). It blends the minimal, hot‑path performance with ergonomic layers—boxed values, static calls, rich error codes, UE macros—and puts you in charge with simple `#define` switches.
 
 ## ✨ Features at a glance
 
