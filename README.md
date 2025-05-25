@@ -1,6 +1,6 @@
 # hlffi — HashLink FFI library
 
-> *Embed Haxe/HashLink into any C or C++ program, game‑engine plugin, or tool in seconds.*
+> *Embed Haxe/HashLink into any C or C++ program, game‑engine plugin, or tool in minutes.*
 
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![C/C++](https://img.shields.io/badge/language-C%20%7C%20C%2B%2B-00599C) ![HashLink](https://img.shields.io/badge/HashLink-%F0%9F%94%A5-orange)
