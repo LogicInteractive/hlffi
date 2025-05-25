@@ -1,4 +1,4 @@
-# hlffi — HashLink FFI in **one header**
+# hlffi — HashLink FFI library
 
 > *Embed Haxe/HashLink into any C or C++ program, game‑engine plugin, or tool in seconds.*
 
