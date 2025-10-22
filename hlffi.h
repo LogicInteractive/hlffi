@@ -331,9 +331,23 @@ static bool call_static_onearg(hlffi_vm* vm,const char* cls,const char* fn,vdyna
     vdynamic* argv[1]={arg};
     return hl_dyn_call(f,argv,1)!=NULL;
 }
-bool hlffi_call_static_int(hlffi_vm* vm,const char* cls,const char* fn,int arg){ return call_static_onearg(vm,cls,fn,hlffi_val_int(arg)->dyn); }
-bool hlffi_call_static_float(hlffi_vm* vm,const char* cls,const char* fn,double arg){ return call_static_onearg(vm,cls,fn,hlffi_val_float(arg)->dyn); }
-bool hlffi_call_static_string(hlffi_vm* vm,const char* cls,const char* fn,const char* arg){ return call_static_onearg(vm,cls,fn,hlffi_val_string(arg)->dyn); }
+
+bool hlffi_call_static_int(hlffi_vm* vm,const char* cls,const char* fn,int arg){
+    vdynamic* dyn=hl_alloc_dynamic(&hlt_i32);
+    dyn->v.i=arg;
+    return call_static_onearg(vm,cls,fn,dyn);
+}
+
+bool hlffi_call_static_float(hlffi_vm* vm,const char* cls,const char* fn,double arg){
+    vdynamic* dyn=hl_alloc_dynamic(&hlt_f64);
+    dyn->v.d=arg;
+    return call_static_onearg(vm,cls,fn,dyn);
+}
+
+bool hlffi_call_static_string(hlffi_vm* vm,const char* cls,const char* fn,const char* arg){
+    vdynamic* dyn=hl_alloc_string(hl_from_utf8((char*)arg));
+    return call_static_onearg(vm,cls,fn,dyn);
+}
 #endif /* HLFFI_EXT_STATIC */
 
 /* ---- 4.6  Boxing helpers --------------------------------------------- */
