@@ -941,7 +941,46 @@ external_blocking_call();
 hl_blocking(false);
 ```
 
-### 8. Hot Reload Limitations
+### 8. VM Restart NOT Supported
+
+**Issue**: Cannot stop and restart HashLink VM within same process
+**Why**: Non-idempotent initialization, incomplete cleanup, static state leaks
+**Solution**: Use hot reload (dev) or process restart (prod)
+
+```c
+// ❌ WRONG - This will crash!
+hlffi_vm* vm = hlffi_create();
+hlffi_init(vm, argc, argv);
+hlffi_destroy(vm);
+
+vm = hlffi_create();  // ❌ CRASH or undefined behavior
+hlffi_init(vm, argc, argv);
+
+// ✅ RIGHT - Hot reload instead
+hlffi_vm* vm = hlffi_create();
+hlffi_init(vm, argc, argv);
+hlffi_enable_hot_reload(vm, true);
+// ... later reload code without restart
+hlffi_reload_module(vm, "game.hl");
+```
+
+**Root causes** (see VM_RESTART_INVESTIGATION.md):
+- `hl_gc_init()` has no guard against double-init (leaks mutexes)
+- `hl_gc_free()` doesn't free mutexes or reset page maps
+- Module system static state (`cur_modules`) never cleared
+- Result: memory leaks, stale pointers, crashes
+
+**Evidence**:
+- Issue #207: Unity crashes on relaunch
+- Source code analysis confirms incomplete cleanup
+- No official restart examples exist
+
+**Alternatives**:
+- ✅ **Hot Reload**: Change code without restart (HL 1.12+, JIT only)
+- ✅ **Plugin System**: Runtime module loading (Nov 2025, experimental)
+- ✅ **Process Restart**: Fork/exec for complete isolation
+
+### 9. Hot Reload Limitations
 
 **From HL docs**:
 - ⚠️ Cannot add/remove/reorder class fields
@@ -950,7 +989,7 @@ hl_blocking(false);
 - ✓ Function body changes work
 - ✓ New functions work
 
-### 9. Field Access by Name
+### 10. Field Access by Name
 
 **Gotcha**: Field names must be hashed, not used directly
 
@@ -963,7 +1002,7 @@ int hash = hl_hash_utf8("myField");
 hl_dyn_geti(obj, hash, &hlt_i32);
 ```
 
-### 10. Multiple VMs Not Officially Supported
+### 11. Multiple VMs Not Officially Supported
 
 **Status**: HashLink uses global state internally
 **Workaround**: Possible with careful setup, but not recommended
@@ -1616,8 +1655,11 @@ Based on research:
 
 ---
 
-**Document Version**: 1.2
+**Document Version**: 1.3
 **Last Updated**: 2025-11-22
 **Next Review**: Before Phase 0 implementation
-**Sources Count**: 76+ references across 12 categories
-**Latest Addition**: hashlink-embed Ruby FFI library analysis
+**Sources Count**: 77+ references across 12 categories
+**Latest Additions**:
+- hashlink-embed Ruby FFI library analysis
+- VM restart limitation documented (Gotcha #8)
+- VM_RESTART_INVESTIGATION.md comprehensive report

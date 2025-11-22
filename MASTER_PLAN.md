@@ -238,9 +238,9 @@ hlffi/
 ---
 
 ## Phase 1: VM Lifecycle + Hot Reload 🔥
-**Goal**: Full VM control - init, load, run, stop, restart, hot reload
+**Goal**: Single-instance VM lifecycle with hot reload for code changes
 **Duration**: ~8 hours (extended for hot reload)
-**Deliverable**: Can load and execute HL bytecode, restart VM, hot reload code
+**Deliverable**: Can load and execute HL bytecode, hot reload code changes without restart
 
 ### Features
 
@@ -250,9 +250,13 @@ hlffi/
 - [ ] `hlffi_load_file()` - load .hl from disk
 - [ ] `hlffi_load_memory()` - load .hl from buffer
 - [ ] `hlffi_call_entry()` - invoke Main.main()
-- [ ] `hlffi_shutdown()` - cleanup runtime (prepare for restart)
-- [ ] `hlffi_destroy()` - free VM
-- [ ] `hlffi_restart()` - shutdown + reinit in one call
+- [ ] `hlffi_destroy()` - free VM (ONLY safe at process exit)
+
+**⚠️ VM Restart NOT Supported:**
+- HashLink VM can only be initialized ONCE per process
+- Calling `hlffi_destroy()` then `hlffi_create()` again will crash
+- For code changes during development, use **Hot Reload** instead
+- For complete isolation, restart the entire process (fork/exec)
 
 **Hot Reload (NEW! HL 1.12+):**
 - [ ] `hlffi_enable_hot_reload()` - enable hot reload mode
@@ -277,15 +281,13 @@ typedef enum {
     // ... more
 } hlffi_error_code;
 
-// Core lifecycle
+// Core lifecycle (single-instance only)
 hlffi_vm* hlffi_create(void);
 hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv);
 hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path);
 hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size);
 hlffi_error_code hlffi_call_entry(hlffi_vm* vm);
-hlffi_error_code hlffi_shutdown(hlffi_vm* vm);  // Allows restart
-hlffi_error_code hlffi_restart(hlffi_vm* vm);   // Convenience wrapper
-void hlffi_destroy(hlffi_vm* vm);
+void hlffi_destroy(hlffi_vm* vm);  // Only call at process exit
 const char* hlffi_get_error(hlffi_vm* vm);
 
 // Hot reload (HL 1.12+)
@@ -331,14 +333,52 @@ hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
 
 **Why**: Global values (`obj->global_value`) are NULL until entry point runs. Static class members won't work without this.
 
+**VM Restart NOT Supported** (See: VM_RESTART_INVESTIGATION.md):
+```c
+// ❌ WRONG - This will crash!
+hlffi_vm* vm = hlffi_create();
+hlffi_init(vm, argc, argv);
+hlffi_load_file(vm, "game.hl");
+hlffi_call_entry(vm);
+hlffi_destroy(vm);
+
+// ❌ Second init will crash due to:
+// 1. Non-idempotent hl_global_init() (leaks mutexes)
+// 2. Incomplete hl_global_free() (doesn't reset static state)
+// 3. Stale module pointers in cur_modules array
+vm = hlffi_create();  // CRASH or undefined behavior
+hlffi_init(vm, argc, argv);
+
+// ✅ CORRECT - Use hot reload instead
+hlffi_vm* vm = hlffi_create();
+hlffi_init(vm, argc, argv);
+hlffi_enable_hot_reload(vm, true);
+hlffi_load_file(vm, "game.hl");
+hlffi_call_entry(vm);
+
+// Later: reload code without restart
+hlffi_reload_module(vm, "game.hl");  // ✅ Safe, preserves state
+```
+
+**Why**: HashLink core has fundamental design limitations:
+- `hl_gc_init()` allocates mutexes without guarding against double-init
+- `hl_gc_free()` doesn't free mutexes or reset page maps
+- Module system static state (`cur_modules`) never cleared
+- Result: memory leaks, stale pointers, crashes
+
+**Alternatives**:
+- **Hot Reload**: Change code without restart (development)
+- **Process Restart**: Fork/exec for complete isolation (production)
+- **Plugin System**: Runtime module loading (Phase 9)
+
 ### Test Cases
 
 **Core Lifecycle:**
 - Load valid bytecode
 - Load invalid bytecode (should fail gracefully)
 - Call entry multiple times (should fail)
-- Shutdown and restart with different bytecode
-- Shutdown without init (should fail safely)
+- Destroy without init (should fail safely)
+- ⚠️ **No restart test** - restart is not supported
 
 **Hot Reload:**
 - Enable hot reload before loading bytecode
@@ -352,18 +392,16 @@ hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
 
 **Basic Lifecycle:**
 ```cpp
-// 01_lifecycle.cpp
+// 01_lifecycle.cpp - Single VM instance
 hlffi_vm* vm = hlffi_create();
 hlffi_init(vm, argc, argv);
-hlffi_load_file(vm, "test.hl");
+hlffi_load_file(vm, "game.hl");
 hlffi_call_entry(vm);
 
-// Later: restart with new bytecode
-hlffi_shutdown(vm);
-hlffi_init(vm, argc, argv);
-hlffi_load_file(vm, "test2.hl");
-hlffi_call_entry(vm);
+// VM runs for lifetime of process
+// ... application runs ...
 
+// Only destroy at process exit
 hlffi_destroy(vm);
 ```
 
@@ -404,11 +442,12 @@ hlffi_destroy(vm);
 
 ### Success Criteria
 - ✓ Can load and run .hl bytecode
-- ✓ Can restart VM without memory leaks
+- ✓ Single VM instance works reliably
 - ✓ Can hot reload changed functions without restart
 - ✓ Hot reload preserves runtime state
 - ✓ Hot reload failures handled gracefully
 - ✓ All error paths tested and safe
+- ✓ VM restart limitation clearly documented
 
 ### Hot Reload Limitations (per HL docs)
 - ⚠️ Cannot add/remove/reorder class fields
