@@ -95,12 +95,21 @@
     <ClInclude Include="include\hlffi.h" />
   </ItemGroup>
   <ItemGroup>
+    <!-- HLFFI wrapper code -->
     <ClCompile Include="src\hlffi_core.c" />
     <ClCompile Include="src\hlffi_events.c" />
     <ClCompile Include="src\hlffi_integration.c" />
     <ClCompile Include="src\hlffi_lifecycle.c" />
     <ClCompile Include="src\hlffi_reload.c" />
     <ClCompile Include="src\hlffi_threading.c" />
+
+    <!-- HashLink core VM files (compile directly into hlffi.lib) -->
+    <ClCompile Include="vendor\hashlink\src\allocator.c" />
+    <ClCompile Include="vendor\hashlink\src\code.c" />
+    <ClCompile Include="vendor\hashlink\src\module.c" />
+    <ClCompile Include="vendor\hashlink\src\jit.c" />
+    <ClCompile Include="vendor\hashlink\src\debugger.c" />
+    <ClCompile Include="vendor\hashlink\src\profile.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
