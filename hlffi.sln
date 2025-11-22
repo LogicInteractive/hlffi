@@ -4,29 +4,14 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 
-# HashLink Core Runtime
+# HashLink Core Runtime (GC, stdlib, PCRE2)
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libhl", "vendor\hashlink\libhl.vcxproj", "{C6213FBF-BC2B-4235-A827-84A60E848C52}"
 EndProject
 
-# HashLink Essential Plugins
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "uv", "vendor\hashlink\libs\uv\uv.vcxproj", "{6B5DF951-2544-4EAB-86BE-39A572C58A6B}"
-	ProjectSection(ProjectDependencies) = postProject
-		{C6213FBF-BC2B-4235-A827-84A60E848C52} = {C6213FBF-BC2B-4235-A827-84A60E848C52}
-	EndProjectSection
-EndProject
-
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ssl", "vendor\hashlink\libs\ssl\ssl.vcxproj", "{ADFA8FB1-E23F-47FD-9840-D40C7748FFE9}"
-	ProjectSection(ProjectDependencies) = postProject
-		{C6213FBF-BC2B-4235-A827-84A60E848C52} = {C6213FBF-BC2B-4235-A827-84A60E848C52}
-	EndProjectSection
-EndProject
-
-# HLFFI Library
+# HLFFI Monolithic Library (includes VM core + UV + SSL)
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "hlffi", "hlffi.vcxproj", "{F7A8B1E3-9C4D-4E5F-8A6B-1D2E3F4A5B6C}"
 	ProjectSection(ProjectDependencies) = postProject
 		{C6213FBF-BC2B-4235-A827-84A60E848C52} = {C6213FBF-BC2B-4235-A827-84A60E848C52}
-		{6B5DF951-2544-4EAB-86BE-39A572C58A6B} = {6B5DF951-2544-4EAB-86BE-39A572C58A6B}
-		{ADFA8FB1-E23F-47FD-9840-D40C7748FFE9} = {ADFA8FB1-E23F-47FD-9840-D40C7748FFE9}
 	EndProjectSection
 EndProject
 
@@ -54,16 +39,6 @@ Global
 		{C6213FBF-BC2B-4235-A827-84A60E848C52}.Debug|x64.Build.0 = Debug|x64
 		{C6213FBF-BC2B-4235-A827-84A60E848C52}.Release|x64.ActiveCfg = Release|x64
 		{C6213FBF-BC2B-4235-A827-84A60E848C52}.Release|x64.Build.0 = Release|x64
-
-		{6B5DF951-2544-4EAB-86BE-39A572C58A6B}.Debug|x64.ActiveCfg = Debug|x64
-		{6B5DF951-2544-4EAB-86BE-39A572C58A6B}.Debug|x64.Build.0 = Debug|x64
-		{6B5DF951-2544-4EAB-86BE-39A572C58A6B}.Release|x64.ActiveCfg = Release|x64
-		{6B5DF951-2544-4EAB-86BE-39A572C58A6B}.Release|x64.Build.0 = Release|x64
-
-		{ADFA8FB1-E23F-47FD-9840-D40C7748FFE9}.Debug|x64.ActiveCfg = Debug|x64
-		{ADFA8FB1-E23F-47FD-9840-D40C7748FFE9}.Debug|x64.Build.0 = Debug|x64
-		{ADFA8FB1-E23F-47FD-9840-D40C7748FFE9}.Release|x64.ActiveCfg = Release|x64
-		{ADFA8FB1-E23F-47FD-9840-D40C7748FFE9}.Release|x64.Build.0 = Release|x64
 
 		{F7A8B1E3-9C4D-4E5F-8A6B-1D2E3F4A5B6C}.Debug|x64.ActiveCfg = Debug|x64
 		{F7A8B1E3-9C4D-4E5F-8A6B-1D2E3F4A5B6C}.Debug|x64.Build.0 = Debug|x64
