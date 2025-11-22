@@ -38,7 +38,7 @@ bool hlffi_is_jit_mode(void) {
 
 const char* hlffi_get_error_string(hlffi_error_code code) {
     switch (code) {
-        case HLFFI_ERROR_NONE:
+        case HLFFI_OK:
             return "No error";
 
         /* VM lifecycle errors */
@@ -48,78 +48,78 @@ const char* hlffi_get_error_string(hlffi_error_code code) {
             return "VM already initialized";
         case HLFFI_ERROR_NOT_INITIALIZED:
             return "VM not initialized";
-        case HLFFI_ERROR_MODULE_INIT_FAILED:
-            return "Module initialization failed";
 
         /* File I/O errors */
         case HLFFI_ERROR_FILE_NOT_FOUND:
             return "File not found";
-        case HLFFI_ERROR_FILE_READ_ERROR:
-            return "File read error";
 
         /* Bytecode errors */
-        case HLFFI_ERROR_BYTECODE_INVALID:
+        case HLFFI_ERROR_INVALID_BYTECODE:
             return "Invalid bytecode";
-        case HLFFI_ERROR_BYTECODE_VERSION_MISMATCH:
-            return "Bytecode version mismatch";
+        case HLFFI_ERROR_MODULE_LOAD_FAILED:
+            return "Module load failed";
+        case HLFFI_ERROR_MODULE_INIT_FAILED:
+            return "Module init failed";
 
         /* Runtime errors */
-        case HLFFI_ERROR_EXCEPTION:
+        case HLFFI_ERROR_EXCEPTION_THROWN:
             return "Exception occurred";
-        case HLFFI_ERROR_STACK_OVERFLOW:
-            return "Stack overflow";
-        case HLFFI_ERROR_OUT_OF_MEMORY:
-            return "Out of memory";
+        case HLFFI_ERROR_CALL_FAILED:
+            return "Call failed";
+        case HLFFI_ERROR_INIT_FAILED:
+            return "Initialization failed";
+        case HLFFI_ERROR_DESTROY_FAILED:
+            return "Destroy failed";
 
         /* Call errors */
-        case HLFFI_ERROR_FUNCTION_NOT_FOUND:
-            return "Function not found";
-        case HLFFI_ERROR_INVALID_SIGNATURE:
-            return "Invalid function signature";
-        case HLFFI_ERROR_INVALID_ARGUMENT:
-            return "Invalid argument";
-        case HLFFI_ERROR_ARGUMENT_COUNT_MISMATCH:
-            return "Argument count mismatch";
+        case HLFFI_ERROR_ENTRY_POINT_NOT_FOUND:
+            return "Entry point not found";
+        case HLFFI_ERROR_METHOD_NOT_FOUND:
+            return "Method not found";
 
         /* Type errors */
         case HLFFI_ERROR_TYPE_NOT_FOUND:
             return "Type not found";
         case HLFFI_ERROR_TYPE_MISMATCH:
             return "Type mismatch";
-        case HLFFI_ERROR_CAST_FAILED:
-            return "Cast failed";
+        case HLFFI_ERROR_INVALID_TYPE:
+            return "Invalid type";
 
-        /* Field/Method errors */
+        /* Field errors */
         case HLFFI_ERROR_FIELD_NOT_FOUND:
             return "Field not found";
-        case HLFFI_ERROR_METHOD_NOT_FOUND:
-            return "Method not found";
 
         /* Object errors */
-        case HLFFI_ERROR_NULL_REFERENCE:
-            return "Null reference";
-        case HLFFI_ERROR_ALLOCATION_FAILED:
-            return "Allocation failed";
+        case HLFFI_ERROR_NULL_VALUE:
+            return "Null value";
 
         /* Threading errors */
-        case HLFFI_ERROR_THREAD_NOT_REGISTERED:
-            return "Thread not registered";
-        case HLFFI_ERROR_THREAD_ALREADY_REGISTERED:
-            return "Thread already registered";
+        case HLFFI_ERROR_THREAD_NOT_STARTED:
+            return "Thread not started";
+        case HLFFI_ERROR_THREAD_ALREADY_RUNNING:
+            return "Thread already running";
+        case HLFFI_ERROR_THREAD_START_FAILED:
+            return "Thread start failed";
+        case HLFFI_ERROR_THREAD_STOP_FAILED:
+            return "Thread stop failed";
         case HLFFI_ERROR_WRONG_THREAD:
-            return "Called from wrong thread";
+            return "Wrong thread";
 
         /* Hot reload errors */
+        case HLFFI_ERROR_RELOAD_NOT_SUPPORTED:
+            return "Reload not supported";
         case HLFFI_ERROR_RELOAD_NOT_ENABLED:
-            return "Hot reload not enabled";
+            return "Reload not enabled";
         case HLFFI_ERROR_RELOAD_FAILED:
-            return "Hot reload failed";
+            return "Reload failed";
+
+        /* Event loop errors */
+        case HLFFI_ERROR_EVENTLOOP_NOT_FOUND:
+            return "Event loop not found";
 
         /* General errors */
         case HLFFI_ERROR_NOT_IMPLEMENTED:
             return "Not implemented";
-        case HLFFI_ERROR_INTERNAL:
-            return "Internal error";
         case HLFFI_ERROR_UNKNOWN:
             return "Unknown error";
 

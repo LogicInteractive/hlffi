@@ -103,7 +103,7 @@ hlffi_vm* hlffi_create(void) {
     vm->code = NULL;
     vm->integration_mode = HLFFI_MODE_NON_THREADED;
     vm->stack_context = vm; /* Use vm pointer itself as stack marker */
-    vm->last_error = HLFFI_ERROR_NONE;
+    vm->last_error = HLFFI_OK;
     vm->hl_initialized = false;
     vm->thread_registered = false;
     vm->module_loaded = false;
@@ -144,8 +144,8 @@ hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
     vm->hl_initialized = true;
     vm->thread_registered = true;
 
-    set_error(vm, HLFFI_ERROR_NONE, NULL);
-    return HLFFI_ERROR_NONE;
+    set_error(vm, HLFFI_OK, NULL);
+    return HLFFI_OK;
 }
 
 hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path) {
@@ -203,8 +203,8 @@ hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path) {
     vm->module_loaded = true;
     vm->loaded_file = path;
 
-    set_error(vm, HLFFI_ERROR_NONE, NULL);
-    return HLFFI_ERROR_NONE;
+    set_error(vm, HLFFI_OK, NULL);
+    return HLFFI_OK;
 }
 
 hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size) {
@@ -228,9 +228,9 @@ hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size) 
     char* error_msg = NULL;
     vm->code = hl_code_read((const unsigned char*)data, (int)size, &error_msg);
     if (!vm->code) {
-        set_error(vm, HLFFI_ERROR_BYTECODE_INVALID,
+        set_error(vm, HLFFI_ERROR_INVALID_BYTECODE,
                   error_msg ? error_msg : "Failed to parse bytecode");
-        return HLFFI_ERROR_BYTECODE_INVALID;
+        return HLFFI_ERROR_INVALID_BYTECODE;
     }
 
     /* Allocate module */
@@ -258,8 +258,8 @@ hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size) 
 
     vm->module_loaded = true;
 
-    set_error(vm, HLFFI_ERROR_NONE, NULL);
-    return HLFFI_ERROR_NONE;
+    set_error(vm, HLFFI_OK, NULL);
+    return HLFFI_OK;
 }
 
 hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
@@ -286,16 +286,16 @@ hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
 
     if (isExc) {
         /* Exception occurred */
-        set_error(vm, HLFFI_ERROR_EXCEPTION, "Exception in entry point");
+        set_error(vm, HLFFI_ERROR_EXCEPTION_THROWN, "Exception in entry point");
         /* Print exception info to stderr */
         hl_print_uncaught_exception(ret);
-        return HLFFI_ERROR_EXCEPTION;
+        return HLFFI_ERROR_EXCEPTION_THROWN;
     }
 
     vm->entry_called = true;
 
-    set_error(vm, HLFFI_ERROR_NONE, NULL);
-    return HLFFI_ERROR_NONE;
+    set_error(vm, HLFFI_OK, NULL);
+    return HLFFI_OK;
 }
 
 void hlffi_destroy(hlffi_vm* vm) {

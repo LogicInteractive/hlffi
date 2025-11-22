@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
     err = hlffi_load_file(vm, hl_file);
     if (err != HLFFI_OK) {
         fprintf(stderr, "ERROR: Failed to load bytecode: %s\n", hlffi_get_error_string(err));
-        fprintf(stderr, "       VM error: %s\n", hlffi_get_last_error(vm));
+        fprintf(stderr, "       VM error: %s\n", hlffi_get_error(vm));
         hlffi_destroy(vm);
         return 1;
     }
@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
     printf("--------------------------------------------------\n");
     if (err != HLFFI_OK) {
         fprintf(stderr, "ERROR: Entry point failed: %s\n", hlffi_get_error_string(err));
-        fprintf(stderr, "       VM error: %s\n", hlffi_get_last_error(vm));
+        fprintf(stderr, "       VM error: %s\n", hlffi_get_error(vm));
         hlffi_destroy(vm);
         return 1;
     }

@@ -265,6 +265,14 @@ void hlffi_destroy(hlffi_vm* vm);
  */
 const char* hlffi_get_error(hlffi_vm* vm);
 
+/**
+ * Get error string from error code.
+ *
+ * @param code Error code
+ * @return Human-readable error message
+ */
+const char* hlffi_get_error_string(hlffi_error_code code);
+
 /* ========== INTEGRATION MODE SETUP ========== */
 
 /**
