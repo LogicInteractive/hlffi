@@ -52,3 +52,8 @@ Thumbs.db
 *.tmp
 *.temp
 *~
+
+# Test binaries (Linux, no extension)
+test_libhl
+test_hashlink
+test_runner
