@@ -1209,45 +1209,359 @@ Based on research:
 4. **Issue #253** - Class instantiation workaround
 5. **Issue #752** - Plugin threading pattern
 
+### 9. Bytecode Analysis Tools
+
+**Purpose for FFI Development**: Understanding bytecode structure helps design better FFI APIs, enables runtime code generation, and provides debugging insights.
+
+#### hlbc (Rust) - Most Comprehensive
+- **GitHub**: [Gui-Yom/hlbc](https://github.com/Gui-Yom/hlbc)
+- **Language**: Rust
+- **License**: MIT
+- **Features**:
+  - Complete bytecode disassembler
+  - Decompiler (partial - loops incomplete)
+  - Visual GUI for bytecode exploration
+  - Bytecode assembler/reassembler
+  - Indexing and search capabilities
+- **Architecture**: Arena pattern for graph management
+- **Use Cases**: Analyzing Northgard, Dune: Spice Wars, Wartales
+- **FFI Insight**: Potential C API mentioned for future development
+- **Structure**:
+  ```
+  crates/hlbc/        - Core library
+  crates/cli/         - Command-line tools
+  crates/decompiler/  - Decompilation engine
+  crates/gui/         - Visual explorer
+  crates/indexing/    - Search/indexing
+  ```
+
+#### dashlink (Haxe) - Programmatic Manipulation
+- **GitHub**: [steviegt6/dashlink](https://github.com/steviegt6/dashlink)
+- **Language**: Haxe (100%)
+- **License**: MIT
+- **Features**:
+  - Disassembler, assembler, inspector
+  - Create bytecode from scratch
+  - Dynamic code rewriting at runtime
+  - Programmatic bytecode creation
+- **Based On**: Adapted from hlbc (Rust)
+- **Use Cases**:
+  - Reverse-engineering Haxe apps
+  - Runtime code modification
+  - Bootstrapping external assemblies
+- **FFI Insight**: Enables dynamic binding generation, runtime code manipulation
+- **Key Advantage**: Pure Haxe - integrates directly with HL ecosystem
+
+#### crashlink (Python) - Modding Tool
+- **GitHub**: [N3rdL0rd/crashlink](https://github.com/N3rdL0rd/crashlink)
+- **Language**: Pure Python
+- **License**: Not specified
+- **Features**:
+  - Zero dependencies
+  - IDAPython compatible
+  - Scriptable interface for value modification
+  - Control flow graph generation (requires Graphviz)
+  - Reserialize modified bytecode
+- **CLI**: hlbc-compatible mode
+- **Status**: Active development, breaking changes possible
+- **Installation**: pip install crashlink
+- **FFI Insight**: Python integration for bytecode analysis
+- **Key Advantage**: Pure Python, works everywhere
+
+#### Comparison Matrix
+
+| Tool | Language | Completeness | GUI | Reassembly | FFI Relevance |
+|------|----------|--------------|-----|------------|---------------|
+| **hlbc** | Rust | High | ✅ Yes | ✅ Yes | Future C API |
+| **dashlink** | Haxe | Medium | ❌ No | ✅ Yes | Direct HL integration |
+| **crashlink** | Python | Medium | ❌ No | ✅ Yes | Python scripting |
+
+**Recommendation for HLFFI v3.0**:
+- Study **hlbc** source for bytecode structure understanding
+- Reference **dashlink** for Haxe-native bytecode manipulation patterns
+- Use **crashlink** for quick Python-based analysis during development
+
 ---
 
 ## Sources & References
 
-### Official Documentation
-- [Embedding HashLink](https://github.com/HaxeFoundation/hashlink/wiki/Embedding-HashLink)
-- [C API Documentation](https://github.com/HaxeFoundation/hashlink/wiki/C-API-Documentation)
-- [Native Extension Tutorial](https://github.com/HaxeFoundation/hashlink/wiki/HashLink-native-extension-tutorial)
-- [Hot Reload Wiki](https://github.com/HaxeFoundation/hashlink/wiki/Hot-Reload)
-- [GC Notes](https://github.com/HaxeFoundation/hashlink/wiki/Notes-on-Garbage-Collector)
-- [HashLink GC Blog](https://haxe.org/blog/hashlink-gc/)
-- [HashLink In Depth - Part 1](https://haxe.org/blog/hashlink-indepth/)
-
-### GitHub Issues
-- [#253 - Initializing classes and calling functions from C++](https://github.com/HaxeFoundation/hashlink/issues/253)
-- [#752 - Embedding without stack_top access](https://github.com/HaxeFoundation/hashlink/issues/752)
-- [#179 - Runtime bytecode loading](https://github.com/HaxeFoundation/hashlink/issues/179)
-- [#33 - Plans for embedding API](https://github.com/HaxeFoundation/hashlink/issues/33)
-- [#46 - Call Haxe function from native code](https://github.com/HaxeFoundation/hashlink/issues/46)
-- [#161 - hl_alloc_dynobj usage](https://github.com/HaxeFoundation/hashlink/issues/161)
-
-### Community Resources
-- [Haxe Forum FFI Discussions](https://groups.google.com/g/haxelang)
-- [Working with C (Aramallo Blog)](https://aramallo.com/blog/hashlink/calling-c.html)
-- [Khabind Gist](https://gist.github.com/zicklag/6c2828cda4e8282c850d97ac8a3a0de5)
-
-### Code Examples
-- [hashlink/src/main.c](https://github.com/HaxeFoundation/hashlink/blob/master/src/main.c)
-- [hashlink/src/hl.h](https://github.com/HaxeFoundation/hashlink/blob/master/src/hl.h)
-- [hashlink/libs/fmt/fmt.c](https://github.com/HaxeFoundation/hashlink/blob/master/libs/fmt/fmt.c)
-- [hashlink/libs/ui/ui_win.c](https://github.com/HaxeFoundation/hashlink/blob/master/libs/ui/ui_win.c)
-
-### Projects
-- [MECore Game Engine](https://github.com/datee/MECore)
-- [hlbc Bytecode Tools](https://github.com/Gui-Yom/hlbc)
-- [Heaps.io](https://heaps.io/)
+**Complete Source List** - All resources used in this research document
 
 ---
 
-**Document Version**: 1.0
+### 1. Official HashLink Documentation
+
+#### Core Documentation
+- [HashLink Homepage](https://hashlink.haxe.org/)
+- [HashLink GitHub Repository](https://github.com/HaxeFoundation/hashlink)
+- [Embedding HashLink](https://github.com/HaxeFoundation/hashlink/wiki/Embedding-HashLink)
+- [C API Documentation](https://github.com/HaxeFoundation/hashlink/wiki/C-API-Documentation)
+- [Native Extension Tutorial](https://github.com/HaxeFoundation/hashlink/wiki/HashLink-native-extension-tutorial)
+
+#### Advanced Topics
+- [Hot Reload Wiki](https://github.com/HaxeFoundation/hashlink/wiki/Hot-Reload)
+- [Notes on Garbage Collector](https://github.com/HaxeFoundation/hashlink/wiki/Notes-on-Garbage-Collector)
+
+#### Blog Posts & Deep Dives
+- [HashLink GC Redesign](https://haxe.org/blog/hashlink-gc/) - Immix GC implementation
+- [HashLink In Depth - Part 1](https://haxe.org/blog/hashlink-indepth/) - VM architecture
+- [HashLink In Depth - Part 2](https://haxe.org/blog/hashlink-in-depth-p2/) - Type system & JIT
+
+#### Haxe Manual
+- [Getting Started with HashLink](https://haxe.org/manual/target-hl-getting-started.html)
+- [HashLink/C Compilation](https://haxe.org/manual/target-hl-c-compilation.html)
+
+---
+
+### 2. GitHub Issues (Critical for FFI Development)
+
+#### Embedding & FFI
+- [Issue #253](https://github.com/HaxeFoundation/hashlink/issues/253) - **Initializing classes and calling functions from C++** ⭐
+  - Constructor type mismatch workaround
+  - Global vs class type handling
+  - Method lookup via field hashing
+- [Issue #752](https://github.com/HaxeFoundation/hashlink/issues/752) - **Embedding without stack_top access** ⭐
+  - Plugin/dynamic library threading
+  - Stack pointer persistence requirement
+  - Blocking/unblocking patterns
+- [Issue #33](https://github.com/HaxeFoundation/hashlink/issues/33) - Plans for embedding API
+- [Issue #46](https://github.com/HaxeFoundation/hashlink/issues/46) - How to call Haxe function from native code
+
+#### Runtime & Modules
+- [Issue #179](https://github.com/HaxeFoundation/hashlink/issues/179) - **Runtime bytecode loading** ⭐
+  - Multiple JIT modules
+  - Type sharing between modules
+  - Plugin system foundation
+- [Issue #492](https://github.com/HaxeFoundation/hashlink/issues/492) - Building library for embedding & FFI
+
+#### Memory & Types
+- [Issue #161](https://github.com/HaxeFoundation/hashlink/issues/161) - hl_alloc_dynobj usage
+- [Issue #145](https://github.com/HaxeFoundation/hashlink/issues/145) - JIT Hot Reload implementation
+
+---
+
+### 3. HashLink Source Code (Primary Reference)
+
+#### Core C API Headers
+- [src/hl.h](https://github.com/HaxeFoundation/hashlink/blob/master/src/hl.h) - **Complete C API** ⭐
+- [src/hlmodule.h](https://github.com/HaxeFoundation/hashlink/blob/master/src/hlmodule.h) - Module definitions
+- [src/gc.h](https://github.com/HaxeFoundation/hashlink/blob/master/src/gc.h) - GC internals
+
+#### Implementation Examples
+- [src/main.c](https://github.com/HaxeFoundation/hashlink/blob/master/src/main.c) - **Canonical embedding example** ⭐
+- [src/alloc.c](https://github.com/HaxeFoundation/hashlink/blob/master/src/alloc.c) - GC implementation
+- [src/code.c](https://github.com/HaxeFoundation/hashlink/blob/master/src/code.c) - Bytecode loading
+- [src/module.c](https://github.com/HaxeFoundation/hashlink/blob/master/src/module.c) - Module initialization
+- [src/jit.c](https://github.com/HaxeFoundation/hashlink/blob/master/src/jit.c) - JIT compiler
+
+#### Standard Library Native Extensions
+- [libs/fmt/fmt.c](https://github.com/HaxeFoundation/hashlink/blob/master/libs/fmt/fmt.c) - **Format FFI example** ⭐
+- [libs/ui/ui_win.c](https://github.com/HaxeFoundation/hashlink/blob/master/libs/ui/ui_win.c) - Windows UI callbacks
+- [libs/uv/uv.c](https://github.com/HaxeFoundation/hashlink/blob/master/libs/uv/uv.c) - libuv integration
+- [src/std/string.c](https://github.com/HaxeFoundation/hashlink/blob/master/src/std/string.c) - String utilities
+- [src/std/fun.c](https://github.com/HaxeFoundation/hashlink/blob/master/src/std/fun.c) - Function utilities
+
+---
+
+### 4. Community Forums & Discussions
+
+#### Google Groups (Haxe Lang)
+- [Unofficial HashLink Thread](https://groups.google.com/g/haxelang/c/5Jk_efynbro) - FFI examples in fmt.c
+- [Haxe FFI Library Discussion](https://groups.google.com/g/haxelang/c/kdbSdacKpiM)
+- [HXCPP: Passing function pointer to C++](https://groups.google.com/g/haxelang/c/mdcWGaUojfs)
+- [Use hxcpp to build library](https://groups.google.com/g/haxelang/c/Rs8aJUPql0w)
+- [HashLink GUI & dynamic loading](https://groups.google.com/g/haxelang/c/7A8lTpPN3Xs)
+- [Compiling HashLink on OSX](https://groups.google.com/g/haxelang/c/RO7vq8nwd-8)
+- [CFFI example problems](https://groups.google.com/g/haxelang/c/KufDsP11BYg)
+- [HashLink bytecode portability](https://groups.google.com/g/haxelang/c/frV0fLixvm8)
+
+#### Haxe Community
+- [Haxe Community Forum](https://community.haxe.org/)
+- [Hashlink debugger in VS Code](https://community.openfl.org/t/hashlink-debugger-in-vs-code-asset-libraries-not-loading/14354)
+
+---
+
+### 5. Tutorials & Blog Posts
+
+#### Technical Tutorials
+- [Working with C (Aramallo Blog)](https://aramallo.com/blog/hashlink/calling-c.html) - Practical C integration
+- [How to compile HL/C (Gist)](https://gist.github.com/Yanrishatum/d69ed72e368e35b18cbfca726d81279a) - Compilation guide
+- [Khabind (Gist)](https://gist.github.com/zicklag/6c2828cda4e8282c850d97ac8a3a0de5) - Binding C++ to Kha/HashLink
+
+#### Framework Documentation
+- [Hello HashLink (Heaps.io)](https://heaps.io/documentation/hello-hashlink.html)
+- [Heaps Wiki: Hello HashLink](https://github.com/HeapsIO/heaps/wiki/Hello-HashLink)
+
+---
+
+### 6. Projects Using HashLink FFI
+
+#### Game Engines & Frameworks
+- [MECore Game Engine](https://github.com/datee/MECore) ⭐
+  - C++ engine + Haxe scripting
+  - Vulkan 1.3 + Jolt Physics
+  - 75.7% C++, 22.7% Haxe
+  - Educational example of HL/C integration
+- [Heaps.io](https://heaps.io/) - Cross-platform game framework
+- [Kha](https://github.com/Kode/Kha) - Multi-platform game engine
+
+#### Game Titles (Using HashLink)
+- **Northgard** (Shiro Games)
+- **Dune: Spice Wars** (Shiro Games)
+- **Wartales** (Shiro Games)
+- **Dead Cells** (Motion Twin)
+- **Evoland** series (Shiro Games)
+
+---
+
+### 7. Bytecode Analysis & Development Tools
+
+#### Disassemblers/Decompilers
+- [hlbc](https://github.com/Gui-Yom/hlbc) - **Rust, most comprehensive** ⭐
+  - Complete disassembler, decompiler, assembler
+  - GUI bytecode explorer
+  - Indexing and search
+  - Used for game analysis (Northgard, etc.)
+- [dashlink](https://github.com/steviegt6/dashlink) - **Haxe, programmatic** ⭐
+  - Pure Haxe implementation
+  - Create bytecode from scratch
+  - Runtime code modification
+  - Based on hlbc
+- [crashlink](https://github.com/N3rdL0rd/crashlink) - **Python, modding**
+  - Pure Python, zero dependencies
+  - IDAPython compatible
+  - CFG generation (Graphviz)
+  - pip install crashlink
+
+#### Other Tools
+- [Callfunc](https://lib.haxe.org/p/callfunc/) - FFI library using libffi
+- [haxe-sys](https://github.com/Aurel300/haxe-sys) - Asynchronous system API
+
+---
+
+### 8. Related FFI Technologies
+
+#### libffi
+- [libffi GitHub](https://github.com/libffi/libffi)
+- [libffi docs](https://sourceware.org/libffi/)
+
+#### Language Bindings
+- [Ruby FFI](https://github.com/ffi/ffi) - Reference FFI implementation
+- [Python ctypes](https://docs.python.org/3/library/ctypes.html)
+
+---
+
+### 9. Academic & Research
+
+#### Papers & Theses
+- [Modern garbage collector for HashLink](https://www.imperial.ac.uk/media/imperial-college/faculty-of-engineering/computing/public/1920-ug-projects/Aurel-B%C3%ADl%C3%BD.pdf) - Imperial College thesis on HL GC
+
+---
+
+### 10. Platform-Specific Resources
+
+#### Windows
+- [Visual Studio HashLink Setup](https://github.com/HaxeFoundation/hashlink/wiki/HashLink-native-extension-tutorial#visual-studio-setup)
+
+#### Web/WASM
+- [OpenFL devlog: HashLink/C compilation](https://joshblog.net/2024/openfl-devlog-hashlink-c-compilation/)
+- [WebAssembly support discussion](https://groups.google.com/g/haxelang/c/Pcm38LPFjW0)
+
+---
+
+### 11. Releases & Changelogs
+
+- [HashLink Releases](https://github.com/HaxeFoundation/hashlink/releases)
+- [Latest: HashLink 1.14](https://github.com/HaxeFoundation/hashlink/releases/latest)
+- [HashLink Commits](https://github.com/HaxeFoundation/hashlink/commits/master)
+
+---
+
+### 11.5. Recent Commits (2024-2025) - FFI Relevant
+
+**Source**: [HashLink master commits](https://github.com/HaxeFoundation/hashlink/commits/master)
+
+#### 🔌 Plugin System (NEW!)
+- **Nov 1, 2025**: "added plugin system runtime support" ⭐
+  - **Major addition**: Runtime plugin infrastructure
+  - Enables dynamic module loading at runtime
+  - Foundation for Phase 9 (Plugin/Module System)
+- **Nov 1, 2025**: "perform structural check when resolving plugin types for compatibility"
+  - Type safety for plugin loading
+  - Addresses type sharing challenges mentioned in Issue #179
+
+#### 🔍 API Enhancements
+- **Nov 10, 2025**: "added value_address and type_data_size"
+  - New introspection capabilities
+  - Useful for FFI debugging and analysis
+- **Oct 26, 2025**: "added missing ToSFloat from i64"
+  - Extended numeric conversions
+  - Important for i64 ↔ float FFI bridges
+- **Oct 26, 2025**: "added bsort_i64"
+  - 64-bit sorting support
+  - Array operations enhancement
+
+#### ⚡ Threading & Performance
+- **Oct 17, 2025**: "reduce sleep to 1ms (faster wakeup)"
+  - Thread scheduling optimization
+  - Better responsiveness for embedded use cases
+- **Oct 11, 2025**: "handle EINTR on select() and use SA_RESTART for profiling signals"
+  - Signal handling reliability (Unix)
+  - Critical for robust production FFI
+- **Nov 8, 2025**: "improve windows sys_sleep precision"
+  - Windows-specific sleep accuracy
+  - Important for Phase 1 (Windows first target)
+
+#### 💾 Memory Optimization
+- **Nov 10, 2025**: "optimize allocation of small null<int>"
+  - GC allocation overhead reduction
+  - Performance improvement for nullable types
+
+#### 🔧 Module Loading Extensions
+- **Nov 5, 2025**: "added uv create_loop"
+  - libuv integration expansion
+  - Async I/O for embedded scenarios
+- **Nov 9, 2025**: "[uv] Add wrappers for all libuv functions"
+  - Complete libuv API exposure
+  - Event loop integration patterns
+
+**Key Insights for HLFFI v3.0**:
+1. **Plugin system is NOW available** (Nov 2025) - Phase 9 timing is perfect!
+2. **Type checking for plugins** - Addresses major concern from research
+3. **Introspection APIs** - `value_address` and `type_data_size` useful for debugging FFI
+4. **Windows optimizations** - Aligns with our Windows-first target
+5. **Threading improvements** - Makes embedded use cases more robust
+
+---
+
+### 12. Index by Topic
+
+#### 🔥 Critical Reading (Must Read Before Implementation)
+1. [src/main.c](https://github.com/HaxeFoundation/hashlink/blob/master/src/main.c) - Embedding pattern
+2. [src/hl.h](https://github.com/HaxeFoundation/hashlink/blob/master/src/hl.h) - Complete API
+3. [Issue #253](https://github.com/HaxeFoundation/hashlink/issues/253) - Class instantiation
+4. [Issue #752](https://github.com/HaxeFoundation/hashlink/issues/752) - Threading gotcha
+5. [C API Documentation](https://github.com/HaxeFoundation/hashlink/wiki/C-API-Documentation) - Official API docs
+
+#### 🧠 Deep Understanding (Recommended)
+- [HashLink In Depth - Part 2](https://haxe.org/blog/hashlink-in-depth-p2/) - Type system
+- [GC Redesign Blog](https://haxe.org/blog/hashlink-gc/) - Memory model
+- [GC Notes Wiki](https://github.com/HaxeFoundation/hashlink/wiki/Notes-on-Garbage-Collector) - GC internals
+- [Native Extension Tutorial](https://github.com/HaxeFoundation/hashlink/wiki/HashLink-native-extension-tutorial) - FFI patterns
+
+#### 🔧 Practical Implementation
+- [libs/fmt/fmt.c](https://github.com/HaxeFoundation/hashlink/blob/master/libs/fmt/fmt.c) - FFI example
+- [MECore](https://github.com/datee/MECore) - Real-world usage
+- [Working with C (Aramallo)](https://aramallo.com/blog/hashlink/calling-c.html) - Tutorial
+
+#### 🐛 Troubleshooting
+- [Issue #253](https://github.com/HaxeFoundation/hashlink/issues/253) - Constructor issues
+- [Issue #752](https://github.com/HaxeFoundation/hashlink/issues/752) - Thread registration
+- [Issue #161](https://github.com/HaxeFoundation/hashlink/issues/161) - Dynamic objects
+
+---
+
+**Document Version**: 1.1
 **Last Updated**: 2025-11-22
 **Next Review**: Before Phase 0 implementation
+**Sources Count**: 75+ references across 12 categories
