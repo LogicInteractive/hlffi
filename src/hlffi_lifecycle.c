@@ -4,42 +4,329 @@
  * Phase 1 implementation
  */
 
-#include "hlffi.h"
+#include "../include/hlffi.h"
+#include <hl.h>
+#include <hlmodule.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
-/* TODO: Phase 1 - Implement VM lifecycle functions */
+/* Internal VM structure */
+struct hlffi_vm {
+    /* HashLink module and code */
+    hl_module* module;
+    hl_code* code;
+
+    /* Integration mode */
+    hlffi_integration_mode integration_mode;
+
+    /* Persistent context for stack_top (CRITICAL: must persist!) */
+    /* This is passed to hl_register_thread and MUST remain valid */
+    void* stack_context;
+
+    /* Error state */
+    char error_msg[512];
+    hlffi_error_code last_error;
+
+    /* Initialization flags */
+    bool hl_initialized;
+    bool thread_registered;
+    bool module_loaded;
+    bool entry_called;
+
+    /* Hot reload support */
+    bool hot_reload_enabled;
+    const char* loaded_file;
+};
+
+/* ========== HELPER FUNCTIONS ========== */
+
+static void set_error(hlffi_vm* vm, hlffi_error_code code, const char* msg) {
+    if (!vm) return;
+    vm->last_error = code;
+    if (msg) {
+        strncpy(vm->error_msg, msg, sizeof(vm->error_msg) - 1);
+        vm->error_msg[sizeof(vm->error_msg) - 1] = '\0';
+    } else {
+        vm->error_msg[0] = '\0';
+    }
+}
+
+static hl_code* load_code_from_file(const char* path, char** error_msg) {
+    FILE* f = fopen(path, "rb");
+    if (!f) {
+        if (error_msg) *error_msg = "Failed to open file";
+        return NULL;
+    }
+
+    /* Get file size */
+    fseek(f, 0, SEEK_END);
+    int size = (int)ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    /* Read file data */
+    char* fdata = (char*)malloc(size);
+    if (!fdata) {
+        fclose(f);
+        if (error_msg) *error_msg = "Out of memory";
+        return NULL;
+    }
+
+    int pos = 0;
+    while (pos < size) {
+        int r = (int)fread(fdata + pos, 1, size - pos, f);
+        if (r <= 0) {
+            free(fdata);
+            fclose(f);
+            if (error_msg) *error_msg = "Failed to read file";
+            return NULL;
+        }
+        pos += r;
+    }
+    fclose(f);
+
+    /* Parse bytecode */
+    hl_code* code = hl_code_read((unsigned char*)fdata, size, error_msg);
+    free(fdata);
+
+    return code;
+}
+
+/* ========== LIFECYCLE FUNCTIONS ========== */
 
 hlffi_vm* hlffi_create(void) {
-    /* TODO: Allocate hlffi_vm structure */
-    return NULL;
+    hlffi_vm* vm = (hlffi_vm*)calloc(1, sizeof(hlffi_vm));
+    if (!vm) return NULL;
+
+    /* Initialize to safe defaults */
+    vm->module = NULL;
+    vm->code = NULL;
+    vm->integration_mode = HLFFI_MODE_NON_THREADED;
+    vm->stack_context = vm; /* Use vm pointer itself as stack marker */
+    vm->last_error = HLFFI_ERROR_NONE;
+    vm->hl_initialized = false;
+    vm->thread_registered = false;
+    vm->module_loaded = false;
+    vm->entry_called = false;
+    vm->hot_reload_enabled = false;
+    vm->loaded_file = NULL;
+    vm->error_msg[0] = '\0';
+
+    return vm;
 }
 
 hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
-    /* TODO: Initialize HashLink runtime */
-    return HLFFI_ERROR_NOT_IMPLEMENTED;
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+
+    if (vm->hl_initialized) {
+        set_error(vm, HLFFI_ERROR_ALREADY_INITIALIZED, "VM already initialized");
+        return HLFFI_ERROR_ALREADY_INITIALIZED;
+    }
+
+    /* Initialize HashLink global state */
+    hl_global_init();
+
+    /* Setup command line arguments */
+    if (argc > 0 && argv) {
+        hl_setup.sys_args = (char**)argv;
+        hl_setup.sys_nargs = argc;
+    }
+
+    /* Initialize system (file I/O, etc.) */
+    hl_sys_init();
+
+    /* Register this thread with HashLink GC
+     * CRITICAL: stack_context must persist for VM lifetime!
+     * We use the vm pointer itself as the stack marker
+     */
+    hl_register_thread(&vm->stack_context);
+
+    vm->hl_initialized = true;
+    vm->thread_registered = true;
+
+    set_error(vm, HLFFI_ERROR_NONE, NULL);
+    return HLFFI_ERROR_NONE;
 }
 
 hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path) {
-    /* TODO: Load bytecode from file */
-    return HLFFI_ERROR_NOT_IMPLEMENTED;
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+    if (!path) {
+        set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Null file path");
+        return HLFFI_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!vm->hl_initialized) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized - call hlffi_init first");
+        return HLFFI_ERROR_NOT_INITIALIZED;
+    }
+
+    if (vm->module_loaded) {
+        set_error(vm, HLFFI_ERROR_ALREADY_INITIALIZED, "Module already loaded");
+        return HLFFI_ERROR_ALREADY_INITIALIZED;
+    }
+
+    /* Load bytecode from file */
+    char* error_msg = NULL;
+    vm->code = load_code_from_file(path, &error_msg);
+    if (!vm->code) {
+        set_error(vm, HLFFI_ERROR_FILE_NOT_FOUND,
+                  error_msg ? error_msg : "Failed to load bytecode");
+        return HLFFI_ERROR_FILE_NOT_FOUND;
+    }
+
+    /* Set file path in hl_setup */
+    hl_setup.file_path = (void*)path;
+
+    /* Allocate module */
+    vm->module = hl_module_alloc(vm->code);
+    if (!vm->module) {
+        hl_code_free(vm->code);
+        vm->code = NULL;
+        set_error(vm, HLFFI_ERROR_MODULE_INIT_FAILED, "Failed to allocate module");
+        return HLFFI_ERROR_MODULE_INIT_FAILED;
+    }
+
+    /* Initialize module (JIT compilation happens here) */
+    if (!hl_module_init(vm->module, vm->hot_reload_enabled)) {
+        hl_module_free(vm->module);
+        hl_code_free(vm->code);
+        vm->module = NULL;
+        vm->code = NULL;
+        set_error(vm, HLFFI_ERROR_MODULE_INIT_FAILED, "Failed to initialize module");
+        return HLFFI_ERROR_MODULE_INIT_FAILED;
+    }
+
+    /* Can free code after module init (module has its own copy) */
+    hl_code_free(vm->code);
+    vm->code = NULL;
+
+    vm->module_loaded = true;
+    vm->loaded_file = path;
+
+    set_error(vm, HLFFI_ERROR_NONE, NULL);
+    return HLFFI_ERROR_NONE;
 }
 
 hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size) {
-    /* TODO: Load bytecode from memory */
-    return HLFFI_ERROR_NOT_IMPLEMENTED;
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+    if (!data || size == 0) {
+        set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Null data or zero size");
+        return HLFFI_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!vm->hl_initialized) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized - call hlffi_init first");
+        return HLFFI_ERROR_NOT_INITIALIZED;
+    }
+
+    if (vm->module_loaded) {
+        set_error(vm, HLFFI_ERROR_ALREADY_INITIALIZED, "Module already loaded");
+        return HLFFI_ERROR_ALREADY_INITIALIZED;
+    }
+
+    /* Parse bytecode from memory */
+    char* error_msg = NULL;
+    vm->code = hl_code_read((const unsigned char*)data, (int)size, &error_msg);
+    if (!vm->code) {
+        set_error(vm, HLFFI_ERROR_BYTECODE_INVALID,
+                  error_msg ? error_msg : "Failed to parse bytecode");
+        return HLFFI_ERROR_BYTECODE_INVALID;
+    }
+
+    /* Allocate module */
+    vm->module = hl_module_alloc(vm->code);
+    if (!vm->module) {
+        hl_code_free(vm->code);
+        vm->code = NULL;
+        set_error(vm, HLFFI_ERROR_MODULE_INIT_FAILED, "Failed to allocate module");
+        return HLFFI_ERROR_MODULE_INIT_FAILED;
+    }
+
+    /* Initialize module (JIT compilation happens here) */
+    if (!hl_module_init(vm->module, vm->hot_reload_enabled)) {
+        hl_module_free(vm->module);
+        hl_code_free(vm->code);
+        vm->module = NULL;
+        vm->code = NULL;
+        set_error(vm, HLFFI_ERROR_MODULE_INIT_FAILED, "Failed to initialize module");
+        return HLFFI_ERROR_MODULE_INIT_FAILED;
+    }
+
+    /* Can free code after module init */
+    hl_code_free(vm->code);
+    vm->code = NULL;
+
+    vm->module_loaded = true;
+
+    set_error(vm, HLFFI_ERROR_NONE, NULL);
+    return HLFFI_ERROR_NONE;
 }
 
 hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
-    /* TODO: Call main() entry point */
-    return HLFFI_ERROR_NOT_IMPLEMENTED;
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+
+    if (!vm->module_loaded) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "No module loaded - call hlffi_load_file first");
+        return HLFFI_ERROR_NOT_INITIALIZED;
+    }
+
+    /* Get entry point function */
+    hl_code* code = vm->module->code;
+    int entry_index = code->entrypoint;
+
+    /* Setup closure for entry point call */
+    vclosure cl;
+    cl.t = code->functions[vm->module->functions_indexes[entry_index]].type;
+    cl.fun = vm->module->functions_ptrs[entry_index];
+    cl.hasValue = 0;
+
+    /* Call entry point with exception handling */
+    bool isExc = false;
+    vdynamic* ret = hl_dyn_call_safe(&cl, NULL, 0, &isExc);
+
+    if (isExc) {
+        /* Exception occurred */
+        set_error(vm, HLFFI_ERROR_EXCEPTION, "Exception in entry point");
+        /* Print exception info to stderr */
+        hl_print_uncaught_exception(ret);
+        return HLFFI_ERROR_EXCEPTION;
+    }
+
+    vm->entry_called = true;
+
+    set_error(vm, HLFFI_ERROR_NONE, NULL);
+    return HLFFI_ERROR_NONE;
 }
 
 void hlffi_destroy(hlffi_vm* vm) {
-    /* TODO: Cleanup VM */
+    if (!vm) return;
+
+    /* Free module if loaded */
+    if (vm->module) {
+        hl_module_free(vm->module);
+        vm->module = NULL;
+    }
+
+    /* Free code if still allocated (shouldn't be, but be safe) */
+    if (vm->code) {
+        hl_code_free(vm->code);
+        vm->code = NULL;
+    }
+
+    /* NOTE: Do NOT call hl_unregister_thread() or hl_global_free()
+     * This matches HashLink's own behavior in main.c
+     * The comment in main.c says:
+     * "do not call hl_unregister_thread() or hl_global_free will display error
+     *  on global_lock if there are threads that are still running"
+     *
+     * In practice, cleanup only works reliably at process exit.
+     */
+
+    /* Free VM structure */
+    free(vm);
 }
 
 const char* hlffi_get_error(hlffi_vm* vm) {
-    /* TODO: Return error message */
-    return "Not implemented";
+    if (!vm) return "NULL VM";
+    return vm->error_msg[0] ? vm->error_msg : "No error";
 }

@@ -1,0 +1,3 @@
+[submodule "vendor/hashlink"]
+	path = vendor/hashlink
+	url = https://github.com/HaxeFoundation/hashlink.git
