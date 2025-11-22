@@ -33,9 +33,8 @@ HLFFI_WRAPPER_SRC = \
 # src/hlffi_reload.c
 # src/hlffi_threading.c
 
-# HashLink VM core sources
+# HashLink VM core sources (EXCLUDING allocator.c which must be with gc.c)
 HL_VM_SRC = \
-	vendor/hashlink/src/allocator.c \
 	vendor/hashlink/src/code.c \
 	vendor/hashlink/src/module.c \
 	vendor/hashlink/src/jit.c \
@@ -43,31 +42,37 @@ HL_VM_SRC = \
 	vendor/hashlink/src/profile.c
 
 # HashLink libhl sources (GC + stdlib + PCRE2)
+# NOTE: gc.c includes allocator.c, so we don't compile allocator.c separately
 LIBHL_SRC = \
 	vendor/hashlink/src/gc.c \
 	$(wildcard vendor/hashlink/src/std/*.c) \
 	$(wildcard vendor/hashlink/include/pcre/*.c)
 
 # Remove files that should not be compiled directly (included by other files)
-LIBHL_SRC := $(filter-out %/pcre2_jit_match.c %/pcre2_jit_test.c %/pcre2_jit_misc.c, $(LIBHL_SRC))
+# - PCRE2 JIT files are included by pcre2_jit_compile.c
+# - allocator.c is included by gc.c
+LIBHL_SRC := $(filter-out %/pcre2_jit_match.c %/pcre2_jit_test.c %/pcre2_jit_misc.c %/allocator.c, $(LIBHL_SRC))
 
-# Plugin wrappers
-PLUGIN_SRC = \
-	vendor/hashlink/libs/uv/uv.c \
-	vendor/hashlink/libs/ssl/ssl.c
+# Plugin wrappers (disabled for Linux - libuv/mbedtls are Windows-only in this vendored version)
+# PLUGIN_SRC = \
+#	vendor/hashlink/libs/uv/uv.c \
+#	vendor/hashlink/libs/ssl/ssl.c
+PLUGIN_SRC =
 
-# libuv sources
-LIBUV_SRC = \
-	$(wildcard vendor/hashlink/include/libuv/src/*.c) \
-	$(wildcard vendor/hashlink/include/libuv/src/unix/*.c)
-
+# libuv sources (disabled - only Windows platform code available)
+# LIBUV_SRC = \
+#	$(wildcard vendor/hashlink/include/libuv/src/*.c) \
+#	$(wildcard vendor/hashlink/include/libuv/src/unix/*.c)
 # Filter out Windows-specific libuv files
-LIBUV_SRC := $(filter-out %/win/%, $(LIBUV_SRC))
+# LIBUV_SRC := $(filter-out %/win/%, $(LIBUV_SRC))
+LIBUV_SRC =
 
-# mbedtls sources
-MBEDTLS_SRC = $(wildcard vendor/hashlink/include/mbedtls/library/*.c)
+# mbedtls sources (disabled for Linux build)
+# MBEDTLS_SRC = $(wildcard vendor/hashlink/include/mbedtls/library/*.c)
+MBEDTLS_SRC =
 
-# hlffi.a sources (wrapper + VM core + plugins + embedded deps)
+# hlffi.a sources (wrapper + VM core only for Linux)
+# NOTE: For Windows, plugins and embedded deps will be included
 HLFFI_SRC = $(HLFFI_WRAPPER_SRC) $(HL_VM_SRC) $(PLUGIN_SRC) $(LIBUV_SRC) $(MBEDTLS_SRC)
 
 # Object files
@@ -78,7 +83,17 @@ HLFFI_OBJ = $(HLFFI_SRC:%.c=$(BUILD_DIR)/%.o)
 LIBHL = $(BIN_DIR)/libhl.a
 HLFFI = $(BIN_DIR)/libhlffi.a
 
-.PHONY: all clean libhl hlffi info
+# Test executables
+TEST_LIBHL = test_libhl
+TEST_HELLO = test_hello
+TEST_RUNNER = test_runner
+
+# Linker flags for tests
+# CRITICAL: Must use --whole-archive for libhl.a to expose all primitives to dlsym()
+# and -rdynamic to export symbols from executable for RTLD_DEFAULT lookups
+LDFLAGS = -Lbin -Wl,--whole-archive -lhl -Wl,--no-whole-archive -ldl -lm -lpthread -rdynamic
+
+.PHONY: all clean libhl hlffi info tests
 
 all: info $(LIBHL) $(HLFFI)
 	@echo ""
@@ -117,6 +132,7 @@ $(BIN_DIR):
 
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
+	rm -f $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER)
 	@echo "Cleaned build artifacts"
 
 # Print detailed info
@@ -126,3 +142,26 @@ verbose: info
 	@echo ""
 	@echo "HLFFI sources ($(words $(HLFFI_SRC)) files):"
 	@for src in $(HLFFI_SRC); do echo "  - $$src"; done
+
+# Test targets
+tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER)
+	@echo ""
+	@echo "✓ All tests built successfully!"
+	@echo ""
+	@echo "Run tests:"
+	@echo "  ./$(TEST_LIBHL)              - Test basic libhl.a linking"
+	@echo "  ./$(TEST_HELLO) test/hello.hl - Test direct HashLink API"
+	@echo "  ./$(TEST_RUNNER) test/hello.hl - Test HLFFI wrapper API"
+	@echo ""
+
+$(TEST_LIBHL): test_libhl.c $(LIBHL)
+	@echo "Building $@..."
+	$(CC) -o $@ $< -Ivendor/hashlink/src $(LDFLAGS)
+
+$(TEST_HELLO): test_hello.c $(LIBHL) $(HLFFI)
+	@echo "Building $@..."
+	$(CC) -o $@ $< -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
+
+$(TEST_RUNNER): test_runner.c $(LIBHL) $(HLFFI)
+	@echo "Building $@..."
+	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)

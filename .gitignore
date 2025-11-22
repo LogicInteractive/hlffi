@@ -55,5 +55,6 @@ Thumbs.db
 
 # Test binaries (Linux, no extension)
 test_libhl
-test_hashlink
+test_hello
+test_hashlink_direct
 test_runner
