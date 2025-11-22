@@ -18,6 +18,61 @@
 
 ---
 
+## Improvements Over Existing FFI Libraries
+
+HLFFI v3.0 builds on lessons learned from existing HashLink embedding projects:
+
+### Compared to hashlink-embed (Ruby FFI Library)
+
+| Feature | hashlink-embed (Ruby) | HLFFI v3.0 (C/C++) | Advantage |
+|---------|----------------------|-------------------|-----------|
+| **Memory Management** | Manual `dispose()` required | Automatic GC root tracking | ✅ No manual cleanup, safer |
+| **Object Direction** | One-way (Haxe → Ruby only) | Bidirectional (C ↔ Haxe) | ✅ True FFI, C structs to Haxe |
+| **Performance** | Ruby interpreter overhead | Direct C API calls | ✅ Zero overhead fast path |
+| **Type Conversions** | Partial (no f32, no writes) | Complete (all types, read/write) | ✅ Full type coverage |
+| **Error Handling** | Exceptions (Ruby style) | Return codes + messages | ✅ Works in C and C++ |
+| **Platform Support** | Requires Ruby runtime | Standalone C/C++ | ✅ Universal compatibility |
+| **API Style** | Method chaining proxies | Both C (simple) & C++ (elegant) | ✅ Best of both worlds |
+
+**Key Innovations**:
+1. **Automatic GC Roots**: We add/remove roots automatically - users never call `dispose()`
+2. **Bidirectional Objects**: Pass C structs to Haxe, not just primitives
+3. **Complete Type System**: Full support for arrays, maps, enums, bytes (read AND write)
+4. **Zero Overhead**: Fast path inlines to raw HL calls (~0-2ns)
+5. **Both C and C++**: C for compatibility, C++ for elegance (like Ruby's method chaining)
+
+**Example Comparison**:
+
+```ruby
+# hashlink-embed (Ruby) - manual disposal required
+vm = HashLink::VM.new("game.hl")
+player = vm.game.Player.new("Hero")
+player.takeDamage(25)
+player.dispose()  # ⚠️ User must remember this!
+vm.dispose()      # ⚠️ Easy to forget = memory leak
+```
+
+```cpp
+// HLFFI v3.0 (C++) - automatic cleanup
+hlffi::VM vm("game.hl");
+auto player = vm.call_static<hlffi::Object>("Player", "new", "Hero");
+player.call_method("takeDamage", 25);
+// ✅ Automatic GC root management - no disposal needed!
+```
+
+### Compared to Direct HL API Usage
+
+| Aspect | Direct hl.h API | HLFFI v3.0 | Advantage |
+|--------|----------------|-----------|-----------|
+| **Complexity** | ~100+ functions to learn | ~30 core functions | ✅ Easier learning curve |
+| **Type Safety** | Manual type coercion | Automatic conversion | ✅ Fewer runtime errors |
+| **Constructor Call** | Issue #253 workaround needed | Helper function handles it | ✅ Just works |
+| **GC Roots** | Manual add/remove | Automatic tracking | ✅ No memory leaks |
+| **Error Handling** | Raw HL errors | Typed error codes + messages | ✅ Actionable diagnostics |
+| **Documentation** | Scattered wiki pages | Comprehensive manual | ✅ One-stop reference |
+
+---
+
 ## Design Decisions ✅ CONFIRMED
 
 These architectural choices guide the entire implementation:
@@ -242,6 +297,39 @@ hlffi_error_code hlffi_reload_module(hlffi_vm* vm, const char* path);
 hlffi_error_code hlffi_reload_module_memory(hlffi_vm* vm, const void* data, size_t size);
 void hlffi_set_reload_callback(hlffi_vm* vm, hlffi_reload_callback cb, void* userdata);
 ```
+
+### ⚠️ Critical Implementation Notes
+
+**Stack Top Persistence (Issue #752)**:
+```c
+// CRITICAL: Stack top storage must remain valid during VM lifetime!
+typedef struct {
+    hl_code *code;
+    hl_module *module;
+    void *stack_top;  // ⭐ Persistent storage for thread registration
+    bool initialized;
+    char error_buffer[512];
+} hlffi_vm;
+
+hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
+    // Use VM-owned storage (not local variable!)
+    hl_register_thread(&vm->stack_top);
+    // ...
+}
+```
+
+**Why**: Plugin/DLL scenarios fail if stack variable goes out of scope. GC scans stack using provided pointer, so it must outlive the thread registration.
+
+**Entry Point is Mandatory (Gotcha #1)**:
+```c
+hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
+    // This MUST be called even if entry point is empty!
+    // Sets up global state and static initializers
+    hl_call0(void, vm->entry_closure);
+}
+```
+
+**Why**: Global values (`obj->global_value`) are NULL until entry point runs. Static class members won't work without this.
 
 ### Test Cases
 
@@ -529,6 +617,78 @@ void hlffi_set_field(hlffi_value* obj, const char* field_name, hlffi_value* valu
 bool hlffi_is_instance_of(hlffi_value* obj, const char* class_name);
 ```
 
+### ⚠️ Critical Implementation Notes
+
+**Constructor Type Mismatch (Issue #253)**:
+```c
+// CRITICAL: Direct constructor call fails due to type system quirk!
+hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_value** args) {
+    // 1. Find class type
+    hl_type *class_type = find_type_by_name(vm, class_name);
+
+    // 2. Get global type (constructor expects this, not class type!)
+    vdynamic *global = *(vdynamic**)class_type->obj->global_value;
+
+    // 3. Allocate instance with class type (correct for instance)
+    vobj *instance = hl_alloc_obj(class_type);
+
+    // 4. Find constructor
+    int ctor_hash = hl_hash_utf8("new");
+    vclosure *ctor = find_method(class_type, ctor_hash);
+
+    // 5. Call constructor (workaround: pass both types)
+    vdynamic *args_with_this[argc + 1];
+    args_with_this[0] = (vdynamic*)instance;
+    // ... copy args ...
+    hl_dyn_call(ctor, args_with_this, argc + 1);
+
+    return wrap_value(instance);  // Wrap with GC root
+}
+```
+
+**Why**: Constructor signature expects global type, but instance must use class type. Must workaround type mismatch.
+
+**Automatic GC Root Management**:
+```c
+// IMPROVEMENT OVER RUBY LIBRARY: Automatic disposal!
+typedef struct {
+    vdynamic *hl_value;
+    bool is_rooted;
+} hlffi_value;
+
+hlffi_value* wrap_value(vdynamic *v) {
+    hlffi_value *wrapped = malloc(sizeof(hlffi_value));
+    wrapped->hl_value = v;
+    wrapped->is_rooted = true;
+    hl_add_root(&wrapped->hl_value);  // ⭐ Automatic GC root
+    return wrapped;
+}
+
+void hlffi_value_release(hlffi_value *v) {
+    if (v && v->is_rooted) {
+        hl_remove_root(&v->hl_value);  // ⭐ Automatic cleanup
+        v->is_rooted = false;
+    }
+    free(v);
+}
+```
+
+**Why**: hashlink-embed Ruby library requires manual `dispose()` - users forget and leak memory. We do it automatically!
+
+**Global Values Initialization Order**:
+```c
+// CRITICAL: Entry point must be called before accessing objects!
+hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, ...) {
+    if (!vm->entry_called) {
+        // Set error: "Entry point must be called first"
+        return NULL;
+    }
+    // ... proceed with construction
+}
+```
+
+**Why**: `obj->global_value` is NULL before entry point runs (Gotcha #2).
+
 ### Test Haxe Code
 ```haxe
 class Player {
@@ -725,6 +885,84 @@ hlffi_call_result hlffi_try_call_static(
 const char* hlffi_get_exception_message(hlffi_vm* vm);
 const char* hlffi_get_exception_stack(hlffi_vm* vm);
 ```
+
+### ⚠️ Critical Implementation Notes
+
+**External Blocking Call Wrapper (Gotcha #7)**:
+```c
+// CRITICAL: Notify GC when calling external blocking code!
+typedef void (*hlffi_external_func)(void* userdata);
+
+void hlffi_call_external_blocking(
+    hlffi_vm* vm,
+    hlffi_external_func func,
+    void* userdata
+) {
+    hl_blocking(true);   // ⭐ Tell GC we're leaving HL control
+    func(userdata);      // Call external code (file I/O, network, etc.)
+    hl_blocking(false);  // ⭐ Back under HL control
+}
+
+// Example usage:
+void save_file(void* path) {
+    FILE* f = fopen((const char*)path, "w");
+    fwrite(...);  // Potentially long operation
+    fclose(f);
+}
+
+// In callback from Haxe:
+hlffi_value* on_save(hlffi_vm* vm, int argc, hlffi_value** args) {
+    const char* path = hlffi_value_as_string(args[0]);
+    hlffi_call_external_blocking(vm, save_file, (void*)path);
+    return hlffi_value_null(vm);
+}
+```
+
+**Why**: GC needs to know when thread is blocked outside HL. Prevents GC from waiting on blocked thread.
+
+**Callback GC Root Management**:
+```c
+// Store C callbacks for Haxe to call
+typedef struct {
+    vclosure *hl_closure;
+    hlffi_native_func c_func;
+    int nargs;
+} hlffi_callback_entry;
+
+void hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func func, int nargs) {
+    // Create HL closure wrapping C function
+    vclosure *closure = create_native_closure(func, nargs);
+
+    // Add GC root - callback must survive!
+    hl_add_root(&vm->callbacks[index].hl_closure);
+
+    // Store for later retrieval by Haxe
+    vm->callbacks[index].hl_closure = closure;
+    vm->callbacks[index].c_func = func;
+}
+```
+
+**Why**: Callbacks stored for Haxe to call later must be GC-rooted (Common Pattern #3).
+
+**Bidirectional Object Passing** (Improvement over Ruby library):
+```c
+// Ruby library limitation: Can't pass Ruby objects to Haxe
+// HLFFI v3.0: Support native C structs wrapped as Haxe objects
+
+typedef struct {
+    int x, y;
+} Point;
+
+// Wrap C struct as Haxe dynamic object
+hlffi_value* wrap_c_struct(Point* pt) {
+    vdynobj *obj = hl_alloc_dynobj();
+    hl_dyn_seti(obj, hl_hash_utf8("x"), &hlt_i32, pt->x);
+    hl_dyn_seti(obj, hl_hash_utf8("y"), &hlt_i32, pt->y);
+    return wrap_value((vdynamic*)obj);
+}
+```
+
+**Why**: Enables true bidirectional FFI, unlike Ruby library's one-way limitation.
 
 ### Test Haxe Code
 ```haxe

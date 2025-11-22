@@ -61,7 +61,53 @@ Foreign Function Interface (FFI) for HashLink enables:
 - Separates API layer from core implementation
 - Likely uses HL/C mode for compilation
 
-### 2. Official HashLink Examples
+### 2. hashlink-embed (Ruby FFI Library)
+- **GitHub**: [byteit101/hashlink-embed](https://github.com/byteit101/hashlink-embed)
+- **Language**: Ruby (92.9%) + Haxe (7.1%)
+- **Architecture**: Ruby FFI bindings to HashLink VM
+- **Status**: Active Ruby gem for embedding Haxe/HL in Ruby applications
+
+**Key Features**:
+- Proxy-based object wrapping (Haxe objects → Ruby proxies)
+- Method chaining for navigation: `vm.Package.Class.method()`
+- Type conversions: primitives, strings, closures, arrays, maps
+- Introspection: `methods` for discovering available methods
+- Array/Hash conversion: `to_a`, `to_h`
+
+**Architecture Pattern**:
+```ruby
+# Ruby side - method chaining navigation
+vm = HashLink::VM.new("bytecode.hl")
+player = vm.game.Player.new("Hero")
+health = player.health  # Field access
+player.takeDamage(25)   # Method call
+```
+
+**Memory Management**:
+- **Explicit disposal required**: Users must call `dispose()` manually
+- **Limitation**: Ruby GC doesn't know about HL GC'd objects
+- **Implication**: Error-prone, easy to leak memory
+
+**Type Conversion Support**:
+- ✅ Haxe → Ruby: Primitives, strings, objects, closures, arrays, maps
+- ❌ Ruby → Haxe: Objects not supported (only primitives work)
+- ❌ Limitations: Can't write to arrays/fields, no f32 conversion
+
+**Lessons Learned**:
+1. **Proxy pattern works well** - Clean API for navigating packages/classes
+2. **Manual disposal is problematic** - Users forget, causes leaks
+3. **Method chaining is elegant** - `vm.Package.Class.method()` reads naturally
+4. **Type conversion is feasible** - All major types can cross FFI boundary
+5. **Bidirectional objects hard** - One-way (Haxe→Ruby) is simpler
+
+**How HLFFI v3.0 Improves on This**:
+- ✅ **Automatic GC root management** (no manual `dispose()` needed)
+- ✅ **Bidirectional objects** (Phase 6: callbacks with C objects)
+- ✅ **Full type conversion** (Phase 5: complete array/map support)
+- ✅ **Both C and C++** (C for compatibility, C++ for elegance like Ruby)
+- ✅ **Better performance** (direct C API, no Ruby interpreter overhead)
+
+### 3. Official HashLink Examples
 
 **Location**: [HashLink Repository](https://github.com/HaxeFoundation/hashlink)
 
@@ -71,12 +117,12 @@ Key examples:
 - `libs/ui/ui_win.c` - Windows UI native extension
 - `libs/uv/uv.c` - libuv integration
 
-### 3. Heaps.io Game Engine
+### 4. Heaps.io Game Engine
 - **Purpose**: Cross-platform game framework
 - **Integration**: Uses HashLink as primary runtime
 - **Documentation**: [Hello HashLink](https://heaps.io/documentation/hello-hashlink.html)
 
-### 4. Community Tools
+### 5. Community Tools
 
 **hlbc** - [Gui-Yom/hlbc](https://github.com/Gui-Yom/hlbc)
 - HashLink bytecode disassembler/analyzer/decompiler
@@ -1396,6 +1442,15 @@ Based on research:
 
 ### 6. Projects Using HashLink FFI
 
+#### FFI Libraries & Bindings
+- [hashlink-embed](https://github.com/byteit101/hashlink-embed) - **Ruby FFI Library** ⭐
+  - Ruby gem for embedding Haxe/HL in Ruby applications
+  - 92.9% Ruby, 7.1% Haxe
+  - Proxy-based object wrapping with method chaining
+  - Type conversions: primitives, strings, closures, arrays, maps
+  - Manual disposal pattern (Ruby GC limitation)
+  - Active project, demonstrates FFI patterns
+
 #### Game Engines & Frameworks
 - [MECore Game Engine](https://github.com/datee/MECore) ⭐
   - C++ engine + Haxe scripting
@@ -1561,7 +1616,8 @@ Based on research:
 
 ---
 
-**Document Version**: 1.1
+**Document Version**: 1.2
 **Last Updated**: 2025-11-22
 **Next Review**: Before Phase 0 implementation
-**Sources Count**: 75+ references across 12 categories
+**Sources Count**: 76+ references across 12 categories
+**Latest Addition**: hashlink-embed Ruby FFI library analysis
