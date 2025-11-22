@@ -77,7 +77,7 @@ VCXPROJ_HEADER = '''<?xml version="1.0" encoding="utf-8"?>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_LIB;LIBHL_EXPORTS;HAVE_CONFIG_H;PCRE2_CODE_UNIT_WIDTH=16;MBEDTLS_USER_CONFIG_FILE=&lt;mbedtls_user_config.h&gt;;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)vendor\\hashlink\\src;$(ProjectDir)vendor\\hashlink\\include\\libuv\\include;$(ProjectDir)vendor\\hashlink\\include\\libuv\\src;$(ProjectDir)vendor\\hashlink\\include\\mbedtls\\include;$(ProjectDir)vendor\\hashlink\\libs\\ssl;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)vendor\\hashlink\\src;$(ProjectDir)vendor\\hashlink\\include\\pcre;$(ProjectDir)vendor\\hashlink\\include\\libuv\\include;$(ProjectDir)vendor\\hashlink\\include\\libuv\\src;$(ProjectDir)vendor\\hashlink\\include\\mbedtls\\include;$(ProjectDir)vendor\\hashlink\\libs\\ssl;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TreatWarningAsError>false</TreatWarningAsError>
@@ -100,7 +100,7 @@ VCXPROJ_HEADER = '''<?xml version="1.0" encoding="utf-8"?>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_LIB;LIBHL_EXPORTS;HAVE_CONFIG_H;PCRE2_CODE_UNIT_WIDTH=16;MBEDTLS_USER_CONFIG_FILE=&lt;mbedtls_user_config.h&gt;;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)vendor\\hashlink\\src;$(ProjectDir)vendor\\hashlink\\include\\libuv\\include;$(ProjectDir)vendor\\hashlink\\include\\libuv\\src;$(ProjectDir)vendor\\hashlink\\include\\mbedtls\\include;$(ProjectDir)vendor\\hashlink\\libs\\ssl;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)vendor\\hashlink\\src;$(ProjectDir)vendor\\hashlink\\include\\pcre;$(ProjectDir)vendor\\hashlink\\include\\libuv\\include;$(ProjectDir)vendor\\hashlink\\include\\libuv\\src;$(ProjectDir)vendor\\hashlink\\include\\mbedtls\\include;$(ProjectDir)vendor\\hashlink\\libs\\ssl;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TreatWarningAsError>false</TreatWarningAsError>
@@ -158,7 +158,16 @@ def main():
         'vendor\\hashlink\\src\\jit.c',
         'vendor\\hashlink\\src\\debugger.c',
         'vendor\\hashlink\\src\\profile.c',
+        'vendor\\hashlink\\src\\gc.c',  # Garbage collector
     ]))
+
+    # HashLink standard library (from libhl)
+    stdlib_sources = find_sources('vendor/hashlink/src/std', '*.c')
+    sources.append(('HashLink standard library', stdlib_sources))
+
+    # PCRE2 regex library (from libhl)
+    pcre_sources = find_sources('vendor/hashlink/include/pcre', '*.c')
+    sources.append(('PCRE2 regex library', pcre_sources))
 
     # UV and SSL plugin wrappers
     sources.append(('Plugin wrappers', [

@@ -2,67 +2,49 @@
 
 ## Build Structure
 
-HLFFI uses a multi-project Visual Studio solution with proper dependency ordering.
+HLFFI v3.0 uses a **monolithic static library** approach with **zero DLL dependencies**.
 
 ### Build Order
 
-1. **libhl.dll** - HashLink core runtime (GC + stdlib + PCRE2)
-2. **uv.hdll** - libuv plugin (HTTP, async I/O, timers, sockets)
-3. **ssl.hdll** - SSL/TLS plugin (HTTPS via mbedtls)
-4. **hlffi.lib** - HLFFI wrapper + HashLink VM core
-5. **Examples** - example_version, example_hello_world
+1. **libhl.lib** - HashLink core runtime (GC + stdlib + PCRE2) - static library
+2. **hlffi.lib** - Complete monolithic static library with:
+   - HLFFI wrapper code
+   - HashLink VM core (allocator, code, module, JIT, debugger, profile)
+   - Plugin implementations (UV, SSL)
+   - Embedded dependencies (libuv, mbedtls)
+3. **Examples** - example_version, example_hello_world
+
+### Output: Zero DLLs Required
+
+All components are compiled into **two static libraries**:
+- `libhl.lib` - HashLink core runtime
+- `hlffi.lib` - Complete VM with plugins and dependencies
+
+**No .hdll files**, **no DLLs**, **no runtime dependencies**.
 
 ## Projects in Solution
 
-### HashLink Core Runtime (libhl.dll)
+### HashLink Core Runtime (libhl.lib)
 
 **Project**: `vendor\hashlink\libhl.vcxproj`
 
 **Contains**:
 - `src/gc.c` - Garbage collector
-- `src/std/*.c` - Standard library (27 files)
+- `src/std/*.c` - Standard library (23 files)
   - array, buffer, bytes, cast, date, debug, error, file, fun, maps, math, obj, process, random, regexp, socket, string, sys, thread, track, types, ucs2
-- `include/pcre/*.c` - PCRE2 regex library (27 files)
+- `include/pcre/*.c` - PCRE2 regex library (30 files)
 
 **Dependencies**: ws2_32.lib, winmm.lib, user32.lib
 
-**Output**: `bin\x64\{Debug|Release}\libhl.dll`
+**Output**: `bin\x64\{Debug|Release}\libhl.lib` (static)
 
-### libuv Plugin (uv.hdll)
-
-**Project**: `vendor\hashlink\libs\uv\uv.vcxproj`
-
-**Contains**:
-- `libs/uv/uv.c` - libuv integration for HashLink
-- Links against external libuv library
-
-**Purpose**: Async I/O, HTTP, timers, sockets, file watching
-
-**Depends on**: libhl.dll
-
-**Output**: `bin\x64\{Debug|Release}\uv.hdll`
-
-### SSL Plugin (ssl.hdll)
-
-**Project**: `vendor\hashlink\libs\ssl\ssl.vcxproj`
-
-**Contains**:
-- `libs/ssl/ssl.c` - SSL/TLS integration via mbedtls
-- Embedded mbedtls library
-
-**Purpose**: HTTPS, SSL/TLS connections
-
-**Depends on**: libhl.dll
-
-**Output**: `bin\x64\{Debug|Release}\ssl.hdll`
-
-### HLFFI Wrapper Library (hlffi.lib)
+### HLFFI Monolithic Library (hlffi.lib)
 
 **Project**: `hlffi.vcxproj`
 
-**Contains**:
+**Contains** (207 source files total):
 
-*HLFFI wrapper code*:
+*HLFFI wrapper code* (6 files):
 - `src/hlffi_core.c` - Version info, error strings
 - `src/hlffi_lifecycle.c` - VM lifecycle (create, init, load, entry, destroy)
 - `src/hlffi_integration.c` - Integration modes (non-threaded, threaded)
@@ -70,23 +52,62 @@ HLFFI uses a multi-project Visual Studio solution with proper dependency orderin
 - `src/hlffi_threading.c` - Threading support
 - `src/hlffi_reload.c` - Hot reload
 
-*HashLink VM core* (compiled directly into hlffi.lib):
+*HashLink VM core* (7 files):
 - `vendor/hashlink/src/allocator.c` - Memory allocation
 - `vendor/hashlink/src/code.c` - Bytecode reader (`hl_code_read`)
 - `vendor/hashlink/src/module.c` - Module management (`hl_module_alloc`, `hl_module_init`)
 - `vendor/hashlink/src/jit.c` - JIT compiler
 - `vendor/hashlink/src/debugger.c` - Debugger support
 - `vendor/hashlink/src/profile.c` - Profiler
+- `vendor/hashlink/src/gc.c` - Garbage collector
 
-**Depends on**: libhl.dll, uv.hdll, ssl.hdll
+*HashLink standard library* (23 files):
+- `vendor/hashlink/src/std/*.c` - All standard library implementations
+  - array, buffer, bytes, cast, date, debug, error, file, fun, maps, math, obj, process, random, regexp, socket, string, sys, thread, track, types, ucs2, etc.
 
-**Output**: `bin\x64\{Debug|Release}\hlffi.lib`
+*PCRE2 regex library* (30 files):
+- `vendor/hashlink/include/pcre/*.c` - Complete PCRE2 implementation
+
+*Plugin wrappers* (2 files):
+- `vendor/hashlink/libs/uv/uv.c` - libuv integration (HTTP, async I/O, timers, sockets)
+- `vendor/hashlink/libs/ssl/ssl.c` - SSL/TLS integration (HTTPS)
+
+*libuv sources* (31 files):
+- `vendor/hashlink/include/libuv/src/*.c` - Embedded libuv for async I/O
+- `vendor/hashlink/include/libuv/src/win/*.c` - Windows-specific sources
+
+*mbedtls sources* (108 files):
+- `vendor/hashlink/include/mbedtls/library/*.c` - Embedded TLS/SSL library
+
+**Dependencies**: ws2_32.lib, advapi32.lib, psapi.lib, user32.lib, iphlpapi.lib, userenv.lib, winmm.lib
+
+**Output**: `bin\x64\{Debug|Release}\hlffi.lib` (static)
 
 ### Examples
 
 **example_version**: Simple version check program
+- Links against: hlffi.lib, libhl.lib
 
 **example_hello_world**: Full VM lifecycle demonstration
+- Links against: hlffi.lib, libhl.lib
+
+## What's Included
+
+✅ **HashLink Core**:
+- Garbage collector (Immix)
+- Complete standard library (23 modules)
+- PCRE2 regex engine
+- JIT compiler
+- Debugger support
+- Profiler
+
+✅ **Networking & I/O**:
+- libuv (HTTP, async I/O, timers, sockets, file watching)
+- mbedtls (SSL/TLS, HTTPS)
+
+✅ **Embedded Dependencies**:
+- No external DLLs required
+- All dependencies compiled into static library
 
 ## What's NOT Included
 
@@ -123,22 +144,32 @@ msbuild hlffi.sln /p:Configuration=Debug /p:Platform=x64
 msbuild hlffi.sln /p:Configuration=Release /p:Platform=x64
 ```
 
+### Regenerating the vcxproj
+
+If you need to modify the included sources, use the Python script:
+
+```bash
+python3 generate_monolithic_vcxproj.py
+mv hlffi_monolithic.vcxproj hlffi.vcxproj
+```
+
+This regenerates `hlffi.vcxproj` with all 207 source files automatically scanned from the vendor/hashlink directory.
+
 ## Output Directory Structure
 
 ```
 bin/
 └── x64/
     ├── Debug/
-    │   ├── libhl.dll          # HashLink runtime
-    │   ├── libhl.pdb
-    │   ├── uv.hdll            # UV plugin
-    │   ├── ssl.hdll           # SSL plugin
-    │   ├── hlffi.lib          # HLFFI wrapper + VM core
+    │   ├── libhl.lib          # HashLink runtime (static)
+    │   ├── hlffi.lib          # Complete HLFFI (static)
     │   ├── example_version.exe
     │   └── example_hello_world.exe
     └── Release/
         └── (same structure)
 ```
+
+**No DLLs, no .hdll files** - everything is statically linked.
 
 ## Linking Against HLFFI
 
@@ -148,9 +179,9 @@ bin/
 // 1. Include header
 #include <hlffi.h>
 
-// 2. Link against:
+// 2. Link against (in this order):
 //    - hlffi.lib
-//    - libhl.lib (import library for libhl.dll)
+//    - libhl.lib
 ```
 
 ### Visual Studio Project Settings
@@ -165,15 +196,19 @@ bin/
 **Additional Dependencies**:
 - `hlffi.lib`
 - `libhl.lib`
+- `ws2_32.lib`
+- `advapi32.lib`
+- `psapi.lib`
+- `user32.lib`
+- `iphlpapi.lib`
+- `userenv.lib`
+- `winmm.lib`
 
 ### Runtime Requirements
 
-Your application must have these DLLs available at runtime:
-- `libhl.dll` - HashLink core runtime
-- `uv.hdll` - If using HTTP, async I/O, timers
-- `ssl.hdll` - If using HTTPS
+**NONE!** Both hlffi.lib and libhl.lib are static libraries. Your application is fully standalone.
 
-Copy from `bin\x64\{Debug|Release}\` to your application's directory.
+No need to copy any DLLs or .hdll files - everything is embedded in your executable.
 
 ## Build Requirements
 
@@ -182,10 +217,61 @@ Copy from `bin\x64\{Debug|Release}\` to your application's directory.
 - Platform toolset v142 or v143
 - C11/C++17 support
 
+## Compiler Settings
+
+### Preprocessor Definitions
+
+- `_LIB` - Building static library
+- `LIBHL_EXPORTS` - HashLink exports
+- `HAVE_CONFIG_H` - libuv configuration
+- `PCRE2_CODE_UNIT_WIDTH=16` - PCRE2 UTF-16 mode
+- `MBEDTLS_USER_CONFIG_FILE=<mbedtls_user_config.h>` - mbedtls custom config
+
+### Include Directories
+
+- `include` - HLFFI public headers
+- `vendor\hashlink\src` - HashLink VM headers
+- `vendor\hashlink\include\pcre` - PCRE2 headers
+- `vendor\hashlink\include\libuv\include` - libuv public headers
+- `vendor\hashlink\include\libuv\src` - libuv internal headers
+- `vendor\hashlink\include\mbedtls\include` - mbedtls headers
+- `vendor\hashlink\libs\ssl` - SSL plugin headers
+
+### Disabled Warnings
+
+- 4244 - Conversion possible loss of data
+- 4267 - Size_t conversion
+- 4456 - Declaration hides previous local
+- 4459 - Declaration hides global
+- 4127 - Conditional expression is constant
+- 4100 - Unreferenced parameter
+- 4201 - Nameless struct/union
+- 4706 - Assignment within conditional
+
 ## Notes
 
-- **libhl.dll** is built from HashLink's own project (unmodified)
-- **hlffi.lib** compiles HashLink VM core files directly (no need to modify HashLink submodule)
-- Plugins (uv, ssl) are built from HashLink's plugin projects (unmodified)
+- **Static linking**: Everything is compiled into hlffi.lib - no dynamic loading
+- **Zero DLLs**: No libhl.dll, no uv.hdll, no ssl.hdll - all embedded
+- **libhl.lib**: Built from HashLink's own project (converted to static library)
+- **hlffi.lib**: Monolithic library with all VM, plugins, and dependencies
 - All HashLink components are x64 only
 - Debug builds include full symbols (.pdb files)
+- Monolithic build increases compile time but simplifies deployment
+
+## Monolithic vs Modular
+
+### Advantages of Monolithic Build
+
+✅ **Simple deployment**: Just link two static libs, done
+✅ **No runtime dependencies**: Everything embedded
+✅ **No plugin loading**: Faster startup, no file I/O
+✅ **Better optimization**: Compiler can optimize across boundaries
+✅ **Easier distribution**: No DLL hell, no missing plugins
+
+### Trade-offs
+
+⚠️ **Larger binary**: ~2-3 MB larger executable
+⚠️ **Longer compile time**: 207 source files to compile
+⚠️ **No plugin modularity**: Can't swap plugins at runtime
+
+For embedded scenarios (Unreal, Unity, game engines), the monolithic approach is preferred.
