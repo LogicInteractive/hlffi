@@ -18,6 +18,91 @@
 
 ---
 
+## Design Decisions ✅ CONFIRMED
+
+These architectural choices guide the entire implementation:
+
+### 1. Library Distribution: **Both Header-Only + Compiled**
+- **Header-only mode**: `#define HLFFI_IMPLEMENTATION` (single-file distribution)
+- **Compiled library mode**: Separate hlffi.lib for faster user builds
+- **Rationale**: Best of both worlds - quick prototyping + production builds
+
+### 2. API Language: **C Core + C++ Wrappers**
+- **C API**: `hlffi_*` functions (universal compatibility)
+- **C++ API**: `hl::*` namespace with templates, RAII, type safety
+- **Both coexist**: User chooses based on project needs
+- **Rationale**: Maximum compatibility + modern convenience
+
+```c
+// C API - works everywhere
+hlffi_error_code err = hlffi_call_static(vm, "Game", "start", 0, NULL);
+if (err != HLFFI_OK) {
+    printf("Error: %s\n", hlffi_get_error(vm));
+}
+```
+
+```cpp
+// C++ API - type-safe, RAII (optional)
+#ifdef __cplusplus
+namespace hl {
+    auto result = call_static<int>(vm, "Game", "getScore");
+    // No manual memory management needed
+}
+#endif
+```
+
+### 3. Error Handling: **Return Codes**
+- **All C functions return**: `hlffi_error_code` enum
+- **Error details**: Retrieved via `hlffi_get_error(vm)`
+- **Thread-safe**: Each VM has its own error buffer
+- **No exceptions**: Simpler, predictable, zero overhead
+- **Rationale**: Works in C and C++, no ABI issues, explicit control flow
+
+```c
+typedef enum {
+    HLFFI_OK = 0,
+    HLFFI_ERR_NULL_VM,
+    HLFFI_ERR_NOT_INIT,
+    HLFFI_ERR_FILE_NOT_FOUND,
+    HLFFI_ERR_INVALID_BYTECODE,
+    HLFFI_ERR_TYPE_NOT_FOUND,
+    HLFFI_ERR_METHOD_NOT_FOUND,
+    HLFFI_ERR_FIELD_NOT_FOUND,
+    HLFFI_ERR_INVALID_ARGS,
+    HLFFI_ERR_EXCEPTION,
+    // ... more specific codes
+} hlffi_error_code;
+```
+
+### 4. Value Lifetime: **GC-Integrated**
+- **No manual free**: HashLink GC manages all `hlffi_value*` lifetimes
+- **Automatic roots**: Library maintains GC roots for live values
+- **Scope-based**: Values live as long as they're reachable from C
+- **No ref counting**: Zero user burden
+- **Rationale**: Safest, matches Haxe semantics, prevents leaks
+
+```c
+// User code - no memory management!
+hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
+hlffi_value* health = hlffi_get_field(player, "health");
+// Values automatically GC'd when no longer referenced
+// No hlffi_value_free() needed!
+```
+
+**GC Root Management (Internal)**
+- Library automatically adds/removes GC roots
+- Values returned to C are pinned until scope exit (C++) or manual release (C)
+- Optional `hlffi_value_release()` for advanced C users
+
+### 5. Naming Convention: **hlffi_** prefix + hl:: namespace**
+- **C functions**: `hlffi_*` (e.g., `hlffi_call_static`)
+- **C++ namespace**: `hl::*` (e.g., `hl::call_static<T>`)
+- **Types**: `hlffi_type`, `hlffi_value`, `hlffi_vm`
+- **Enums**: `HLFFI_*` (e.g., `HLFFI_OK`, `HLFFI_TYPE_I32`)
+- **Rationale**: Clear prefix prevents collisions, C++ namespace is clean
+
+---
+
 ## Phase 0: Foundation & Architecture
 **Goal**: Build system, core types, test harness
 **Duration**: ~4 hours
@@ -36,17 +121,30 @@
 ```
 hlffi/
 ├── include/
-│   └── hlffi.h           // Main header
+│   ├── hlffi.h           // Main C API header (can be header-only)
+│   └── hlffi.hpp         // C++ wrapper (optional, Phase 3+)
 ├── src/
-│   └── hlffi.c           // Implementation (if not header-only)
+│   └── hlffi.c           // Implementation (for compiled lib mode)
 ├── tests/
 │   ├── test_main.cpp     // Test runner
-│   └── test_phase0.cpp   // Foundation tests
+│   ├── test_phase0.cpp   // Foundation tests
+│   └── test_data/
+│       └── simple.hl     // Test bytecode
 ├── examples/
-│   └── 00_hello.cpp      // Minimal example
-├── CMakeLists.txt
-└── MASTER_PLAN.md
+│   ├── 00_hello_c.c      // Minimal C example
+│   ├── 00_hello_cpp.cpp  // Minimal C++ example
+│   └── haxe/
+│       └── Simple.hx     // Test Haxe code
+├── CMakeLists.txt        // Build system
+├── MASTER_PLAN.md        // This file
+└── README.md             // User documentation
 ```
+
+**Build System Features:**
+- Option to build as header-only or compiled library
+- Automatic HashLink detection
+- Test target with Haxe compilation
+- Example targets
 
 ### Success Criteria
 - ✓ Builds with MSVC on Windows
@@ -673,43 +771,49 @@ if(res == HLFFI_CALL_EXCEPTION) {
 
 ---
 
-## Key Decisions to Make
+## Implementation Strategy
 
-1. **Header-only vs compiled library?**
-   - Header-only: easier distribution
-   - Compiled: faster builds for users
+### Repository Structure
+```
+hlffi/
+├── include/hlffi.h        // C API (header-only capable)
+├── include/hlffi.hpp      // C++ wrappers (Phase 3+)
+├── src/hlffi.c            // Compiled lib implementation
+├── tests/                 // Test suite per phase
+├── examples/              // Working examples per phase
+├── docs/                  // API documentation
+└── CMakeLists.txt         // Build system
+```
 
-2. **C or C++ API?**
-   - C: wider compatibility
-   - C++: type safety, RAII, templates
+### Git Workflow
+- **Main branch**: Stable releases only
+- **Feature branches**: `phase-N-*` for each phase
+- **Tags**: `v3.0-phase-N` for each completed phase
+- **Each phase**: Merge to main when tests pass
 
-3. **Error handling style?**
-   - Return codes + out parameters
-   - Exceptions (C++ only)
-   - Both with feature flag
+### Testing Strategy
+- **Unit tests**: Each function has test coverage
+- **Integration tests**: End-to-end scenarios
+- **Example validation**: All examples compile and run
+- **Memory tests**: Valgrind/sanitizers clean (Phase 7)
 
-4. **Value lifetime management?**
-   - Manual ref counting
-   - Automatic (scope-based)
-   - GC integration
-
-5. **Naming convention?**
-   - `hlffi_*` (current)
-   - `hl::*` (C++ namespace)
-   - Both?
+### Documentation
+- **API docs**: Inline comments + generated reference
+- **Tutorials**: One per phase with full code
+- **Migration guide**: From v2.x to v3.0
+- **Best practices**: Common patterns and pitfalls
 
 ---
 
 ## Next Steps
 
-1. **Approve this plan** (you decide priority/changes)
-2. **Start Phase 0** (foundation)
-3. **Iterate phase-by-phase**
-4. **Ship incrementally** (each phase is git tag/release)
+**Ready to start Phase 0!** 🚀
 
----
+Confirmed decisions:
+- ✅ Library: Header-only + compiled
+- ✅ API: C core + C++ wrappers
+- ✅ Errors: Return codes
+- ✅ Values: GC-integrated
+- ✅ Target: Windows first
 
-**Ready to begin?** Tell me:
-- Any changes to the plan?
-- Which phases are highest priority?
-- Should we start with Phase 0 now?
+**Let's begin implementation!**
