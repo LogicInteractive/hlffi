@@ -266,18 +266,36 @@ hlffi/
 - [ ] Preserve runtime state during reload
 - [ ] Handle reload failures gracefully
 
-**Threading Support (NEW!):**
-- [ ] **Pattern 1: Main Thread Integration** (simple, recommended)
-  - VM functions called directly from host thread
-  - No threading overhead
-  - Host maintains control
-- [ ] **Pattern 2: Dedicated Thread** (advanced, built-in support)
-  - VM runs in separate thread managed by HLFFI
+**Integration Modes (NEW!):**
+- [ ] **Mode 1: Non-Threaded** (engine controls loop - RECOMMENDED)
+  - `hlffi_set_integration_mode(vm, HLFFI_MODE_NON_THREADED)`
+  - `hlffi_update(vm, delta_time)` - call every frame
+  - Processes UV events (async I/O, HTTP) + Haxe events (timers)
+  - Non-blocking - returns immediately
+  - Direct function calls from host thread
+  - Use for: Unreal, Unity, game engines, tools
+- [ ] **Mode 2: Threaded** (dedicated VM thread - ADVANCED)
+  - `hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED)`
+  - `hlffi_thread_start(vm)` - spawns thread, runs entry point
   - Thread-safe message queue for calls
-  - Automatic synchronization
-- [ ] Threading helper functions
-- [ ] RAII guards for C++ (auto-balance hl_blocking)
+  - Automatic event processing in thread
+  - Use for: Haxe code with blocking while loop (Android pattern)
+
+**Event Loop Integration (NEW!):**
+- [ ] libuv integration (`HLFFI_EVENTLOOP_UV`)
+  - Async I/O, HTTP, file watching, timers
+  - `uv_run(loop, UV_RUN_NOWAIT)` - non-blocking
+  - Weak symbols - only process if UV exists
+- [ ] haxe.EventLoop integration (`HLFFI_EVENTLOOP_HAXE`)
+  - `haxe.Timer`, `haxe.MainLoop.add()` callbacks
+  - `EventLoop.main.loopOnce(false)` - non-blocking
+  - Weak symbols - only compiled in if used
+- [ ] `hlffi_update()` - convenience function (processes both UV + Haxe)
+
+**Worker Thread Support:**
 - [ ] Worker thread registration helpers
+- [ ] RAII guards for C++ (auto-balance hl_blocking)
+- [ ] External blocking operation wrappers
 
 ### API Design
 ```c
@@ -312,19 +330,40 @@ hlffi_error_code hlffi_reload_module(hlffi_vm* vm, const char* path);
 hlffi_error_code hlffi_reload_module_memory(hlffi_vm* vm, const void* data, size_t size);
 void hlffi_set_reload_callback(hlffi_vm* vm, hlffi_reload_callback cb, void* userdata);
 
-// Threading support
+// ========== INTEGRATION MODES ==========
+// Two patterns based on who controls the main loop
+
 typedef enum {
-    HLFFI_THREAD_MAIN,       // Pattern 1: Main thread (no threading)
-    HLFFI_THREAD_DEDICATED   // Pattern 2: Dedicated VM thread
-} hlffi_thread_mode;
+    HLFFI_MODE_NON_THREADED,  // Mode 1: Engine controls loop (Unreal/Unity) - RECOMMENDED
+    HLFFI_MODE_THREADED       // Mode 2: Dedicated VM thread (advanced)
+} hlffi_integration_mode;
 
-// Pattern 1: Main thread integration (call directly)
-// No special functions needed - just call hlffi functions normally
+// Setup integration mode (must call before hlffi_call_entry)
+hlffi_error_code hlffi_set_integration_mode(hlffi_vm* vm, hlffi_integration_mode mode);
+hlffi_integration_mode hlffi_get_integration_mode(hlffi_vm* vm);
 
-// Pattern 2: Dedicated thread (HLFFI manages threading)
-hlffi_error_code hlffi_set_thread_mode(hlffi_vm* vm, hlffi_thread_mode mode);
-hlffi_error_code hlffi_thread_start(hlffi_vm* vm);  // Start dedicated thread
-hlffi_error_code hlffi_thread_stop(hlffi_vm* vm);   // Stop dedicated thread
+// ========== MODE 1: NON-THREADED (Engine controls loop) ==========
+// For game engines (Unreal, Unity), UI frameworks, etc.
+// Host controls main loop and calls update() each frame
+
+// Call this EVERY FRAME from engine tick (non-blocking!)
+// Processes UV events (async I/O, HTTP) + Haxe events (timers, MainLoop)
+// Returns immediately after processing pending events
+hlffi_error_code hlffi_update(hlffi_vm* vm, float delta_time);
+
+// Check if there are pending events to process
+bool hlffi_has_pending_work(hlffi_vm* vm);
+
+// ========== MODE 2: THREADED (Dedicated VM thread) ==========
+// For advanced scenarios where Haxe code has blocking loop
+
+// Start dedicated thread (calls hlffi_call_entry in thread)
+hlffi_error_code hlffi_thread_start(hlffi_vm* vm);
+
+// Stop dedicated thread (thread-safe)
+hlffi_error_code hlffi_thread_stop(hlffi_vm* vm);
+
+// Check if thread is running
 bool hlffi_thread_is_running(hlffi_vm* vm);
 
 // Thread-safe call (queues call to VM thread, blocks until complete)
@@ -340,17 +379,31 @@ hlffi_error_code hlffi_thread_call_async(
     void* userdata
 );
 
-// Worker thread helpers (for background work FROM Haxe)
+// ========== EVENT LOOP INTEGRATION (Advanced) ==========
+// Low-level event processing (hlffi_update calls these internally)
+// Only use if you need fine-grained control
+
+typedef enum {
+    HLFFI_EVENTLOOP_UV,       // libuv (async I/O, HTTP, file watch, timers)
+    HLFFI_EVENTLOOP_HAXE,     // haxe.EventLoop (haxe.Timer, haxe.MainLoop callbacks)
+    HLFFI_EVENTLOOP_ALL       // Both UV + Haxe (default for hlffi_update)
+} hlffi_eventloop_type;
+
+// Process specific event loop (non-blocking)
+hlffi_error_code hlffi_process_events(hlffi_vm* vm, hlffi_eventloop_type type);
+
+// Check if specific event loop has pending work
+bool hlffi_has_pending_events(hlffi_vm* vm, hlffi_eventloop_type type);
+
+// ========== WORKER THREAD HELPERS ==========
+// For background work FROM Haxe (e.g., sys.thread.Thread)
+
 void hlffi_worker_register(void);           // Call before using HL from worker
 void hlffi_worker_unregister(void);         // Call when worker done
 
-// External blocking operation helpers
+// External blocking operation helpers (balance hl_blocking calls)
 void hlffi_blocking_begin(void);            // Wrap external I/O
 void hlffi_blocking_end(void);              // Must balance!
-
-// Event loop integration (for haxe.MainLoop / haxe.EventLoop)
-hlffi_error_code hlffi_process_events(hlffi_vm* vm);  // Call haxe.EventLoop.main.loopOnce()
-bool hlffi_has_pending_events(hlffi_vm* vm);          // Check if events are queued
 ```
 
 **C++ RAII Guards:**
@@ -373,6 +426,253 @@ namespace hlffi {
 }
 #endif
 ```
+
+### 📋 Integration Mode Usage Examples
+
+#### Mode 1: Non-Threaded (Engine Controls Loop) - RECOMMENDED
+
+**Use case**: Game engines (Unreal, Unity), UI frameworks, tools
+
+**Haxe code** (NO while loop - engine drives):
+```haxe
+class Game {
+    static var score = 0;
+    static var timer:haxe.Timer;
+
+    static function main() {
+        trace("Game initializing...");
+
+        // Optional: Use haxe.Timer for periodic events
+        timer = new haxe.Timer(1000);  // Every 1 second
+        timer.run = function() {
+            trace('Periodic event! Score: $score');
+        };
+
+        // NO WHILE LOOP!
+        // Entry point returns immediately after initialization
+    }
+
+    // Called from engine tick
+    public static function update(dt:Float) {
+        score++;
+        // Game logic here
+    }
+}
+```
+
+**C++ integration** (Unreal Engine example):
+```cpp
+// UHaxeComponent.h
+class UHaxeComponent : public UActorComponent {
+    hlffi_vm* vm = nullptr;
+
+    virtual void BeginPlay() override;
+    virtual void TickComponent(float DeltaTime, ...) override;
+    virtual void EndPlay(...) override;
+};
+
+// UHaxeComponent.cpp
+void UHaxeComponent::BeginPlay() {
+    Super::BeginPlay();
+
+    // Create and initialize VM
+    vm = hlffi_create();
+    hlffi_set_integration_mode(vm, HLFFI_MODE_NON_THREADED);  // ← Set mode!
+    hlffi_init(vm, 0, nullptr);
+    hlffi_load_file(vm, "Content/Haxe/Game.hl");
+    hlffi_call_entry(vm);  // ✅ Returns immediately (Haxe has no while loop)
+
+    UE_LOG(LogTemp, Log, TEXT("Haxe VM initialized"));
+}
+
+void UHaxeComponent::TickComponent(float DeltaTime, ...) {
+    Super::TickComponent(DeltaTime, ...);
+
+    if (!vm) return;
+
+    // Update VM - processes UV events (async I/O) + Haxe events (timers)
+    hlffi_update(vm, DeltaTime);  // ✅ Non-blocking! Returns immediately!
+
+    // Call game update
+    hlffi_call_static(vm, "Game", "update", DeltaTime);
+
+    // ✅ Unreal continues with physics, rendering, etc.
+}
+
+void UHaxeComponent::EndPlay(const EEndPlayReason::Type Reason) {
+    if (vm) {
+        hlffi_destroy(vm);  // Only call at process exit
+        vm = nullptr;
+    }
+    Super::EndPlay(Reason);
+}
+```
+
+**What hlffi_update() does internally**:
+```c
+hlffi_error_code hlffi_update(hlffi_vm* vm, float delta_time) {
+    // 1. Process libuv events (if UV loop exists)
+    //    - Async I/O, HTTP requests, file watching, UV timers
+    //    - uv_run(loop, UV_RUN_NOWAIT) - non-blocking!
+    hlffi_process_events(vm, HLFFI_EVENTLOOP_UV);
+
+    // 2. Process Haxe EventLoop events (if used)
+    //    - haxe.Timer callbacks, haxe.MainLoop.add() callbacks
+    //    - EventLoop.main.loopOnce(false) - non-blocking!
+    hlffi_process_events(vm, HLFFI_EVENTLOOP_HAXE);
+
+    // 3. Store delta_time for Haxe to query (optional)
+    //    Game.getDeltaTime() can access this
+    vm->delta_time = delta_time;
+
+    return HLFFI_OK;
+}
+```
+
+**Key points**:
+- ✅ Haxe `main()` has NO while loop - just initialization
+- ✅ `hlffi_call_entry()` returns immediately
+- ✅ `hlffi_update()` called every frame - processes events non-blocking
+- ✅ Call Haxe functions directly from engine thread
+- ✅ Engine maintains full control
+
+---
+
+#### Mode 2: Threaded (Dedicated VM Thread) - ADVANCED
+
+**Use case**: Haxe code has blocking while loop (like Android example)
+
+**Haxe code** (WITH while loop - Haxe drives):
+```haxe
+class Game {
+    static var running = true;
+
+    static function main() {
+        trace("Game starting...");
+        init();
+
+        // Haxe controls the loop!
+        while (running) {
+            update(1.0/60.0);
+            Sys.sleep(0.016);  // 60 FPS
+        }
+
+        trace("Game shutting down");
+    }
+
+    static function update(dt:Float) {
+        // Game logic
+    }
+
+    public static function shutdown() {
+        running = false;
+    }
+}
+```
+
+**C++ integration**:
+```cpp
+void MyApp::Initialize() {
+    // Create and initialize VM
+    vm = hlffi_create();
+    hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);  // ← Threaded mode!
+    hlffi_init(vm, 0, nullptr);
+    hlffi_load_file(vm, "game.hl");
+
+    // Start dedicated thread (runs hlffi_call_entry in thread)
+    hlffi_thread_start(vm);  // ✅ Spawns thread, calls entry point
+    // ⚠️ Entry point BLOCKS in while loop inside the thread
+}
+
+void MyApp::RequestShutdown() {
+    // Call Haxe shutdown function (thread-safe)
+    hlffi_thread_call_sync(vm, [](hlffi_vm* vm, void* data) {
+        hlffi_call_static(vm, "Game", "shutdown");
+    }, nullptr);
+
+    // Wait for thread to finish
+    hlffi_thread_stop(vm);
+}
+
+void MyApp::DoSomething() {
+    // Call Haxe function from main thread (thread-safe)
+    hlffi_thread_call_sync(vm, [](hlffi_vm* vm, void* data) {
+        int result = hlffi_call_static_int(vm, "Game", "calculate", 10, 20);
+        *(int*)data = result;
+    }, &result);
+}
+```
+
+**Key points**:
+- ⚠️ Haxe `main()` HAS while loop - blocks forever
+- ⚠️ `hlffi_thread_start()` spawns dedicated thread
+- ⚠️ Entry point blocks in the thread (not in host app)
+- ⚠️ All calls must use `hlffi_thread_call_sync()` (thread-safe)
+- ⚠️ More complex, has synchronization overhead
+
+---
+
+#### Comparison: Mode 1 vs Mode 2
+
+| Aspect | Mode 1 (Non-Threaded) | Mode 2 (Threaded) |
+|--------|----------------------|-------------------|
+| **Haxe code** | No while loop | Has while loop |
+| **Entry point** | Returns immediately | Blocks in thread |
+| **Update call** | `hlffi_update()` each frame | Automatic in thread |
+| **Function calls** | Direct (`hlffi_call_*`) | Via queue (`hlffi_thread_call_*`) |
+| **Complexity** | ✅ Simple | ⚠️ Complex |
+| **Performance** | ✅ No overhead | ⚠️ Sync overhead |
+| **Debugging** | ✅ Easy | ⚠️ Harder (threads) |
+| **Use case** | Game engines, tools | Standalone apps with HL loop |
+
+**Recommendation**: Use Mode 1 unless Haxe code MUST have a blocking loop.
+
+---
+
+#### Event Loop Details (UV + Haxe)
+
+**libuv (HLFFI_EVENTLOOP_UV)**:
+- **What**: C library for async I/O, file watching, timers, HTTP
+- **Used by**: `sys.net.Socket`, `sys.io.File` (async), `sys.FileSystem.watch()`, UV-based HTTP libs
+- **API**: `uv_run(loop, UV_RUN_NOWAIT)` - non-blocking
+- **When needed**: If Haxe code uses async I/O or HTTP
+
+**haxe.EventLoop (HLFFI_EVENTLOOP_HAXE)**:
+- **What**: Haxe standard library event loop
+- **Used by**: `haxe.Timer`, `haxe.MainLoop.add()`, promises, async callbacks
+- **API**: `EventLoop.main.loopOnce(false)` - non-blocking
+- **When needed**: If Haxe code uses `haxe.Timer` or `haxe.MainLoop`
+- **Optional**: Only compiled in if code uses it (weak symbols)
+
+**Implementation uses weak symbols** (from Android pattern):
+```c
+// Check if UV exists at runtime
+extern uv_loop_t* uv_default_loop() __attribute__((weak));
+
+hlffi_error_code hlffi_process_events(hlffi_vm* vm, hlffi_eventloop_type type) {
+    if (type == HLFFI_EVENTLOOP_UV || type == HLFFI_EVENTLOOP_ALL) {
+        if (uv_default_loop != NULL) {  // ← Check if UV exists
+            uv_loop_t* loop = uv_default_loop();
+            uv_run(loop, UV_RUN_NOWAIT);  // Non-blocking!
+        }
+    }
+
+    if (type == HLFFI_EVENTLOOP_HAXE || type == HLFFI_EVENTLOOP_ALL) {
+        extern void* haxe_EventLoop_main() __attribute__((weak));
+        if (haxe_EventLoop_main != NULL) {  // ← Check if EventLoop exists
+            void* loop = haxe_EventLoop_main();
+            // Call loopOnce(false) - non-blocking!
+            // ... implementation
+        }
+    }
+
+    return HLFFI_OK;
+}
+```
+
+**Key insight from Android**: Event loops are OPTIONAL - only process if they exist!
+
+---
 
 ### ⚠️ Critical Implementation Notes
 
