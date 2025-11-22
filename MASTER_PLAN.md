@@ -101,6 +101,35 @@ hlffi_value* health = hlffi_get_field(player, "health");
 - **Enums**: `HLFFI_*` (e.g., `HLFFI_OK`, `HLFFI_TYPE_I32`)
 - **Rationale**: Clear prefix prevents collisions, C++ namespace is clean
 
+### 6. Runtime Mode: **Both HL/JIT + HL/C**
+- **HL/JIT**: Bytecode + JIT compilation (default, supports hot reload)
+- **HL/C**: Compiled to native C (better performance, ARM/mobile/WASM)
+- **Both supported**: API works seamlessly with either mode
+- **Runtime detection**: Library detects which mode is active
+- **Rationale**: JIT for development (hot reload), C for production (performance)
+
+```c
+// Same code works with both modes!
+hlffi_vm* vm = hlffi_create();
+hlffi_init(vm, argc, argv);
+
+// Hot reload only available in HL/JIT mode
+if (hlffi_is_hot_reload_available(vm)) {
+    hlffi_enable_hot_reload(vm, true);
+}
+```
+
+**Mode Comparison:**
+
+| Feature | HL/JIT | HL/C |
+|---------|--------|------|
+| Hot Reload | ✅ Yes | ❌ No |
+| Performance | Good | Excellent |
+| Platforms | x64 desktop | All (ARM, WASM, etc) |
+| Startup Time | Fast | Faster |
+| Binary Size | Smaller | Larger |
+| Use Case | Development | Production/Mobile |
+
 ---
 
 ## Phase 0: Foundation & Architecture
@@ -153,12 +182,14 @@ hlffi/
 
 ---
 
-## Phase 1: VM Lifecycle
-**Goal**: Full VM control - init, load, run, stop, restart
-**Duration**: ~6 hours
-**Deliverable**: Can load and execute HL bytecode, restart VM
+## Phase 1: VM Lifecycle + Hot Reload 🔥
+**Goal**: Full VM control - init, load, run, stop, restart, hot reload
+**Duration**: ~8 hours (extended for hot reload)
+**Deliverable**: Can load and execute HL bytecode, restart VM, hot reload code
 
 ### Features
+
+**Core Lifecycle:**
 - [ ] `hlffi_create()` - allocate VM
 - [ ] `hlffi_init()` - initialize HashLink runtime + args
 - [ ] `hlffi_load_file()` - load .hl from disk
@@ -167,7 +198,14 @@ hlffi/
 - [ ] `hlffi_shutdown()` - cleanup runtime (prepare for restart)
 - [ ] `hlffi_destroy()` - free VM
 - [ ] `hlffi_restart()` - shutdown + reinit in one call
-- [ ] Proper error codes for each step
+
+**Hot Reload (NEW! HL 1.12+):**
+- [ ] `hlffi_enable_hot_reload()` - enable hot reload mode
+- [ ] `hlffi_reload_module()` - reload changed bytecode at runtime
+- [ ] `hlffi_set_reload_callback()` - callback on successful reload
+- [ ] Detect and reload changed functions without restart
+- [ ] Preserve runtime state during reload
+- [ ] Handle reload failures gracefully
 
 ### API Design
 ```c
@@ -179,28 +217,52 @@ typedef enum {
     HLFFI_ERR_FILE_NOT_FOUND,
     HLFFI_ERR_INVALID_BYTECODE,
     HLFFI_ERR_MODULE_INIT_FAILED,
+    HLFFI_ERR_RELOAD_FAILED,
+    HLFFI_ERR_RELOAD_NOT_SUPPORTED,
     // ... more
 } hlffi_error_code;
 
+// Core lifecycle
 hlffi_vm* hlffi_create(void);
 hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv);
 hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path);
 hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size);
 hlffi_error_code hlffi_call_entry(hlffi_vm* vm);
-hlffi_error_code hlffi_shutdown(hlffi_vm* vm);  // NEW: allows restart
-hlffi_error_code hlffi_restart(hlffi_vm* vm);   // NEW: convenience
+hlffi_error_code hlffi_shutdown(hlffi_vm* vm);  // Allows restart
+hlffi_error_code hlffi_restart(hlffi_vm* vm);   // Convenience wrapper
 void hlffi_destroy(hlffi_vm* vm);
 const char* hlffi_get_error(hlffi_vm* vm);
+
+// Hot reload (HL 1.12+)
+typedef void (*hlffi_reload_callback)(hlffi_vm* vm, bool success, void* userdata);
+
+hlffi_error_code hlffi_enable_hot_reload(hlffi_vm* vm, bool enable);
+bool hlffi_is_hot_reload_enabled(hlffi_vm* vm);
+hlffi_error_code hlffi_reload_module(hlffi_vm* vm, const char* path);
+hlffi_error_code hlffi_reload_module_memory(hlffi_vm* vm, const void* data, size_t size);
+void hlffi_set_reload_callback(hlffi_vm* vm, hlffi_reload_callback cb, void* userdata);
 ```
 
 ### Test Cases
+
+**Core Lifecycle:**
 - Load valid bytecode
 - Load invalid bytecode (should fail gracefully)
 - Call entry multiple times (should fail)
 - Shutdown and restart with different bytecode
 - Shutdown without init (should fail safely)
 
+**Hot Reload:**
+- Enable hot reload before loading bytecode
+- Modify and reload a simple function
+- Reload with syntax errors (should fail gracefully)
+- Reload with class structure changes (should fail with clear error)
+- Reload callback receives success/failure notifications
+- State preservation across reload
+
 ### Example
+
+**Basic Lifecycle:**
 ```cpp
 // 01_lifecycle.cpp
 hlffi_vm* vm = hlffi_create();
@@ -217,10 +279,56 @@ hlffi_call_entry(vm);
 hlffi_destroy(vm);
 ```
 
+**Hot Reload:**
+```cpp
+// 01_hot_reload.cpp
+void on_reload(hlffi_vm* vm, bool success, void* userdata) {
+    printf("Reload %s\n", success ? "succeeded" : "failed");
+    if (!success) {
+        printf("Error: %s\n", hlffi_get_error(vm));
+    }
+}
+
+hlffi_vm* vm = hlffi_create();
+hlffi_init(vm, argc, argv);
+
+// Enable hot reload
+hlffi_enable_hot_reload(vm, true);
+hlffi_set_reload_callback(vm, on_reload, NULL);
+
+hlffi_load_file(vm, "game.hl");
+hlffi_call_entry(vm);
+
+// Game loop
+while (running) {
+    // Check if bytecode changed (e.g., file watcher)
+    if (bytecode_changed) {
+        // Reload without stopping the game!
+        hlffi_reload_module(vm, "game.hl");
+    }
+
+    // Continue running with updated code
+    hlffi_call_static(vm, "Game", "update", 0, NULL);
+}
+
+hlffi_destroy(vm);
+```
+
 ### Success Criteria
 - ✓ Can load and run .hl bytecode
 - ✓ Can restart VM without memory leaks
+- ✓ Can hot reload changed functions without restart
+- ✓ Hot reload preserves runtime state
+- ✓ Hot reload failures handled gracefully
 - ✓ All error paths tested and safe
+
+### Hot Reload Limitations (per HL docs)
+- ⚠️ Cannot add/remove/reorder class fields
+- ⚠️ Experimental feature - may have bugs
+- ⚠️ Requires HL 1.12 or later
+- ✓ Works for function body changes
+- ✓ Works for new functions
+- ✓ JIT mode only (not HL/C)
 
 ---
 
@@ -729,10 +837,142 @@ if(res == HLFFI_CALL_EXCEPTION) {
 - [ ] iOS
 
 ### Platform-Specific Challenges
-- WASM: different calling conventions
-- Android: JNI integration
-- RPi: 32-bit ARM quirks
-- Mobile: limited memory
+- WASM: different calling conventions, requires HL/C mode
+- Android: JNI integration, HL/C recommended
+- RPi: 32-bit ARM quirks, HL/C required
+- Mobile: limited memory, HL/C for best performance
+
+### HL/JIT vs HL/C per Platform
+| Platform | HL/JIT | HL/C | Recommended |
+|----------|--------|------|-------------|
+| Windows x64 | ✅ | ✅ | JIT (dev), C (prod) |
+| Linux x64 | ✅ | ✅ | JIT (dev), C (prod) |
+| macOS x64 | ✅ | ✅ | JIT (dev), C (prod) |
+| WebAssembly | ❌ | ✅ | C only |
+| Android ARM | ❌ | ✅ | C only |
+| Raspberry Pi | ❌ | ✅ | C only |
+| iOS | ❌ | ✅ | C only |
+
+---
+
+## Phase 9: Plugin/Module System 🔌 (Experimental)
+**Goal**: Dynamic module loading at runtime
+**Duration**: ~6 hours
+**Deliverable**: Load and unload HL modules dynamically
+**Status**: ⚠️ Bleeding-edge HL feature (experimental)
+
+### Overview
+HashLink's bleeding-edge version supports loading multiple JIT modules at runtime, enabling:
+- **Game mods**: Load user-created content
+- **Plugin architecture**: Extend app without recompilation
+- **Dynamic extensions**: Add features at runtime
+- **Hot-swappable modules**: Replace modules on-the-fly
+
+**Current Status** (per [Issue #179](https://github.com/HaxeFoundation/hashlink/issues/179)):
+- Multiple JIT modules can now be loaded
+- Type sharing between modules in development
+- Experimental, API may change
+
+### Features
+- [ ] `hlffi_load_plugin()` - load additional .hl module
+- [ ] `hlffi_unload_plugin()` - unload plugin module
+- [ ] `hlffi_list_plugins()` - enumerate loaded plugins
+- [ ] Type resolution across modules
+- [ ] Symbol lookup in specific modules
+- [ ] Plugin isolation/sandboxing options
+- [ ] Plugin dependency management
+
+### API Design
+```c
+typedef struct hlffi_plugin hlffi_plugin;
+
+// Plugin management
+hlffi_plugin* hlffi_load_plugin(hlffi_vm* vm, const char* path);
+hlffi_error_code hlffi_unload_plugin(hlffi_plugin* plugin);
+bool hlffi_is_plugin_loaded(hlffi_plugin* plugin);
+const char* hlffi_plugin_get_name(hlffi_plugin* plugin);
+
+// Cross-module calls
+hlffi_value* hlffi_call_plugin_static(
+    hlffi_plugin* plugin,
+    const char* class_name,
+    const char* method_name,
+    int argc,
+    hlffi_value** args
+);
+
+// Type sharing (experimental)
+hlffi_type* hlffi_plugin_find_type(hlffi_plugin* plugin, const char* name);
+hlffi_error_code hlffi_plugin_share_type(hlffi_plugin* from, hlffi_plugin* to, const char* type_name);
+```
+
+### Example Use Case: Game Modding
+```haxe
+// Core game (core.hl)
+class ModLoader {
+    public static var mods:Array<Mod> = [];
+
+    public static function loadMod(path:String):Void {
+        // Loaded via FFI from C side
+    }
+}
+
+// User mod (usermod.hl)
+class MyMod implements Mod {
+    public function onInit():Void {
+        trace("Mod loaded!");
+    }
+
+    public function onUpdate(dt:Float):Void {
+        // Custom mod logic
+    }
+}
+```
+
+```cpp
+// C++ host code
+hlffi_vm* vm = hlffi_create();
+hlffi_init(vm, argc, argv);
+hlffi_load_file(vm, "core.hl");
+
+// Load user mods dynamically
+hlffi_plugin* mod1 = hlffi_load_plugin(vm, "mods/usermod1.hl");
+hlffi_plugin* mod2 = hlffi_load_plugin(vm, "mods/usermod2.hl");
+
+// Call into mods
+hlffi_call_plugin_static(mod1, "MyMod", "onInit", 0, NULL);
+
+// Later: unload mod
+hlffi_unload_plugin(mod1);
+```
+
+### Challenges to Solve
+1. **Type Compatibility**: Ensure types match between core and plugins
+2. **Symbol Conflicts**: Handle duplicate class/function names
+3. **Memory Safety**: Prevent crashes when unloading active modules
+4. **Version Compatibility**: Ensure plugin bytecode version matches
+5. **GC Integration**: Track references across module boundaries
+
+### Test Cases
+- Load simple plugin module
+- Call function in plugin from core
+- Share type between core and plugin
+- Unload plugin and verify cleanup
+- Handle plugin load failures
+- Multiple plugins with dependencies
+
+### Success Criteria
+- ✓ Can load additional .hl modules at runtime
+- ✓ Can call functions across modules
+- ✓ Can unload modules safely
+- ✓ Type sharing works between modules
+- ✓ No memory leaks when loading/unloading
+
+### Limitations
+- ⚠️ HL/JIT only (not HL/C)
+- ⚠️ Experimental API, may change
+- ⚠️ HashLink bleeding-edge version required
+- ⚠️ Type compatibility requires careful design
 
 ---
 
@@ -741,17 +981,20 @@ if(res == HLFFI_CALL_EXCEPTION) {
 | Phase | Duration | Cumulative |
 |-------|----------|------------|
 | 0: Foundation | 4h | 4h |
-| 1: Lifecycle | 6h | 10h |
-| 2: Type System | 8h | 18h |
-| 3: Static Members | 6h | 24h |
-| 4: Instance Members | 8h | 32h |
-| 5: Advanced Values | 10h | 42h |
-| 6: Callbacks/Exceptions | 8h | 50h |
-| 7: Performance | 6h | 56h |
-| 8: Cross-Platform | 8h | 64h |
+| 1: Lifecycle + Hot Reload 🔥 | 8h | 12h |
+| 2: Type System | 8h | 20h |
+| 3: Static Members | 6h | 26h |
+| 4: Instance Members | 8h | 34h |
+| 5: Advanced Values | 10h | 44h |
+| 6: Callbacks/Exceptions | 8h | 52h |
+| 7: Performance | 6h | 58h |
+| 8: Cross-Platform (HL/C) | 8h | 66h |
+| 9: Plugin System 🔌 (Optional) | 6h | 72h |
 
-**Total**: ~64 hours (8 working days)
-**Usable after Phase 3**: ~24 hours (3 days)
+**Total**: ~72 hours (9 working days)
+**Usable after Phase 3**: ~26 hours (3+ days)
+**Full-featured after Phase 7**: ~58 hours (7+ days)
+**With all experimental features**: ~72 hours (9 days)
 
 ---
 
@@ -759,15 +1002,16 @@ if(res == HLFFI_CALL_EXCEPTION) {
 
 | Phase | What You Can Do |
 |-------|-----------------|
-| 0 | Build system works |
-| 1 | Load & run bytecode, restart VM |
-| 2 | Query all types and members |
+| 0 | Build system works, compiles on Windows |
+| 1 | Load & run bytecode, restart VM, **hot reload** 🔥 |
+| 2 | Query all types and members via reflection |
 | 3 | Call static methods, use static fields ✓ **USABLE** |
-| 4 | Create objects, call methods ✓ **FULL FFI** |
-| 5 | Work with arrays, maps, enums ✓ **COMPLETE** |
-| 6 | Callbacks, exception handling ✓ **ROBUST** |
-| 7 | Optimized, documented ✓ **PRODUCTION** |
-| 8 | All platforms ✓ **UNIVERSAL** |
+| 4 | Create objects, call instance methods ✓ **FULL FFI** |
+| 5 | Work with arrays, maps, enums, bytes ✓ **COMPLETE** |
+| 6 | Callbacks (C↔Haxe), exception handling ✓ **ROBUST** |
+| 7 | Optimized, benchmarked, documented ✓ **PRODUCTION** |
+| 8 | All platforms (HL/JIT + HL/C) ✓ **UNIVERSAL** |
+| 9 | Dynamic plugin/module loading ✓ **EXTENSIBLE** |
 
 ---
 
