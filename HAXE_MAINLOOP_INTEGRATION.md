@@ -1,5 +1,9 @@
 # Haxe MainLoop Integration for Engine Embedding
 
+⚠️ **IMPORTANT**: See `MAINLOOP_CLARIFICATION.md` for when MainLoop is actually needed!
+
+**TL;DR**: If your Haxe code doesn't use `haxe.Timer` or `haxe.MainLoop.add()`, you don't need ANY of this! Just call the entry point and your static functions - MainLoop won't be compiled in.
+
 ## The Problem
 
 When embedding HashLink in game engines (Unreal, Unity, etc.), we need to:
