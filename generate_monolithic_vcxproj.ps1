@@ -167,11 +167,11 @@ $sources += @{
     )
 }
 
-# HashLink VM core (EXCLUDING gc.c, stdlib, PCRE2 - those are in libhl.lib)
+# HashLink VM core (EXCLUDING gc.c + allocator.c, stdlib, PCRE2 - those are in libhl.lib)
+# NOTE: allocator.c is included by gc.c, so it must not be compiled separately
 $sources += @{
     Name = 'HashLink VM core'
     Files = @(
-        'vendor\hashlink\src\allocator.c',
         'vendor\hashlink\src\code.c',
         'vendor\hashlink\src\module.c',
         'vendor\hashlink\src\jit.c',

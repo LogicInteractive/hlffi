@@ -111,8 +111,7 @@
     <ClCompile Include="src\hlffi_reload.c" />
     <ClCompile Include="src\hlffi_threading.c" />
 
-    <!-- HashLink VM core -->
-    <ClCompile Include="vendor\hashlink\src\allocator.c" />
+    <!-- HashLink VM core (EXCLUDING allocator.c - included by gc.c in libhl.lib) -->
     <ClCompile Include="vendor\hashlink\src\code.c" />
     <ClCompile Include="vendor\hashlink\src\module.c" />
     <ClCompile Include="vendor\hashlink\src\jit.c" />
