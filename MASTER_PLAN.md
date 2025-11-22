@@ -347,6 +347,10 @@ void hlffi_worker_unregister(void);         // Call when worker done
 // External blocking operation helpers
 void hlffi_blocking_begin(void);            // Wrap external I/O
 void hlffi_blocking_end(void);              // Must balance!
+
+// Event loop integration (for haxe.MainLoop / haxe.EventLoop)
+hlffi_error_code hlffi_process_events(hlffi_vm* vm);  // Call haxe.EventLoop.main.loopOnce()
+bool hlffi_has_pending_events(hlffi_vm* vm);          // Check if events are queued
 ```
 
 **C++ RAII Guards:**
@@ -1375,6 +1379,8 @@ if(res == HLFFI_CALL_EXCEPTION) {
 - Common patterns
 - Troubleshooting guide
 - Performance tips
+- **haxe.MainLoop integration guide** (engine embedding)
+- Custom EntryPoint.hx template for non-blocking event loops
 
 ### Success Criteria
 - ✓ Overhead < 5% vs raw HL calls
