@@ -266,6 +266,19 @@ hlffi/
 - [ ] Preserve runtime state during reload
 - [ ] Handle reload failures gracefully
 
+**Threading Support (NEW!):**
+- [ ] **Pattern 1: Main Thread Integration** (simple, recommended)
+  - VM functions called directly from host thread
+  - No threading overhead
+  - Host maintains control
+- [ ] **Pattern 2: Dedicated Thread** (advanced, built-in support)
+  - VM runs in separate thread managed by HLFFI
+  - Thread-safe message queue for calls
+  - Automatic synchronization
+- [ ] Threading helper functions
+- [ ] RAII guards for C++ (auto-balance hl_blocking)
+- [ ] Worker thread registration helpers
+
 ### API Design
 ```c
 typedef enum {
@@ -298,6 +311,63 @@ bool hlffi_is_hot_reload_enabled(hlffi_vm* vm);
 hlffi_error_code hlffi_reload_module(hlffi_vm* vm, const char* path);
 hlffi_error_code hlffi_reload_module_memory(hlffi_vm* vm, const void* data, size_t size);
 void hlffi_set_reload_callback(hlffi_vm* vm, hlffi_reload_callback cb, void* userdata);
+
+// Threading support
+typedef enum {
+    HLFFI_THREAD_MAIN,       // Pattern 1: Main thread (no threading)
+    HLFFI_THREAD_DEDICATED   // Pattern 2: Dedicated VM thread
+} hlffi_thread_mode;
+
+// Pattern 1: Main thread integration (call directly)
+// No special functions needed - just call hlffi functions normally
+
+// Pattern 2: Dedicated thread (HLFFI manages threading)
+hlffi_error_code hlffi_set_thread_mode(hlffi_vm* vm, hlffi_thread_mode mode);
+hlffi_error_code hlffi_thread_start(hlffi_vm* vm);  // Start dedicated thread
+hlffi_error_code hlffi_thread_stop(hlffi_vm* vm);   // Stop dedicated thread
+bool hlffi_thread_is_running(hlffi_vm* vm);
+
+// Thread-safe call (queues call to VM thread, blocks until complete)
+typedef void (*hlffi_thread_func)(hlffi_vm* vm, void* userdata);
+hlffi_error_code hlffi_thread_call_sync(hlffi_vm* vm, hlffi_thread_func func, void* userdata);
+
+// Thread-safe call (queues call, returns immediately)
+typedef void (*hlffi_thread_async_callback)(hlffi_vm* vm, void* result, void* userdata);
+hlffi_error_code hlffi_thread_call_async(
+    hlffi_vm* vm,
+    hlffi_thread_func func,
+    hlffi_thread_async_callback callback,
+    void* userdata
+);
+
+// Worker thread helpers (for background work FROM Haxe)
+void hlffi_worker_register(void);           // Call before using HL from worker
+void hlffi_worker_unregister(void);         // Call when worker done
+
+// External blocking operation helpers
+void hlffi_blocking_begin(void);            // Wrap external I/O
+void hlffi_blocking_end(void);              // Must balance!
+```
+
+**C++ RAII Guards:**
+```cpp
+#ifdef __cplusplus
+namespace hlffi {
+    // Auto-balance hl_blocking() calls
+    class BlockingGuard {
+    public:
+        BlockingGuard()  { hlffi_blocking_begin(); }
+        ~BlockingGuard() { hlffi_blocking_end(); }
+    };
+
+    // Auto-register worker thread
+    class WorkerGuard {
+    public:
+        WorkerGuard()  { hlffi_worker_register(); }
+        ~WorkerGuard() { hlffi_worker_unregister(); }
+    };
+}
+#endif
 ```
 
 ### ⚠️ Critical Implementation Notes
@@ -371,6 +441,105 @@ hlffi_reload_module(vm, "game.hl");  // ✅ Safe, preserves state
 - **Process Restart**: Fork/exec for complete isolation (production)
 - **Plugin System**: Runtime module loading (Phase 9)
 
+**Threading Model** (See: THREADING_MODEL_REPORT.md):
+
+HLFFI supports two threading patterns:
+
+**Pattern 1: Main Thread Integration** (✅ RECOMMENDED)
+```c
+// VM functions return immediately - host maintains control
+void EngineTickFunction(float deltaTime) {
+    // Call HL update directly from engine thread
+    hlffi_call_static(vm, "Game", "update", deltaTime);
+
+    // ✅ Returns immediately - engine continues
+    // ... physics, rendering, etc.
+}
+```
+
+**When to use**: Game engines (Unreal, custom), tools, most applications
+
+**Advantages**:
+- ✅ Simple, no synchronization overhead
+- ✅ Deterministic execution order
+- ✅ Easy debugging
+- ✅ Low latency (no queue overhead)
+
+**Requirements**:
+- HL code must be fast (< 16ms for 60fps)
+- Don't let `hxd.App` or `runMainLoop()` execute (they block!)
+
+**Pattern 2: Dedicated Thread** (⚠️ ADVANCED)
+```c
+// HLFFI manages VM thread, you queue calls
+hlffi_set_thread_mode(vm, HLFFI_THREAD_DEDICATED);
+hlffi_thread_start(vm);  // Starts background thread
+
+// Queue synchronous call (blocks until complete)
+void update_game(hlffi_vm* vm, void* data) {
+    float dt = *(float*)data;
+    hlffi_call_static(vm, "Game", "update", dt);
+}
+float deltaTime = 0.016f;
+hlffi_thread_call_sync(vm, update_game, &deltaTime);
+
+// Queue async call (returns immediately, callback later)
+hlffi_thread_call_async(vm, update_game, on_complete, &deltaTime);
+```
+
+**When to use**: VM needs independent framerate, async game logic, server applications
+
+**Advantages**:
+- ✅ VM can run at different rate than rendering
+- ✅ Isolates HL work from main thread
+- ✅ HLFFI handles all synchronization
+
+**Overhead**:
+- ⚠️ Message queue latency (~1-2ms)
+- ⚠️ GC overhead (2.25x slower allocations per Issue #42)
+- ⚠️ More complex debugging
+
+**Worker Threads (Both Patterns)**:
+```c
+// Background thread that needs to call HL functions
+void* worker_thread(void* arg) {
+    hlffi_worker_register();  // Required!
+
+    // Now safe to call HL functions
+    hlffi_call_static(vm, "Network", "processData", data);
+
+    hlffi_worker_unregister();
+    return NULL;
+}
+```
+
+**External Blocking Operations**:
+```c
+// When calling external I/O from HL callback
+hlffi_value* on_save(hlffi_vm* vm, int argc, hlffi_value** args) {
+    hlffi_blocking_begin();  // Tell GC we're leaving HL
+
+    FILE* f = fopen("save.dat", "w");
+    fwrite(...);  // Potentially long operation
+    fclose(f);
+
+    hlffi_blocking_end();    // Back in HL (must balance!)
+    return hlffi_value_null(vm);
+}
+```
+
+**C++ RAII (Automatic Balance)**:
+```cpp
+hlffi_value* on_download(hlffi_vm* vm, int argc, hlffi_value** args) {
+    hlffi::BlockingGuard guard;  // Auto-balance
+
+    curl_download(...);  // External blocking I/O
+
+    // guard destructor calls hlffi_blocking_end() automatically
+    return hlffi_value_null(vm);
+}
+```
+
 ### Test Cases
 
 **Core Lifecycle:**
@@ -387,6 +556,19 @@ hlffi_reload_module(vm, "game.hl");  // ✅ Safe, preserves state
 - Reload with class structure changes (should fail with clear error)
 - Reload callback receives success/failure notifications
 - State preservation across reload
+
+**Threading:**
+- **Pattern 1 (Main Thread)**:
+  - Call HL functions from engine tick (verify returns immediately)
+  - Call entry point doesn't block main thread
+  - Worker thread registration/unregistration
+  - Blocking begin/end balance checking
+- **Pattern 2 (Dedicated Thread)**:
+  - Start/stop VM thread
+  - Synchronous call (blocks until complete)
+  - Asynchronous call (callback on completion)
+  - Multiple queued calls execute in order
+  - Thread mode can be set before init
 
 ### Example
 
@@ -440,6 +622,103 @@ while (running) {
 hlffi_destroy(vm);
 ```
 
+**Pattern 1: Main Thread Integration (Unreal/Engine)**:
+```cpp
+// 01_main_thread.cpp - Game Engine Integration
+class UMyHaxeComponent : public UActorComponent {
+    hlffi_vm* vm;
+
+    void BeginPlay() override {
+        // Initialize VM on main thread
+        vm = hlffi_create();
+        hlffi_init(vm, 0, nullptr);
+        hlffi_load_file(vm, "game.hl");
+        hlffi_call_entry(vm);  // ✅ Returns immediately!
+
+        // ⚠️ Don't let runMainLoop() execute - it would block Unreal!
+    }
+
+    void TickComponent(float DeltaTime, ...) override {
+        // Call HL update every frame - returns immediately
+        hlffi_call_static(vm, "Game", "update", DeltaTime);
+
+        // ✅ Unreal continues with physics, rendering, etc.
+    }
+
+    void EndPlay(...) override {
+        hlffi_destroy(vm);
+    }
+};
+```
+
+**Pattern 2: Dedicated Thread (Advanced)**:
+```cpp
+// 01_dedicated_thread.cpp - Independent VM Thread
+hlffi_vm* vm = hlffi_create();
+
+// Configure for dedicated thread BEFORE init
+hlffi_set_thread_mode(vm, HLFFI_THREAD_DEDICATED);
+
+hlffi_init(vm, argc, argv);
+hlffi_load_file(vm, "game.hl");
+hlffi_call_entry(vm);
+
+// Start VM thread (runs in background)
+hlffi_thread_start(vm);
+
+// Main thread rendering loop
+while (running) {
+    // Render at 60fps
+    render();
+
+    // Queue game update on VM thread (sync - waits for completion)
+    void update_callback(hlffi_vm* vm, void* data) {
+        hlffi_call_static(vm, "Game", "update", 0.016f);
+    }
+    hlffi_thread_call_sync(vm, update_callback, NULL);
+
+    // Or async - returns immediately
+    hlffi_thread_call_async(vm, update_callback, on_update_done, NULL);
+}
+
+hlffi_thread_stop(vm);
+hlffi_destroy(vm);
+```
+
+**Worker Thread (Both Patterns)**:
+```cpp
+// 01_worker_thread.cpp - Background Work from Haxe
+void* network_thread(void* arg) {
+    hlffi_worker_register();  // Required before using HL!
+
+    while (running) {
+        // Safe to call HL functions from worker
+        hlffi_call_static(vm, "Network", "processPackets");
+        sleep_ms(10);
+    }
+
+    hlffi_worker_unregister();
+    return NULL;
+}
+```
+
+**Blocking Operations**:
+```cpp
+// C callback from Haxe that does external I/O
+hlffi_value* on_http_request(hlffi_vm* vm, int argc, hlffi_value** args) {
+    const char* url = hlffi_value_as_string(args[0]);
+
+    // C++ RAII guard (auto-balance)
+    hlffi::BlockingGuard guard;
+
+    // External blocking I/O
+    std::string response = http_get(url);  // May take seconds
+
+    // guard destructor auto-calls hlffi_blocking_end()
+    return hlffi_value_string(vm, response.c_str());
+}
+```
+
 ### Success Criteria
 - ✓ Can load and run .hl bytecode
 - ✓ Single VM instance works reliably
@@ -448,6 +727,11 @@ hlffi_destroy(vm);
 - ✓ Hot reload failures handled gracefully
 - ✓ All error paths tested and safe
 - ✓ VM restart limitation clearly documented
+- ✓ **Pattern 1 (Main Thread)**: VM functions return immediately, host maintains control
+- ✓ **Pattern 2 (Dedicated Thread)**: Thread-safe message queue works correctly
+- ✓ Worker thread registration/unregistration works
+- ✓ Blocking begin/end properly balanced (RAII guards work)
+- ✓ Threading model clearly documented with engine integration examples
 
 ### Hot Reload Limitations (per HL docs)
 - ⚠️ Cannot add/remove/reorder class fields

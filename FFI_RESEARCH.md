@@ -1002,7 +1002,65 @@ int hash = hl_hash_utf8("myField");
 hl_dyn_geti(obj, hash, &hlt_i32);
 ```
 
-### 11. Multiple VMs Not Officially Supported
+### 11. VM Threading Model
+
+**Issue**: Understanding whether VM blocks the calling thread
+**Answer**: VM core does NOT block, but standard Heaps apps DO block in main loop
+**Solution**: For engine integration, bypass `runMainLoop()` and call HL functions directly
+
+```c
+// ✅ CORRECT - Main thread integration (VM doesn't block)
+void EngineTickFunction(float dt) {
+    hlffi_call_static(vm, "Game", "update", dt);  // Returns immediately!
+    // Engine continues with physics, rendering, etc.
+}
+
+// ❌ WRONG - Letting Heaps App run (blocks forever)
+hlffi_call_entry(vm);  // If entry calls hxd.App.run(), this blocks!
+```
+
+**Two Threading Patterns**:
+
+**Pattern 1: Main Thread Integration** (Recommended)
+- VM functions called directly from host thread
+- No threading overhead
+- Host maintains control
+- HL code must be fast (< 16ms for 60fps)
+
+**Pattern 2: Dedicated Thread** (Advanced)
+- VM runs in separate thread
+- Thread-safe message queue for calls
+- Automatic synchronization by HLFFI
+- Use when VM needs independent framerate
+
+**Thread Registration Requirements**:
+```c
+// ANY thread touching HL must register!
+void* worker_thread(void* arg) {
+    hlffi_worker_register();  // Required!
+
+    // Now safe to call HL
+    hlffi_call_static(vm, "Network", "process");
+
+    hlffi_worker_unregister();
+    return NULL;
+}
+```
+
+**Blocking Operations**:
+```c
+// Wrap external I/O with hl_blocking()
+hlffi_blocking_begin();
+curl_download(...);  // External blocking I/O
+hlffi_blocking_end();  // Must balance!
+```
+
+**Evidence**:
+- VM core: `hl_module_init()` returns immediately (src/main.c)
+- Heaps apps: `hxd.System.runMainLoop()` blocks in while loop
+- For details, see THREADING_MODEL_REPORT.md
+
+### 12. Multiple VMs Not Officially Supported
 
 **Status**: HashLink uses global state internally
 **Workaround**: Possible with careful setup, but not recommended
@@ -1655,11 +1713,13 @@ Based on research:
 
 ---
 
-**Document Version**: 1.3
+**Document Version**: 1.4
 **Last Updated**: 2025-11-22
 **Next Review**: Before Phase 0 implementation
-**Sources Count**: 77+ references across 12 categories
+**Sources Count**: 78+ references across 12 categories
 **Latest Additions**:
 - hashlink-embed Ruby FFI library analysis
 - VM restart limitation documented (Gotcha #8)
+- VM threading model documented (Gotcha #11)
 - VM_RESTART_INVESTIGATION.md comprehensive report
+- THREADING_MODEL_REPORT.md comprehensive report
