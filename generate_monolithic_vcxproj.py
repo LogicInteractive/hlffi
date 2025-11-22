@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """
-Generate a monolithic hlffi.vcxproj with all HashLink components built-in.
+Generate hlffi.vcxproj for static library build with embedded plugins.
 
-This merges:
-- HLFFI wrapper code
-- HashLink VM core
-- UV plugin + libuv sources
-- SSL plugin + mbedtls sources
+This includes:
+- HLFFI wrapper code (6 files)
+- HashLink VM core (6 files: allocator, code, module, jit, debugger, profile)
+- UV plugin + libuv sources (embedded)
+- SSL plugin + mbedtls sources (embedded)
 
-Output: Complete static library with no separate .hdll files needed.
+Explicitly EXCLUDES (these are in libhl.lib):
+- gc.c (garbage collector)
+- src/std/*.c (HashLink standard library)
+- include/pcre/*.c (PCRE2 regex library)
+
+Output: hlffi.lib - links against libhl.lib (no duplicate symbols)
 """
 
 import os
@@ -150,7 +155,7 @@ def main():
         'src\\hlffi_threading.c',
     ]))
 
-    # HashLink VM core
+    # HashLink VM core (EXCLUDING gc.c, stdlib, PCRE2 - those are in libhl.lib)
     sources.append(('HashLink VM core', [
         'vendor\\hashlink\\src\\allocator.c',
         'vendor\\hashlink\\src\\code.c',
@@ -158,16 +163,11 @@ def main():
         'vendor\\hashlink\\src\\jit.c',
         'vendor\\hashlink\\src\\debugger.c',
         'vendor\\hashlink\\src\\profile.c',
-        'vendor\\hashlink\\src\\gc.c',  # Garbage collector
     ]))
 
-    # HashLink standard library (from libhl)
-    stdlib_sources = find_sources('vendor/hashlink/src/std', '*.c')
-    sources.append(('HashLink standard library', stdlib_sources))
-
-    # PCRE2 regex library (from libhl)
-    pcre_sources = find_sources('vendor/hashlink/include/pcre', '*.c')
-    sources.append(('PCRE2 regex library', pcre_sources))
+    # NOTE: GC, stdlib, and PCRE2 are NOT included here
+    # They are built into libhl.lib (from vendor/hashlink/libhl.vcxproj)
+    # hlffi.lib links against libhl.lib to avoid duplicate symbols
 
     # UV and SSL plugin wrappers
     sources.append(('Plugin wrappers', [

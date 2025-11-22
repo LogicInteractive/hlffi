@@ -7,20 +7,38 @@ HLFFI v3.0 uses a **monolithic static library** approach with **zero DLL depende
 ### Build Order
 
 1. **libhl.lib** - HashLink core runtime (GC + stdlib + PCRE2) - static library
-2. **hlffi.lib** - Complete monolithic static library with:
-   - HLFFI wrapper code
-   - HashLink VM core (allocator, code, module, JIT, debugger, profile)
-   - Plugin implementations (UV, SSL)
-   - Embedded dependencies (libuv, mbedtls)
-3. **Examples** - example_version, example_hello_world
+2. **hlffi.lib** - HLFFI wrapper + VM core + embedded plugins:
+   - HLFFI wrapper code (6 files)
+   - HashLink VM core (allocator, code, module, JIT, debugger, profile - 6 files)
+   - Plugin implementations (UV, SSL - 2 files)
+   - Embedded dependencies (libuv 31 files, mbedtls 108 files)
+   - **Links against libhl.lib** for GC, stdlib, PCRE2
+3. **Examples** - example_version, example_hello_world (link against both hlffi.lib and libhl.lib)
 
 ### Output: Zero DLLs Required
 
 All components are compiled into **two static libraries**:
-- `libhl.lib` - HashLink core runtime
-- `hlffi.lib` - Complete VM with plugins and dependencies
+- `libhl.lib` - HashLink core runtime (GC + stdlib + PCRE2)
+- `hlffi.lib` - VM core + HLFFI wrapper + plugins + embedded dependencies
 
 **No .hdll files**, **no DLLs**, **no runtime dependencies**.
+
+### Library Dependencies
+
+```
+libhl.lib (54 files)
+  └── GC, stdlib (23 files), PCRE2 (30 files)
+
+hlffi.lib (153 files)
+  ├── depends on: libhl.lib
+  ├── HLFFI wrapper (6 files)
+  ├── VM core (6 files)
+  ├── Plugins (2 files)
+  ├── libuv (31 files)
+  └── mbedtls (108 files)
+
+Total: 207 source files, zero DLL dependencies
+```
 
 ## Projects in Solution
 
@@ -38,11 +56,11 @@ All components are compiled into **two static libraries**:
 
 **Output**: `bin\x64\{Debug|Release}\libhl.lib` (static)
 
-### HLFFI Monolithic Library (hlffi.lib)
+### HLFFI Wrapper Library (hlffi.lib)
 
 **Project**: `hlffi.vcxproj`
 
-**Contains** (207 source files total):
+**Contains** (153 source files total):
 
 *HLFFI wrapper code* (6 files):
 - `src/hlffi_core.c` - Version info, error strings
@@ -52,21 +70,13 @@ All components are compiled into **two static libraries**:
 - `src/hlffi_threading.c` - Threading support
 - `src/hlffi_reload.c` - Hot reload
 
-*HashLink VM core* (7 files):
+*HashLink VM core* (6 files):
 - `vendor/hashlink/src/allocator.c` - Memory allocation
 - `vendor/hashlink/src/code.c` - Bytecode reader (`hl_code_read`)
 - `vendor/hashlink/src/module.c` - Module management (`hl_module_alloc`, `hl_module_init`)
 - `vendor/hashlink/src/jit.c` - JIT compiler
 - `vendor/hashlink/src/debugger.c` - Debugger support
 - `vendor/hashlink/src/profile.c` - Profiler
-- `vendor/hashlink/src/gc.c` - Garbage collector
-
-*HashLink standard library* (23 files):
-- `vendor/hashlink/src/std/*.c` - All standard library implementations
-  - array, buffer, bytes, cast, date, debug, error, file, fun, maps, math, obj, process, random, regexp, socket, string, sys, thread, track, types, ucs2, etc.
-
-*PCRE2 regex library* (30 files):
-- `vendor/hashlink/include/pcre/*.c` - Complete PCRE2 implementation
 
 *Plugin wrappers* (2 files):
 - `vendor/hashlink/libs/uv/uv.c` - libuv integration (HTTP, async I/O, timers, sockets)
@@ -153,7 +163,9 @@ python3 generate_monolithic_vcxproj.py
 mv hlffi_monolithic.vcxproj hlffi.vcxproj
 ```
 
-This regenerates `hlffi.vcxproj` with all 207 source files automatically scanned from the vendor/hashlink directory.
+This regenerates `hlffi.vcxproj` with 153 source files automatically scanned from the vendor/hashlink directory.
+
+**Note**: The script explicitly EXCLUDES gc.c, stdlib, and PCRE2 sources to avoid duplicate symbols with libhl.lib.
 
 ## Output Directory Structure
 
