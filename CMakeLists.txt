@@ -1,0 +1,223 @@
+cmake_minimum_required(VERSION 3.15)
+project(HLFFI VERSION 3.0.0 LANGUAGES C CXX)
+
+# ========== Project Configuration ==========
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Output directories
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+# ========== Platform Detection ==========
+
+if(WIN32)
+    message(STATUS "Platform: Windows")
+    set(HLFFI_PLATFORM "Windows")
+elseif(UNIX AND NOT APPLE)
+    message(STATUS "Platform: Linux")
+    set(HLFFI_PLATFORM "Linux")
+elseif(APPLE)
+    message(STATUS "Platform: macOS")
+    set(HLFFI_PLATFORM "macOS")
+else()
+    message(WARNING "Platform: Unknown")
+    set(HLFFI_PLATFORM "Unknown")
+endif()
+
+# ========== Build Options ==========
+
+option(HLFFI_BUILD_SHARED "Build shared library" OFF)
+option(HLFFI_BUILD_EXAMPLES "Build example programs" ON)
+option(HLFFI_BUILD_TESTS "Build test programs" ON)
+option(HLFFI_ENABLE_HOT_RELOAD "Enable hot reload support (requires HL 1.12+)" ON)
+
+# ========== Find HashLink ==========
+
+# Try to find HashLink installation
+# User can set HASHLINK_DIR to point to HashLink installation
+if(DEFINED ENV{HASHLINK_DIR})
+    set(HASHLINK_DIR $ENV{HASHLINK_DIR})
+    message(STATUS "Using HASHLINK_DIR from environment: ${HASHLINK_DIR}")
+elseif(WIN32)
+    # Common HashLink install locations on Windows
+    set(HASHLINK_SEARCH_PATHS
+        "C:/HashLink"
+        "C:/Program Files/HashLink"
+        "C:/Program Files (x86)/HashLink"
+        "$ENV{ProgramFiles}/HashLink"
+        "$ENV{ProgramFiles\(x86\)}/HashLink"
+    )
+    foreach(SEARCH_PATH ${HASHLINK_SEARCH_PATHS})
+        if(EXISTS "${SEARCH_PATH}")
+            set(HASHLINK_DIR "${SEARCH_PATH}")
+            message(STATUS "Found HashLink at: ${HASHLINK_DIR}")
+            break()
+        endif()
+    endforeach()
+endif()
+
+if(NOT HASHLINK_DIR)
+    message(WARNING "HashLink not found. Set HASHLINK_DIR environment variable or cmake -DHASHLINK_DIR=<path>")
+    message(WARNING "Download from: https://hashlink.haxe.org/")
+else()
+    # Find HashLink headers
+    find_path(HASHLINK_INCLUDE_DIR
+        NAMES hl.h hlc.h
+        PATHS ${HASHLINK_DIR}/include
+        NO_DEFAULT_PATH
+    )
+
+    # Find HashLink library
+    if(WIN32)
+        find_library(HASHLINK_LIBRARY
+            NAMES libhl.lib hl.lib
+            PATHS ${HASHLINK_DIR} ${HASHLINK_DIR}/lib
+            NO_DEFAULT_PATH
+        )
+    else()
+        find_library(HASHLINK_LIBRARY
+            NAMES hl libhl
+            PATHS ${HASHLINK_DIR} ${HASHLINK_DIR}/lib
+            NO_DEFAULT_PATH
+        )
+    endif()
+
+    if(HASHLINK_INCLUDE_DIR AND HASHLINK_LIBRARY)
+        message(STATUS "HashLink include: ${HASHLINK_INCLUDE_DIR}")
+        message(STATUS "HashLink library: ${HASHLINK_LIBRARY}")
+    else()
+        message(WARNING "HashLink headers or library not found in ${HASHLINK_DIR}")
+    endif()
+endif()
+
+# ========== HLFFI Library ==========
+
+set(HLFFI_HEADERS
+    include/hlffi.h
+)
+
+set(HLFFI_SOURCES
+    src/hlffi_core.c
+    src/hlffi_lifecycle.c
+    src/hlffi_integration.c
+    src/hlffi_events.c
+    src/hlffi_threading.c
+    src/hlffi_reload.c
+)
+
+# Create library target (will be populated in Phase 1)
+if(HLFFI_BUILD_SHARED)
+    add_library(hlffi SHARED ${HLFFI_HEADERS} ${HLFFI_SOURCES})
+    target_compile_definitions(hlffi PRIVATE HLFFI_EXPORTS)
+    target_compile_definitions(hlffi PUBLIC HLFFI_SHARED)
+else()
+    add_library(hlffi STATIC ${HLFFI_HEADERS} ${HLFFI_SOURCES})
+endif()
+
+target_include_directories(hlffi
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# Link HashLink if found
+if(HASHLINK_INCLUDE_DIR AND HASHLINK_LIBRARY)
+    target_include_directories(hlffi PRIVATE ${HASHLINK_INCLUDE_DIR})
+    target_link_libraries(hlffi PRIVATE ${HASHLINK_LIBRARY})
+endif()
+
+# Platform-specific settings
+if(WIN32)
+    # Windows: Link against system libraries
+    target_link_libraries(hlffi PRIVATE ws2_32)
+
+    # Visual Studio specific settings
+    if(MSVC)
+        # Warning level 4, treat warnings as errors
+        target_compile_options(hlffi PRIVATE /W4 /WX)
+
+        # Multi-threaded runtime
+        set_property(TARGET hlffi PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+        # Enable all cores for building
+        target_compile_options(hlffi PRIVATE /MP)
+    endif()
+endif()
+
+# ========== Examples ==========
+
+if(HLFFI_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
+# ========== Tests ==========
+
+if(HLFFI_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+# ========== Install ==========
+
+install(TARGETS hlffi
+    EXPORT HLFFITargets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include
+)
+
+install(FILES ${HLFFI_HEADERS}
+    DESTINATION include
+)
+
+# ========== Package Config ==========
+
+include(CMakePackageConfigHelpers)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/HLFFIConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY AnyNewerVersion
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/HLFFIConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/HLFFIConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/HLFFI
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/HLFFIConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/HLFFIConfigVersion.cmake"
+    DESTINATION lib/cmake/HLFFI
+)
+
+install(EXPORT HLFFITargets
+    FILE HLFFITargets.cmake
+    NAMESPACE HLFFI::
+    DESTINATION lib/cmake/HLFFI
+)
+
+# ========== Summary ==========
+
+message(STATUS "")
+message(STATUS "========== HLFFI v${PROJECT_VERSION} Configuration ==========")
+message(STATUS "Platform: ${HLFFI_PLATFORM}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Build shared: ${HLFFI_BUILD_SHARED}")
+message(STATUS "Build examples: ${HLFFI_BUILD_EXAMPLES}")
+message(STATUS "Build tests: ${HLFFI_BUILD_TESTS}")
+message(STATUS "Hot reload: ${HLFFI_ENABLE_HOT_RELOAD}")
+message(STATUS "HashLink dir: ${HASHLINK_DIR}")
+message(STATUS "C compiler: ${CMAKE_C_COMPILER}")
+message(STATUS "CXX compiler: ${CMAKE_CXX_COMPILER}")
+message(STATUS "==============================================")
+message(STATUS "")

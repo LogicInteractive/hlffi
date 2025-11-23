@@ -1,0 +1,8 @@
+# Compiled HashLink bytecode
+*.hl
+
+# Haxe output
+*.dump
+*.n
+*.js
+*.swf
