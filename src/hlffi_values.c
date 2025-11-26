@@ -195,16 +195,19 @@ char* hlffi_value_as_string(hlffi_value* value) {
 
     vdynamic* v = value->hl_value;
 
-    /* HashLink strings can be either HBYTES or direct vstring
-     * Check for string type using hl_is_dynamic which handles both cases
-     */
+    /* HashLink strings can be HBYTES (raw vstring), HOBJ (String class), or HDYN */
     if (v->t->kind == HBYTES) {
         /* Direct bytes/string type */
         vstring* hl_str = (vstring*)v;
         if (hl_str->bytes) {
-            /* Convert UTF-16 to UTF-8 */
             char* utf8 = hl_to_utf8(hl_str->bytes);
-            /* hl_to_utf8 returns a static buffer, so we need to strdup */
+            return utf8 ? strdup(utf8) : NULL;
+        }
+    } else if (v->t->kind == HOBJ) {
+        /* String object (kind=11) - use hl_to_string for proper conversion */
+        uchar* utf16_str = hl_to_string(v);
+        if (utf16_str) {
+            char* utf8 = hl_to_utf8(utf16_str);
             return utf8 ? strdup(utf8) : NULL;
         }
     } else if (v->t->kind == HDYN) {
@@ -471,9 +474,27 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
         }
     }
 
-    /* Call the method closure with exception handling
-     * The method variable already contains a valid vclosure from hl_dyn_getp
-     */
+    /* TYPE CONVERSION: Convert HBYTES to String objects if method expects HOBJ String */
+    if (argc > 0 && method->t->kind == HFUN) {
+        for (int i = 0; i < argc && i < method->t->fun->nargs; i++) {
+            hl_type* expected_type = method->t->fun->args[i];
+            vdynamic* arg = hl_args[i];
+
+            if (arg && expected_type->kind == HOBJ && arg->t->kind == HBYTES) {
+                char type_name_buf[128];
+                if (expected_type->obj && expected_type->obj->name) {
+                    utostr(type_name_buf, sizeof(type_name_buf), expected_type->obj->name);
+                    if (strcmp(type_name_buf, "String") == 0) {
+                        vstring* bytes_str = (vstring*)arg;
+                        bytes_str->t = expected_type;
+                        hl_args[i] = (vdynamic*)bytes_str;
+                    }
+                }
+            }
+        }
+    }
+
+    /* Call the method closure with exception handling */
     bool isExc = false;
     vdynamic* result = hl_dyn_call_safe(method, hl_args, argc, &isExc);
 
