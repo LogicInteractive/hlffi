@@ -98,8 +98,17 @@ hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str) {
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
 
-    /* Use hl_alloc_strbytes which allocates and converts UTF-8 to UTF-16 */
-    vdynamic* hl_str = hl_alloc_strbytes((const uchar*)str);
+    /* Convert UTF-8 to UTF-16 first, then create HashLink string
+     * hl_to_utf16() allocates GC memory and converts encoding
+     * hl_alloc_strbytes() creates a vdynamic* from the UTF-16 string
+     */
+    uchar* utf16 = hl_to_utf16(str);
+    if (!utf16) {
+        free(wrapped);
+        return NULL;
+    }
+
+    vdynamic* hl_str = hl_alloc_strbytes(utf16);
     if (!hl_str) {
         free(wrapped);
         return NULL;
