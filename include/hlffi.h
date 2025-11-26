@@ -705,6 +705,142 @@ int hlffi_class_get_method_count(hlffi_type* type);
  */
 const char* hlffi_class_get_method_name(hlffi_type* type, int index);
 
+/* ========== PHASE 3: STATIC MEMBERS & VALUES ========== */
+
+/**
+ * Create integer value.
+ *
+ * @param vm VM instance
+ * @param value Integer value
+ * @return Boxed value handle
+ *
+ * @note Value is GC-managed, valid until unreachable
+ */
+hlffi_value* hlffi_value_int(hlffi_vm* vm, int value);
+
+/**
+ * Create float value.
+ *
+ * @param vm VM instance
+ * @param value Float value
+ * @return Boxed value handle
+ */
+hlffi_value* hlffi_value_float(hlffi_vm* vm, double value);
+
+/**
+ * Create boolean value.
+ *
+ * @param vm VM instance
+ * @param value Boolean value
+ * @return Boxed value handle
+ */
+hlffi_value* hlffi_value_bool(hlffi_vm* vm, bool value);
+
+/**
+ * Create string value.
+ *
+ * @param vm VM instance
+ * @param str UTF-8 string (will be converted to UTF-16)
+ * @return Boxed value handle, or NULL if string is NULL
+ */
+hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str);
+
+/**
+ * Create null value.
+ *
+ * @param vm VM instance
+ * @return Boxed null value
+ */
+hlffi_value* hlffi_value_null(hlffi_vm* vm);
+
+/**
+ * Extract integer from value.
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Integer value, or fallback if not an integer
+ */
+int hlffi_value_as_int(hlffi_value* value, int fallback);
+
+/**
+ * Extract float from value.
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Float value, or fallback if not a float
+ */
+double hlffi_value_as_float(hlffi_value* value, double fallback);
+
+/**
+ * Extract boolean from value.
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Boolean value, or fallback if not a boolean
+ */
+bool hlffi_value_as_bool(hlffi_value* value, bool fallback);
+
+/**
+ * Extract string from value.
+ * Returns UTF-8 string converted from HashLink's UTF-16.
+ *
+ * @param value Value handle
+ * @return UTF-8 string (caller must free), or NULL if not a string
+ *
+ * @note Caller must free() the returned string
+ * @note Returns NULL if value is NULL or not a string
+ */
+char* hlffi_value_as_string(hlffi_value* value);
+
+/**
+ * Check if value is null.
+ *
+ * @param value Value handle
+ * @return true if value is null or NULL pointer
+ */
+bool hlffi_value_is_null(hlffi_value* value);
+
+/**
+ * Get static field value.
+ *
+ * @param vm VM instance
+ * @param class_name Class name (e.g., "Game")
+ * @param field_name Field name (e.g., "score")
+ * @return Field value, or NULL on error
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Entry point must be called before accessing static fields
+ */
+hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const char* field_name);
+
+/**
+ * Set static field value.
+ *
+ * @param vm VM instance
+ * @param class_name Class name
+ * @param field_name Field name
+ * @param value New value
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Entry point must be called before accessing static fields
+ */
+hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, const char* field_name, hlffi_value* value);
+
+/**
+ * Call static method.
+ *
+ * @param vm VM instance
+ * @param class_name Class name (e.g., "Game")
+ * @param method_name Method name (e.g., "start")
+ * @param argc Number of arguments
+ * @param argv Argument array (can be NULL if argc=0)
+ * @return Return value, or NULL on error/void return
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Entry point must be called before calling static methods
+ */
+hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char* method_name, int argc, hlffi_value** argv);
+
 #ifdef __cplusplus
 }
 

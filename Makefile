@@ -26,7 +26,8 @@ BIN_DIR = bin
 HLFFI_WRAPPER_SRC = \
 	src/hlffi_core.c \
 	src/hlffi_lifecycle.c \
-	src/hlffi_types.c
+	src/hlffi_types.c \
+	src/hlffi_values.c
 
 # Stub files (not yet implemented, excluded from Linux build):
 # src/hlffi_events.c
@@ -89,6 +90,7 @@ TEST_LIBHL = test_libhl
 TEST_HELLO = test_hello
 TEST_RUNNER = test_runner
 TEST_REFLECTION = test_reflection
+TEST_STATIC = test_static
 
 # Linker flags for tests
 # CRITICAL: Must use --whole-archive for libhl.a to expose all primitives to dlsym()
@@ -146,7 +148,7 @@ verbose: info
 	@for src in $(HLFFI_SRC); do echo "  - $$src"; done
 
 # Test targets
-tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION)
+tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC)
 	@echo ""
 	@echo "✓ All tests built successfully!"
 	@echo ""
@@ -155,6 +157,7 @@ tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION)
 	@echo "  ./$(TEST_HELLO) test/hello.hl    - Test direct HashLink API"
 	@echo "  ./$(TEST_RUNNER) test/hello.hl   - Test HLFFI wrapper API"
 	@echo "  ./$(TEST_REFLECTION) test/hello.hl - Test Phase 2 type reflection"
+	@echo "  ./$(TEST_STATIC) test/static_test.hl - Test Phase 3 static members & values"
 	@echo ""
 
 $(TEST_LIBHL): test_libhl.c $(LIBHL)
@@ -170,5 +173,9 @@ $(TEST_RUNNER): test_runner.c $(LIBHL) $(HLFFI)
 	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
 
 $(TEST_REFLECTION): test_reflection.c $(LIBHL) $(HLFFI)
+	@echo "Building $@..."
+	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
+
+$(TEST_STATIC): test_static.c $(LIBHL) $(HLFFI)
 	@echo "Building $@..."
 	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
