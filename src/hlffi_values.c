@@ -98,23 +98,32 @@ hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str) {
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
 
-    /* Convert UTF-8 to UTF-16 first, then create HashLink string
-     * hl_to_utf16() allocates GC memory and converts encoding
-     * hl_alloc_strbytes() creates a vdynamic* from the UTF-16 string
+    /* Create HashLink string using the dexutils.h pattern:
+     * 1. Allocate UTF-16 buffer with hl_gc_alloc_noptr()
+     * 2. Convert UTF-8 to UTF-16 using hl_from_utf8()
+     * 3. Manually construct vstring with proper type
+     * This pattern works reliably for method arguments (from dexutils.h).
      */
-    uchar* utf16 = hl_to_utf16(str);
-    if (!utf16) {
+    int str_len = (int)strlen(str);
+    uchar* ubuf = (uchar*)hl_gc_alloc_noptr((str_len + 1) << 1);  // UTF-16 needs 2 bytes per char
+    if (!ubuf) {
         free(wrapped);
         return NULL;
     }
 
-    vdynamic* hl_str = hl_alloc_strbytes(utf16);
-    if (!hl_str) {
+    hl_from_utf8(ubuf, str_len, str);  // Convert UTF-8 → UTF-16
+
+    vstring* vstr = (vstring*)hl_gc_alloc_raw(sizeof(vstring));
+    if (!vstr) {
         free(wrapped);
         return NULL;
     }
 
-    wrapped->hl_value = hl_str;
+    vstr->bytes = ubuf;
+    vstr->length = str_len;
+    vstr->t = &hlt_bytes;
+
+    wrapped->hl_value = (vdynamic*)vstr;
 
     return wrapped;
 }
