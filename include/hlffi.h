@@ -537,6 +537,174 @@ const char* hlffi_get_hl_version(void);
  */
 bool hlffi_is_jit_mode(void);
 
+/* ========== PHASE 2: TYPE SYSTEM & REFLECTION ========== */
+
+/**
+ * Type kind enumeration.
+ * Matches HashLink's hl_type_kind values.
+ */
+typedef enum {
+    HLFFI_TYPE_VOID = 0,
+    HLFFI_TYPE_UI8,
+    HLFFI_TYPE_UI16,
+    HLFFI_TYPE_I32,
+    HLFFI_TYPE_I64,
+    HLFFI_TYPE_F32,
+    HLFFI_TYPE_F64,
+    HLFFI_TYPE_BOOL,
+    HLFFI_TYPE_BYTES,
+    HLFFI_TYPE_DYN,
+    HLFFI_TYPE_FUN,
+    HLFFI_TYPE_OBJ,        // Class/object type
+    HLFFI_TYPE_ARRAY,
+    HLFFI_TYPE_TYPE,
+    HLFFI_TYPE_REF,
+    HLFFI_TYPE_VIRTUAL,
+    HLFFI_TYPE_DYNOBJ,
+    HLFFI_TYPE_ABSTRACT,
+    HLFFI_TYPE_ENUM,
+    HLFFI_TYPE_NULL,
+    HLFFI_TYPE_METHOD,
+    HLFFI_TYPE_STRUCT,
+    HLFFI_TYPE_PACKED
+} hlffi_type_kind;
+
+/**
+ * Type iterator callback.
+ * Called for each type during hlffi_list_types().
+ *
+ * @param type Type being visited
+ * @param userdata User-provided data
+ */
+typedef void (*hlffi_type_callback)(hlffi_type* type, void* userdata);
+
+/**
+ * Find type by name.
+ * Searches loaded module for a type with the given name.
+ *
+ * @param vm VM instance
+ * @param name Type name (e.g., "Player", "com.example.MyClass")
+ * @return Type handle, or NULL if not found
+ *
+ * @note For packaged types, use full name: "com.example.Player"
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Type handle valid until module unloaded
+ */
+hlffi_type* hlffi_find_type(hlffi_vm* vm, const char* name);
+
+/**
+ * Get type kind.
+ * Returns the kind of type (class, enum, primitive, etc.).
+ *
+ * @param type Type handle
+ * @return Type kind enum value
+ *
+ * @note Returns HLFFI_TYPE_VOID if type is NULL
+ */
+hlffi_type_kind hlffi_type_get_kind(hlffi_type* type);
+
+/**
+ * Get type name.
+ * Returns the fully-qualified name of the type.
+ *
+ * @param type Type handle
+ * @return Type name string (UTF-8), or NULL if type is NULL
+ *
+ * @note String valid until type is unloaded
+ * @note For objects: returns class name (e.g., "Player")
+ * @note For primitives: returns kind name (e.g., "i32", "f64")
+ */
+const char* hlffi_type_get_name(hlffi_type* type);
+
+/**
+ * Enumerate all types in module.
+ * Calls callback for each type in the loaded module.
+ *
+ * @param vm VM instance
+ * @param callback Function to call for each type
+ * @param userdata User data passed to callback
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Callback called for ALL types (primitives, classes, enums, etc.)
+ * @note Use hlffi_type_get_kind() to filter types in callback
+ */
+hlffi_error_code hlffi_list_types(hlffi_vm* vm, hlffi_type_callback callback, void* userdata);
+
+/* ========== CLASS INSPECTION ========== */
+
+/**
+ * Get superclass of a class type.
+ * Returns the parent class, or NULL if no parent.
+ *
+ * @param type Class type handle
+ * @return Parent class type, or NULL if none or not a class
+ *
+ * @note Only works for HLFFI_TYPE_OBJ types
+ * @note Returns NULL for root classes (no parent)
+ */
+hlffi_type* hlffi_class_get_super(hlffi_type* type);
+
+/**
+ * Get number of fields in a class.
+ * Returns count of instance fields (not including inherited fields).
+ *
+ * @param type Class type handle
+ * @return Field count, or -1 if not a class type
+ *
+ * @note Only counts direct fields, not inherited ones
+ * @note Use hlffi_class_get_super() to traverse hierarchy
+ */
+int hlffi_class_get_field_count(hlffi_type* type);
+
+/**
+ * Get field name by index.
+ * Returns the name of the field at the given index.
+ *
+ * @param type Class type handle
+ * @param index Field index (0 to field_count-1)
+ * @return Field name (UTF-8), or NULL if invalid
+ *
+ * @note Index must be < hlffi_class_get_field_count()
+ * @note String valid until type is unloaded
+ */
+const char* hlffi_class_get_field_name(hlffi_type* type, int index);
+
+/**
+ * Get field type by index.
+ * Returns the type of the field at the given index.
+ *
+ * @param type Class type handle
+ * @param index Field index (0 to field_count-1)
+ * @return Field type handle, or NULL if invalid
+ *
+ * @note Index must be < hlffi_class_get_field_count()
+ */
+hlffi_type* hlffi_class_get_field_type(hlffi_type* type, int index);
+
+/**
+ * Get number of methods in a class.
+ * Returns count of methods (not including inherited methods).
+ *
+ * @param type Class type handle
+ * @return Method count, or -1 if not a class type
+ *
+ * @note Only counts direct methods, not inherited ones
+ */
+int hlffi_class_get_method_count(hlffi_type* type);
+
+/**
+ * Get method name by index.
+ * Returns the name of the method at the given index.
+ *
+ * @param type Class type handle
+ * @param index Method index (0 to method_count-1)
+ * @return Method name (UTF-8), or NULL if invalid
+ *
+ * @note Index must be < hlffi_class_get_method_count()
+ * @note String valid until type is unloaded
+ */
+const char* hlffi_class_get_method_name(hlffi_type* type, int index);
+
 #ifdef __cplusplus
 }
 

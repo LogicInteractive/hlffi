@@ -22,10 +22,11 @@ CFLAGS += -Wno-unused-parameter -Wno-unused-variable -Wno-sign-compare
 BUILD_DIR = build
 BIN_DIR = bin
 
-# HLFFI wrapper sources (only implemented files for now)
+# HLFFI wrapper sources (implemented files)
 HLFFI_WRAPPER_SRC = \
 	src/hlffi_core.c \
-	src/hlffi_lifecycle.c
+	src/hlffi_lifecycle.c \
+	src/hlffi_types.c
 
 # Stub files (not yet implemented, excluded from Linux build):
 # src/hlffi_events.c
@@ -87,6 +88,7 @@ HLFFI = $(BIN_DIR)/libhlffi.a
 TEST_LIBHL = test_libhl
 TEST_HELLO = test_hello
 TEST_RUNNER = test_runner
+TEST_REFLECTION = test_reflection
 
 # Linker flags for tests
 # CRITICAL: Must use --whole-archive for libhl.a to expose all primitives to dlsym()
@@ -132,7 +134,7 @@ $(BIN_DIR):
 
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
-	rm -f $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER)
+	rm -f $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION)
 	@echo "Cleaned build artifacts"
 
 # Print detailed info
@@ -144,14 +146,15 @@ verbose: info
 	@for src in $(HLFFI_SRC); do echo "  - $$src"; done
 
 # Test targets
-tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER)
+tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION)
 	@echo ""
 	@echo "✓ All tests built successfully!"
 	@echo ""
 	@echo "Run tests:"
-	@echo "  ./$(TEST_LIBHL)              - Test basic libhl.a linking"
-	@echo "  ./$(TEST_HELLO) test/hello.hl - Test direct HashLink API"
-	@echo "  ./$(TEST_RUNNER) test/hello.hl - Test HLFFI wrapper API"
+	@echo "  ./$(TEST_LIBHL)                  - Test basic libhl.a linking"
+	@echo "  ./$(TEST_HELLO) test/hello.hl    - Test direct HashLink API"
+	@echo "  ./$(TEST_RUNNER) test/hello.hl   - Test HLFFI wrapper API"
+	@echo "  ./$(TEST_REFLECTION) test/hello.hl - Test Phase 2 type reflection"
 	@echo ""
 
 $(TEST_LIBHL): test_libhl.c $(LIBHL)
@@ -163,5 +166,9 @@ $(TEST_HELLO): test_hello.c $(LIBHL) $(HLFFI)
 	$(CC) -o $@ $< -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
 
 $(TEST_RUNNER): test_runner.c $(LIBHL) $(HLFFI)
+	@echo "Building $@..."
+	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
+
+$(TEST_REFLECTION): test_reflection.c $(LIBHL) $(HLFFI)
 	@echo "Building $@..."
 	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)

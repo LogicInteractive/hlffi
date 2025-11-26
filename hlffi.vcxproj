@@ -108,6 +108,7 @@
     <ClCompile Include="src\hlffi_events.c" />
     <ClCompile Include="src\hlffi_integration.c" />
     <ClCompile Include="src\hlffi_lifecycle.c" />
+    <ClCompile Include="src\hlffi_types.c" />
     <ClCompile Include="src\hlffi_reload.c" />
     <ClCompile Include="src\hlffi_threading.c" />
   </ItemGroup>
