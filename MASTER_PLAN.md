@@ -245,12 +245,12 @@ hlffi/
 ### Features
 
 **Core Lifecycle:**
-- [ ] `hlffi_create()` - allocate VM
-- [ ] `hlffi_init()` - initialize HashLink runtime + args
-- [ ] `hlffi_load_file()` - load .hl from disk
-- [ ] `hlffi_load_memory()` - load .hl from buffer
-- [ ] `hlffi_call_entry()` - invoke Main.main()
-- [ ] `hlffi_destroy()` - free VM (ONLY safe at process exit)
+- [x] `hlffi_create()` - allocate VM ✅ **WORKING**
+- [x] `hlffi_init()` - initialize HashLink runtime + args ✅ **WORKING**
+- [x] `hlffi_load_file()` - load .hl from disk ✅ **WORKING**
+- [x] `hlffi_load_memory()` - load .hl from buffer ✅ **WORKING**
+- [x] `hlffi_call_entry()` - invoke Main.main() ✅ **WORKING**
+- [x] `hlffi_destroy()` - free VM (ONLY safe at process exit) ✅ **WORKING**
 
 **⚠️ VM Restart NOT Supported:**
 - HashLink VM can only be initialized ONCE per process
@@ -267,18 +267,18 @@ hlffi/
 - [ ] Handle reload failures gracefully
 
 **Integration Modes (NEW!):**
-- [ ] **Mode 1: Non-Threaded** (engine controls loop - RECOMMENDED)
-  - `hlffi_set_integration_mode(vm, HLFFI_MODE_NON_THREADED)`
-  - `hlffi_update(vm, delta_time)` - call every frame
-  - Processes UV events (async I/O, HTTP) + Haxe events (timers)
-  - Non-blocking - returns immediately
-  - Direct function calls from host thread
+- [x] **Mode 1: Non-Threaded** (engine controls loop - RECOMMENDED) ✅ **WORKING**
+  - [x] `hlffi_set_integration_mode(vm, HLFFI_MODE_NON_THREADED)` ✅
+  - [x] `hlffi_update(vm, delta_time)` - call every frame (stub, needs event loops)
+  - [ ] Processes UV events (async I/O, HTTP) + Haxe events (timers) - TODO
+  - [x] Non-blocking - returns immediately ✅
+  - [x] Direct function calls from host thread ✅
   - Use for: Unreal, Unity, game engines, tools
-- [ ] **Mode 2: Threaded** (dedicated VM thread - ADVANCED)
-  - `hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED)`
-  - `hlffi_thread_start(vm)` - spawns thread, runs entry point
-  - Thread-safe message queue for calls
-  - Automatic event processing in thread
+- [ ] **Mode 2: Threaded** (dedicated VM thread - ADVANCED) - TODO
+  - [ ] `hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED)` - stub only
+  - [ ] `hlffi_thread_start(vm)` - spawns thread, runs entry point - stub only
+  - [ ] Thread-safe message queue for calls - TODO
+  - [ ] Automatic event processing in thread - TODO
   - Use for: Haxe code with blocking while loop (Android pattern)
 
 **Event Loop Integration (NEW!):**
