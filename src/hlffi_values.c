@@ -288,7 +288,9 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
         return NULL;
     }
 
-    /* Get field value using hl_dyn_getp with the correct field type from lookup */
+    /* Get field value using hl_dyn_getp with the correct field type from lookup
+     * Using lookup->t prevents crashes that occur with &hlt_dyn
+     */
     vdynamic* field_value = (vdynamic*)hl_dyn_getp(global, lookup->hashed_name, lookup->t);
 
     /* Wrap and return */
@@ -364,8 +366,8 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
         return HLFFI_ERROR_FIELD_NOT_FOUND;
     }
 
-    /* Set field value using hl_dyn_setp
-     * The field type from lookup can be used for type checking if needed
+    /* Set field value using hl_dyn_setp with the field type from lookup
+     * Using lookup->t for type-safe field assignment
      */
     hl_dyn_setp(global, lookup->hashed_name, lookup->t, value->hl_value);
 
