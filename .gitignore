@@ -59,6 +59,8 @@ test_hello
 test_hashlink_direct
 test_runner
 test_reflection
+test_simple_reflection
+test_string_details
 
 # Backup files
 *_old.h
