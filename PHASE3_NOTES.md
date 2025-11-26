@@ -54,17 +54,75 @@ This shows that `global_value` is set during module loading IF the bytecode init
 2. ❌ Using `globals_indexes[field_index]` - incorrect mapping
 3. ❌ Looking for generated getter/setter methods - API mismatch
 
+### Research Findings
+
+**From comprehensive HashLink source analysis and documentation review:**
+
+1. **Root Cause Confirmed:**
+   - Static fields in HashLink are stored in `module->globals_data`
+   - Each global has an offset in `module->globals_indexes`
+   - **No public API exists** to map field name → global index
+   - Bytecode operations (OGetGlobal/OSetGlobal) encode global indices directly
+   - Field definitions in `hl_type_obj->fields[i]` **do NOT** contain global indices
+
+2. **Why `global_value` is NULL:**
+   - `global_value` is for class singleton instances, not individual static fields
+   - Classes without global instances (pure static classes) have `global_value = NULL`
+   - This is by design - static fields are individual globals, not instance fields
+
+3. **From HashLink Experts (Issue #253, #752, FFI_RESEARCH.md):**
+   - Direct static field access via C API is **not officially supported**
+   - HashLink's own native extensions use different patterns
+   - The recommended approach is method-based access
+
+### Recommended Solution
+
+**Use Accessor Methods Pattern** (from FFI_RESEARCH.md, marked as "EASIEST"):
+
+Instead of direct field access, require Haxe code to provide getter/setter methods:
+
+```haxe
+class Game {
+    public static var score:Int = 0;
+
+    // Add accessor methods for C access
+    public static function getScore():Int { return score; }
+    public static function setScore(v:Int):Void { score = v; }
+}
+```
+
+```c
+// From C - use method calls (which DO work)
+hlffi_value* score = hlffi_call_static(vm, "Game", "getScore", 0, NULL);
+```
+
+**Why This Works:**
+- ✅ Static method calls are fully functional (uses `proto` array with `findex`)
+- ✅ Methods have direct function indices we can resolve
+- ✅ No global index mapping needed
+- ✅ Matches HashLink's own FFI patterns
+- ✅ Simple, reliable, maintainable
+
+### Alternative Approaches Considered
+
+**Option 1: Bytecode Scanning** (NOT RECOMMENDED)
+- Scan `code->globals` array looking for matching types/metadata
+- Fragile - relies on undocumented bytecode structure
+- Breaks on HashLink updates
+- No official support
+
+**Option 2: Wait for Official API** (LONG-TERM)
+- HashLink may add static field access API in future
+- Plugin system (Nov 2025) doesn't address this
+- Not a blocker for Phase 3
+
 ### Next Steps
 
-To fix static field access, need to:
-1. Study HashLink's internal field access mechanisms more deeply
-2. Check if there's a HashLink API for accessing static fields that we're missing
-3. Consider alternative approaches:
-   - Generate Haxe getter/setter functions and call them via `hlffi_call_static()`
-   - Use HashLink's reflection API if available
-   - Manually walk `code->globals` array to find field storage
-
-4. Consult HashLink community/documentation about proper static field access
+1. **Update Phase 3 API** - Document accessor method requirement
+2. **Update test programs** - Add getter/setter methods to Game.hx
+3. **Update CLAUDE.md** - Document this pattern for future reference
+4. **Keep current implementation** - Mark as NOT_IMPLEMENTED until API available
+5. **Consider Phase 3.5** - Helper to auto-generate Haxe accessors
 
 ## Test Programs
 
