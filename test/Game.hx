@@ -2,10 +2,10 @@
  * Phase 3 Test: Game class with static members
  */
 class Game {
-    public static var score:Int = 0;
-    public static var playerName:String = "Player";
-    public static var isRunning:Bool = false;
-    public static var multiplier:Float = 1.0;
+    public static var score:Int = 100;
+    public static var playerName:String = "TestPlayer";
+    public static var isRunning:Bool = true;
+    public static var multiplier:Float = 2.5;
 
     public static function start():Void {
         trace("Game started!");

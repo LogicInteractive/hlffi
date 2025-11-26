@@ -10,6 +10,13 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* HashLink internal function - declared as extern to access it
+ * Defined as static in vendor/hashlink/src/std/obj.c:64
+ * But exists in compiled libhl.a and can be accessed via extern declaration
+ * Pattern discovered from working FFI code - this is the KEY to static field access!
+ */
+extern hl_field_lookup* obj_resolve_field(hl_type_obj *o, int hfield);
+
 /* Forward declaration of VM structure */
 struct hlffi_vm {
     hl_module* module;
@@ -121,12 +128,14 @@ int hlffi_value_as_int(hlffi_value* value, int fallback) {
 
     vdynamic* v = value->hl_value;
 
-    /* Check type and extract */
-    if (v->t == &hlt_i32) {
+    /* Check type by kind, not just pointer equality
+     * This handles both direct type pointers and type kinds
+     */
+    if (v->t->kind == HI32) {
         return v->v.i;
-    } else if (v->t == &hlt_f64) {
+    } else if (v->t->kind == HF64) {
         return (int)v->v.d;  /* Allow float->int conversion */
-    } else if (v->t == &hlt_bool) {
+    } else if (v->t->kind == HBOOL) {
         return v->v.b ? 1 : 0;
     }
 
@@ -138,10 +147,10 @@ double hlffi_value_as_float(hlffi_value* value, double fallback) {
 
     vdynamic* v = value->hl_value;
 
-    /* Check type and extract */
-    if (v->t == &hlt_f64) {
+    /* Check type by kind */
+    if (v->t->kind == HF64) {
         return v->v.d;
-    } else if (v->t == &hlt_i32) {
+    } else if (v->t->kind == HI32) {
         return (double)v->v.i;  /* Allow int->float conversion */
     }
 
@@ -153,10 +162,10 @@ bool hlffi_value_as_bool(hlffi_value* value, bool fallback) {
 
     vdynamic* v = value->hl_value;
 
-    /* Check type and extract */
-    if (v->t == &hlt_bool) {
+    /* Check type by kind */
+    if (v->t->kind == HBOOL) {
         return v->v.b;
-    } else if (v->t == &hlt_i32) {
+    } else if (v->t->kind == HI32) {
         return v->v.i != 0;  /* Non-zero int is true */
     }
 
@@ -168,13 +177,28 @@ char* hlffi_value_as_string(hlffi_value* value) {
 
     vdynamic* v = value->hl_value;
 
-    /* Check if it's a bytes type (strings are represented as bytes in HashLink) */
+    /* HashLink strings can be either HBYTES or direct vstring
+     * Check for string type using hl_is_dynamic which handles both cases
+     */
     if (v->t->kind == HBYTES) {
+        /* Direct bytes/string type */
         vstring* hl_str = (vstring*)v;
-        /* Convert UTF-16 to UTF-8 */
-        char* utf8 = hl_to_utf8(hl_str->bytes);
-        /* hl_to_utf8 returns a static buffer, so we need to strdup */
-        return utf8 ? strdup(utf8) : NULL;
+        if (hl_str->bytes) {
+            /* Convert UTF-16 to UTF-8 */
+            char* utf8 = hl_to_utf8(hl_str->bytes);
+            /* hl_to_utf8 returns a static buffer, so we need to strdup */
+            return utf8 ? strdup(utf8) : NULL;
+        }
+    } else if (v->t->kind == HDYN) {
+        /* Dynamic value - might be a boxed string */
+        vdynamic* str_dyn = hl_dyn_castp(v, v->t, &hlt_bytes);
+        if (str_dyn && str_dyn->t->kind == HBYTES) {
+            vstring* hl_str = (vstring*)str_dyn;
+            if (hl_str->bytes) {
+                char* utf8 = hl_to_utf8(hl_str->bytes);
+                return utf8 ? strdup(utf8) : NULL;
+            }
+        }
     }
 
     return NULL;
@@ -197,10 +221,8 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
         return NULL;
     }
 
-    /* Hash the names - prepend $ for runtime class */
-    char runtime_class_name[256];
-    snprintf(runtime_class_name, sizeof(runtime_class_name), "$%s", class_name);
-    int class_hash = hl_hash_utf8(runtime_class_name);
+    /* Hash the class name (NO $ prefix for global_value access) */
+    int class_hash = hl_hash_utf8(class_name);
     int field_hash = hl_hash_utf8(field_name);
 
     /* Find the class type */
@@ -226,27 +248,49 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
         return NULL;
     }
 
-    /* Find the static field */
-    for (int i = 0; i < class_type->obj->nfields; i++) {
-        hl_obj_field* field = &class_type->obj->fields[i];
-        if (field->hashed_name == field_hash) {
-            /* TODO: Static field runtime access not yet working
-             * The class type and field are found correctly, but accessing the value fails.
-             * Issue: class_type->obj->global_value is NULL for classes without global instances.
-             * HashLink stores static fields as individual globals in module->globals_data,
-             * but the mapping from field index to global index is not straightforward.
-             * Need to investigate proper HashLink API for static field access.
-             */
-            set_error(vm, HLFFI_ERROR_NOT_IMPLEMENTED,
-                     "Static field access not yet implemented - runtime lookup mechanism needs investigation");
-            return NULL;
-        }
+    /* Get global instance - must be non-NULL for static field access!
+     * Pattern from working FFI code:
+     * Classes need a global singleton instance for field access to work.
+     * This is created automatically by HashLink for classes with static fields/methods.
+     */
+    if (!class_type->obj->global_value) {
+        char error_buf[512];
+        snprintf(error_buf, sizeof(error_buf),
+                "Class '%s' has no global instance. Entry point must be called first to initialize globals.",
+                class_name);
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, error_buf);
+        return NULL;
     }
 
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf), "Field not found: %s.%s", class_name, field_name);
-    set_error(vm, HLFFI_ERROR_FIELD_NOT_FOUND, error_buf);
-    return NULL;
+    vdynamic* global = *(vdynamic**)class_type->obj->global_value;
+    if (!global) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "Global instance is NULL - entry point not called");
+        return NULL;
+    }
+
+    /* Resolve field using obj_resolve_field (the KEY function!)
+     * This maps the field hash to a field_lookup structure with the actual field offset.
+     */
+    hl_field_lookup* lookup = obj_resolve_field(global->t->obj, field_hash);
+    if (!lookup) {
+        char error_buf[256];
+        snprintf(error_buf, sizeof(error_buf), "Field not found: %s.%s", class_name, field_name);
+        set_error(vm, HLFFI_ERROR_FIELD_NOT_FOUND, error_buf);
+        return NULL;
+    }
+
+    /* Get field value using hl_dyn_getp with the correct field type from lookup */
+    vdynamic* field_value = (vdynamic*)hl_dyn_getp(global, lookup->hashed_name, lookup->t);
+
+    /* Wrap and return */
+    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
+    if (!wrapped) {
+        set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate hlffi_value");
+        return NULL;
+    }
+    wrapped->hl_value = field_value;
+
+    return wrapped;
 }
 
 hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, const char* field_name, hlffi_value* value) {
@@ -260,10 +304,8 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
         return HLFFI_ERROR_INVALID_ARGUMENT;
     }
 
-    /* Hash the names - prepend $ for runtime class */
-    char runtime_class_name[256];
-    snprintf(runtime_class_name, sizeof(runtime_class_name), "$%s", class_name);
-    int class_hash = hl_hash_utf8(runtime_class_name);
+    /* Hash the class name (NO $ prefix for global_value access) */
+    int class_hash = hl_hash_utf8(class_name);
     int field_hash = hl_hash_utf8(field_name);
 
     /* Find the class type */
@@ -288,21 +330,37 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
         return HLFFI_ERROR_TYPE_NOT_FOUND;
     }
 
-    /* Find the static field */
-    for (int i = 0; i < class_type->obj->nfields; i++) {
-        hl_obj_field* field = &class_type->obj->fields[i];
-        if (field->hashed_name == field_hash) {
-            /* TODO: Static field runtime access not yet working (see hlffi_get_static_field for details) */
-            set_error(vm, HLFFI_ERROR_NOT_IMPLEMENTED,
-                     "Static field access not yet implemented - runtime lookup mechanism needs investigation");
-            return HLFFI_ERROR_NOT_IMPLEMENTED;
-        }
+    /* Get global instance */
+    if (!class_type->obj->global_value) {
+        char error_buf[512];
+        snprintf(error_buf, sizeof(error_buf),
+                "Class '%s' has no global instance. Entry point must be called first to initialize globals.",
+                class_name);
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, error_buf);
+        return HLFFI_ERROR_NOT_INITIALIZED;
     }
 
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf), "Field not found: %s.%s", class_name, field_name);
-    set_error(vm, HLFFI_ERROR_FIELD_NOT_FOUND, error_buf);
-    return HLFFI_ERROR_FIELD_NOT_FOUND;
+    vdynamic* global = *(vdynamic**)class_type->obj->global_value;
+    if (!global) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "Global instance is NULL - entry point not called");
+        return HLFFI_ERROR_NOT_INITIALIZED;
+    }
+
+    /* Resolve field */
+    hl_field_lookup* lookup = obj_resolve_field(global->t->obj, field_hash);
+    if (!lookup) {
+        char error_buf[256];
+        snprintf(error_buf, sizeof(error_buf), "Field not found: %s.%s", class_name, field_name);
+        set_error(vm, HLFFI_ERROR_FIELD_NOT_FOUND, error_buf);
+        return HLFFI_ERROR_FIELD_NOT_FOUND;
+    }
+
+    /* Set field value using hl_dyn_setp
+     * The field type from lookup can be used for type checking if needed
+     */
+    hl_dyn_setp(global, lookup->hashed_name, lookup->t, value->hl_value);
+
+    return HLFFI_OK;
 }
 
 /* ========== STATIC METHOD CALLS ========== */
@@ -318,10 +376,8 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
         return NULL;
     }
 
-    /* Hash the names - prepend $ for runtime class */
-    char runtime_class_name[256];
-    snprintf(runtime_class_name, sizeof(runtime_class_name), "$%s", class_name);
-    int class_hash = hl_hash_utf8(runtime_class_name);
+    /* Hash the class name (NO $ prefix - use regular class for global_value access) */
+    int class_hash = hl_hash_utf8(class_name);
     int method_hash = hl_hash_utf8(method_name);
 
     /* Find the class type */
@@ -346,25 +402,41 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
         return NULL;
     }
 
-    /* Find the static method */
-    int func_index = -1;
-    for (int i = 0; i < class_type->obj->nproto; i++) {
-        hl_obj_proto* method = &class_type->obj->proto[i];
-        if (method->hashed_name == method_hash) {
-            func_index = method->findex;
-            break;
-        }
+    /* Get global instance for method access */
+    if (!class_type->obj->global_value) {
+        char error_buf[512];
+        snprintf(error_buf, sizeof(error_buf),
+                "Class '%s' has no global instance. Entry point must be called first.",
+                class_name);
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, error_buf);
+        return NULL;
     }
 
-    if (func_index < 0) {
+    vdynamic* global = *(vdynamic**)class_type->obj->global_value;
+    if (!global) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "Global instance is NULL - entry point not called");
+        return NULL;
+    }
+
+    /* Resolve method as a field on the global object (KEY pattern from working FFI code!)
+     * Methods are stored as closure fields, not in the proto array
+     */
+    hl_field_lookup* lookup = obj_resolve_field(global->t->obj, method_hash);
+    if (!lookup) {
         char error_buf[256];
         snprintf(error_buf, sizeof(error_buf), "Method not found: %s.%s", class_name, method_name);
         set_error(vm, HLFFI_ERROR_METHOD_NOT_FOUND, error_buf);
         return NULL;
     }
 
-    /* Get the function type */
-    hl_function* func = &code->functions[vm->module->functions_indexes[func_index]];
+    /* Get the method closure from the global object */
+    vclosure* method = (vclosure*)hl_dyn_getp(global, lookup->hashed_name, &hlt_dyn);
+    if (!method) {
+        char error_buf[256];
+        snprintf(error_buf, sizeof(error_buf), "Method is NULL: %s.%s", class_name, method_name);
+        set_error(vm, HLFFI_ERROR_METHOD_NOT_FOUND, error_buf);
+        return NULL;
+    }
 
     /* Prepare arguments - unbox hlffi_value** to vdynamic** */
     vdynamic** hl_args = NULL;
@@ -379,15 +451,11 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
         }
     }
 
-    /* Setup closure for function call */
-    vclosure cl;
-    cl.t = func->type;
-    cl.fun = vm->module->functions_ptrs[func_index];
-    cl.hasValue = 0;
-
-    /* Call the function with exception handling */
+    /* Call the method closure with exception handling
+     * The method variable already contains a valid vclosure from hl_dyn_getp
+     */
     bool isExc = false;
-    vdynamic* result = hl_dyn_call_safe(&cl, hl_args, argc, &isExc);
+    vdynamic* result = hl_dyn_call_safe(method, hl_args, argc, &isExc);
 
     /* Free argument array */
     if (hl_args) free(hl_args);
