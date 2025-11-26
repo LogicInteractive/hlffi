@@ -13,10 +13,13 @@
 ## ⚠️ Development Status
 
 **Phase 0: Foundation & Architecture** ✅ **COMPLETE**
+**Phase 1: Core Lifecycle & Integration Modes** 🔨 **IN PROGRESS**
 
-Currently implementing **Phase 1: Core Lifecycle & Integration Modes**
+✅ **Working**: VM lifecycle (create, init, load, destroy), NON_THREADED mode, basic tests
+🔨 **TODO**: Event loop integration, THREADED mode, hot reload
 
 See [MASTER_PLAN.md](docs/MASTER_PLAN.md) for the complete 9-phase roadmap.
+See [BUILD_NOTES.md](BUILD_NOTES.md) for current build status and known issues.
 
 ## ✨ Key Features
 

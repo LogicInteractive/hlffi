@@ -58,3 +58,8 @@ test_libhl
 test_hello
 test_hashlink_direct
 test_runner
+
+# Vendor dependencies (cloned/downloaded, not tracked)
+vendor/hashlink/
+hashlink-*.zip
+hashlink-nightly/

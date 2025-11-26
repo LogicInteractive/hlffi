@@ -126,11 +126,10 @@ hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
     /* Initialize HashLink global state */
     hl_global_init();
 
-    /* Setup command line arguments */
-    if (argc > 0 && argv) {
-        hl_setup.sys_args = (char**)argv;
-        hl_setup.sys_nargs = argc;
-    }
+    /* NOTE: hl_setup is not accessible from libhl.dll due to export issues
+     * Command line arguments can be passed via other mechanisms if needed
+     * For now, we skip this - it's not critical for basic VM operation
+     */
 
     /* Initialize system (file I/O, etc.) */
     hl_sys_init();
@@ -174,8 +173,7 @@ hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path) {
         return HLFFI_ERROR_FILE_NOT_FOUND;
     }
 
-    /* Set file path in hl_setup */
-    hl_setup.file_path = (void*)path;
+    /* NOTE: hl_setup.file_path is not accessible - skipping */
 
     /* Allocate module */
     vm->module = hl_module_alloc(vm->code);

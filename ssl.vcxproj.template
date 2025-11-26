@@ -12,20 +12,20 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{F7A8B1E3-9C4D-4E5F-8A6B-1D2E3F4A5B6C}</ProjectGuid>
+    <ProjectGuid>{D1E2F3A4-B5C6-7890-DEFG-123456789012}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>hlffi</RootNamespace>
+    <RootNamespace>uv</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -47,32 +47,32 @@
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
+    <TargetExt>.hdll</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
+    <TargetExt>.hdll</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_LIB;LIBHL_EXPORTS;HAVE_CONFIG_H;PCRE2_CODE_UNIT_WIDTH=16;MBEDTLS_USER_CONFIG_FILE=&lt;mbedtls_user_config.h&gt;;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;LIBHL_EXPORTS;UV_EXPORTS;BUILDING_UV_SHARED;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)vendor\hashlink\src;$(ProjectDir)vendor\hashlink\include\pcre;$(ProjectDir)vendor\hashlink\include\libuv\include;$(ProjectDir)vendor\hashlink\include\libuv\src;$(ProjectDir)vendor\hashlink\include\mbedtls\include;$(ProjectDir)vendor\hashlink\libs\ssl;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)vendor\hashlink\src;$(ProjectDir)vendor\hashlink\include\libuv\include;$(ProjectDir)vendor\hashlink\include\libuv\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <DisableSpecificWarnings>4244;4267;4456;4459;4127;4100;4201;4706;4996;4477;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4244;4267;4456;4459;4127;4100;4201;4706;4996;4477;4668;4703;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(SolutionDir)vendor\hashlink\x64\Debug\libhl.lib;ws2_32.lib;winmm.lib;user32.lib;psapi.lib;iphlpapi.lib;userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <Lib>
-      <AdditionalDependencies>ws2_32.lib;advapi32.lib;psapi.lib;user32.lib;iphlpapi.lib;userenv.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -81,43 +81,58 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_LIB;LIBHL_EXPORTS;HAVE_CONFIG_H;PCRE2_CODE_UNIT_WIDTH=16;MBEDTLS_USER_CONFIG_FILE=&lt;mbedtls_user_config.h&gt;;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;LIBHL_EXPORTS;UV_EXPORTS;BUILDING_UV_SHARED;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)vendor\hashlink\src;$(ProjectDir)vendor\hashlink\include\pcre;$(ProjectDir)vendor\hashlink\include\libuv\include;$(ProjectDir)vendor\hashlink\include\libuv\src;$(ProjectDir)vendor\hashlink\include\mbedtls\include;$(ProjectDir)vendor\hashlink\libs\ssl;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)vendor\hashlink\src;$(ProjectDir)vendor\hashlink\include\libuv\include;$(ProjectDir)vendor\hashlink\include\libuv\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <TreatWarningAsError>false</TreatWarningAsError>
-      <DisableSpecificWarnings>4244;4267;4456;4459;4127;4100;4201;4706;4996;4477;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4244;4267;4456;4459;4127;4100;4201;4706;4996;4477;4668;4703;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(SolutionDir)vendor\hashlink\x64\Release\libhl.lib;ws2_32.lib;winmm.lib;user32.lib;psapi.lib;iphlpapi.lib;userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <Lib>
-      <AdditionalDependencies>ws2_32.lib;advapi32.lib;psapi.lib;user32.lib;iphlpapi.lib;userenv.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="include\hlffi.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- HLFFI wrapper code (only) - HashLink loader files must be compiled into application -->
-    <ClCompile Include="src\hlffi_core.c" />
-    <ClCompile Include="src\hlffi_events.c" />
-    <ClCompile Include="src\hlffi_integration.c" />
-    <ClCompile Include="src\hlffi_lifecycle.c" />
-    <ClCompile Include="src\hlffi_reload.c" />
-    <ClCompile Include="src\hlffi_threading.c" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- HashLink loader sources (must be compiled into application, not in hlffi.lib) -->
-    <None Include="vendor\hashlink\src\code.c" />
-    <None Include="vendor\hashlink\src\module.c" />
-    <None Include="vendor\hashlink\src\jit.c" />
-    <None Include="vendor\hashlink\src\debugger.c" />
-    <None Include="vendor\hashlink\src\profile.c" />
+    <!-- UV plugin wrapper -->
+    <ClCompile Include="vendor\hashlink\libs\uv\uv.c" />
+
+    <!-- libuv sources -->
+    <ClCompile Include="vendor\hashlink\include\libuv\src\fs-poll.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\inet.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\threadpool.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\uv-common.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\version.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\async.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\core.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\dl.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\error.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\fs-event.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\fs.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\getaddrinfo.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\getnameinfo.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\handle.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\loop-watcher.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\pipe.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\poll.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\process-stdio.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\process.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\req.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\signal.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\snprintf.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\stream.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\tcp.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\thread.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\timer.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\tty.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\udp.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\util.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\winapi.c" />
+    <ClCompile Include="vendor\hashlink\include\libuv\src\win\winsock.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

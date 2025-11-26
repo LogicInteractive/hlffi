@@ -31,7 +31,7 @@ hlffi_error_code hlffi_set_integration_mode(hlffi_vm* vm, hlffi_integration_mode
     /* Note: vm->integration_mode = mode would require exposing the struct */
     /* For now, just validate the mode */
 
-    return HLFFI_ERROR_NONE;
+    return HLFFI_OK;
 }
 
 hlffi_integration_mode hlffi_get_integration_mode(hlffi_vm* vm) {
@@ -52,7 +52,7 @@ hlffi_error_code hlffi_update(hlffi_vm* vm, float delta_time) {
 
     (void)delta_time; /* Unused for now */
 
-    return HLFFI_ERROR_NONE;
+    return HLFFI_OK;
 }
 
 bool hlffi_has_pending_work(hlffi_vm* vm) {
@@ -84,7 +84,7 @@ hlffi_error_code hlffi_thread_stop(hlffi_vm* vm) {
     return HLFFI_ERROR_NOT_IMPLEMENTED;
 }
 
-hlffi_error_code hlffi_thread_call_sync(hlffi_vm* vm, hlffi_callback callback, void* userdata) {
+hlffi_error_code hlffi_thread_call_sync(hlffi_vm* vm, hlffi_thread_func callback, void* userdata) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
     if (!callback) return HLFFI_ERROR_INVALID_ARGUMENT;
 
@@ -95,8 +95,8 @@ hlffi_error_code hlffi_thread_call_sync(hlffi_vm* vm, hlffi_callback callback, v
     return HLFFI_ERROR_NOT_IMPLEMENTED;
 }
 
-hlffi_error_code hlffi_thread_call_async(hlffi_vm* vm, hlffi_callback callback,
-                                          hlffi_completion_callback on_complete, void* userdata) {
+hlffi_error_code hlffi_thread_call_async(hlffi_vm* vm, hlffi_thread_func callback,
+                                          hlffi_thread_async_callback on_complete, void* userdata) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
     if (!callback) return HLFFI_ERROR_INVALID_ARGUMENT;
 
@@ -110,39 +110,23 @@ hlffi_error_code hlffi_thread_call_async(hlffi_vm* vm, hlffi_callback callback,
 
 /* ========== WORKER THREAD HELPERS ========== */
 
-hlffi_error_code hlffi_worker_register(hlffi_vm* vm) {
-    if (!vm) return HLFFI_ERROR_NULL_VM;
-
+void hlffi_worker_register(void) {
     /* TODO: Register worker thread with HashLink GC
      * Will call hl_register_thread() for the calling thread */
-
-    return HLFFI_ERROR_NOT_IMPLEMENTED;
 }
 
-hlffi_error_code hlffi_worker_unregister(hlffi_vm* vm) {
-    if (!vm) return HLFFI_ERROR_NULL_VM;
-
+void hlffi_worker_unregister(void) {
     /* TODO: Unregister worker thread
      * Will call hl_unregister_thread() for the calling thread */
-
-    return HLFFI_ERROR_NOT_IMPLEMENTED;
 }
 
 /* ========== BLOCKING OPERATION HELPERS ========== */
 
-hlffi_error_code hlffi_blocking_begin(hlffi_vm* vm) {
-    if (!vm) return HLFFI_ERROR_NULL_VM;
-
+void hlffi_blocking_begin(void) {
     /* TODO: Mark beginning of blocking operation
      * Allows GC to know this thread may block */
-
-    return HLFFI_ERROR_NOT_IMPLEMENTED;
 }
 
-hlffi_error_code hlffi_blocking_end(hlffi_vm* vm) {
-    if (!vm) return HLFFI_ERROR_NULL_VM;
-
+void hlffi_blocking_end(void) {
     /* TODO: Mark end of blocking operation */
-
-    return HLFFI_ERROR_NOT_IMPLEMENTED;
 }
