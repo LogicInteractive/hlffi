@@ -1172,6 +1172,37 @@ bool hlffi_is_instance_of(hlffi_value* obj, const char* class_name);
 /* ========== PHASE 6: CALLBACKS & EXCEPTIONS ========== */
 
 /**
+ * Callback argument/return type descriptors for typed callback registration.
+ *
+ * @warning EXPERIMENTAL - NOT RECOMMENDED FOR PRODUCTION USE
+ *
+ * Typed callbacks (hlffi_register_callback_typed) have a fundamental limitation:
+ * The wrapper functions expect vdynamic* pointers for all arguments, but HashLink
+ * passes primitive types (Int/Float/Bool) as raw values when using typed closures.
+ * This causes crashes when invoking callbacks with primitive arguments.
+ *
+ * For production use, always use hlffi_register_callback() with Dynamic types in Haxe:
+ *
+ * Example (WORKING):
+ *   // Haxe:
+ *   public static var onMessage:Dynamic = null;  // Use Dynamic!
+ *
+ *   // C:
+ *   hlffi_register_callback(vm, "onMessage", my_callback, 1);
+ *
+ * The typed API is provided for experimentation but requires significant refactoring
+ * of wrapper functions to support primitive type signatures.
+ */
+typedef enum {
+    HLFFI_ARG_VOID = 0,     /**< Void (no return value) */
+    HLFFI_ARG_INT,          /**< Int (i32) */
+    HLFFI_ARG_FLOAT,        /**< Float (f64) */
+    HLFFI_ARG_BOOL,         /**< Bool */
+    HLFFI_ARG_STRING,       /**< String (bytes/UTF-16) */
+    HLFFI_ARG_DYNAMIC       /**< Dynamic (any type) */
+} hlffi_arg_type;
+
+/**
  * Native function signature for callbacks from Haxe.
  *
  * @param vm VM instance
@@ -1215,6 +1246,51 @@ typedef hlffi_value* (*hlffi_native_func)(hlffi_vm* vm, int argc, hlffi_value** 
 bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func func, int nargs);
 
 /**
+ * Register a typed C callback with specific argument and return types.
+ *
+ * @warning EXPERIMENTAL - DO NOT USE IN PRODUCTION
+ *
+ * This function has a critical limitation: wrapper functions expect vdynamic* for all
+ * arguments, but typed closures pass primitives (Int/Float/Bool) as raw values, causing
+ * crashes when callbacks with primitive args are invoked.
+ *
+ * CRASHES WHEN CALLED:
+ *   - Callbacks with Int, Float, or Bool arguments
+ *   - Works only for String arguments (which are vdynamic* pointers)
+ *
+ * USE hlffi_register_callback() with Dynamic types instead!
+ *
+ * @param vm VM instance
+ * @param name Callback name for retrieval
+ * @param func C function pointer
+ * @param nargs Number of arguments
+ * @param arg_types Array of argument type descriptors (length = nargs)
+ * @param return_type Return type descriptor
+ * @return true on success, false on error
+ *
+ * Example (DO NOT USE - shown for reference only):
+ *   // This will CRASH when invoked from Haxe:
+ *   hlffi_arg_type args[] = {HLFFI_ARG_INT, HLFFI_ARG_INT};
+ *   hlffi_register_callback_typed(vm, "onAdd", callback, 2, args, HLFFI_ARG_INT);
+ *
+ * Use this instead:
+ *   hlffi_register_callback(vm, "onAdd", callback, 2);  // Works!
+ *   // In Haxe: public static var onAdd:Dynamic = null;
+ *
+ * @note NEEDS IMPROVEMENT: To fix this, typed wrapper functions must be created
+ *       for all type combinations, or a dynamic wrapper generation system using
+ *       libffi or similar must be implemented. See TODO in src/hlffi_callbacks.c
+ */
+bool hlffi_register_callback_typed(
+    hlffi_vm* vm,
+    const char* name,
+    hlffi_native_func func,
+    int nargs,
+    const hlffi_arg_type* arg_types,
+    hlffi_arg_type return_type
+);
+
+/**
  * Get a registered callback as an hlffi_value.
  *
  * @param vm VM instance
@@ -1224,6 +1300,18 @@ bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func f
  * @note The returned value is GC-rooted and lives until VM destruction
  */
 hlffi_value* hlffi_get_callback(hlffi_vm* vm, const char* name);
+
+/**
+ * Unregister a callback and remove its GC root.
+ *
+ * @param vm VM instance
+ * @param name Callback name (from hlffi_register_callback)
+ * @return true if callback was found and removed, false otherwise
+ *
+ * @note After unregistering, the closure becomes eligible for GC.
+ *       Any Haxe references to this callback will become invalid.
+ */
+bool hlffi_unregister_callback(hlffi_vm* vm, const char* name);
 
 /**
  * Call result for exception-safe calls.

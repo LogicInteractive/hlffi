@@ -63,6 +63,15 @@ test_simple_reflection
 test_string_details
 test_static
 test_instance_basic
+test_callbacks
+test_exceptions
+test_gameloop
+test_timers
+test_static_extended
+test_hlffi_hello
+test_nonblocking
+test_minimal
+test_typed_minimal
 
 # Backup files
 *_old.h
