@@ -602,3 +602,326 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
 
     return wrapped;
 }
+
+/* ========== PHASE 5: ARRAY OPERATIONS ========== */
+
+hlffi_value* hlffi_array_new(hlffi_vm* vm, hl_type* element_type, int length) {
+    if (!vm) return NULL;
+    if (length < 0) {
+        set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array length must be >= 0");
+        return NULL;
+    }
+
+    /* Use default element type if not specified */
+    if (!element_type) {
+        element_type = &hlt_dyn;  /* Dynamic array by default */
+    }
+
+    HLFFI_UPDATE_STACK_TOP();
+
+    /* Allocate array */
+    varray* arr = hl_alloc_array(element_type, length);
+    if (!arr) {
+        set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate array");
+        return NULL;
+    }
+
+    /* Initialize all elements to null/zero */
+    if (element_type->kind == HDYN || element_type->kind == HOBJ ||
+        element_type->kind == HBYTES || element_type->kind == HFUN) {
+        /* Pointer types - initialize to NULL */
+        vdynamic** data = (vdynamic**)hl_aptr(arr, vdynamic*);
+        for (int i = 0; i < length; i++) {
+            data[i] = NULL;
+        }
+    } else {
+        /* Value types - zero out */
+        void* data = hl_aptr(arr, void);
+        int elem_size = hl_type_size(element_type);
+        memset(data, 0, length * elem_size);
+    }
+
+    /* Wrap in hlffi_value */
+    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
+    if (!wrapped) return NULL;
+    wrapped->hl_value = (vdynamic*)arr;
+    wrapped->is_rooted = false;
+
+    return wrapped;
+}
+
+int hlffi_array_length(hlffi_value* arr) {
+    if (!arr || !arr->hl_value) return -1;
+
+    vdynamic* val = arr->hl_value;
+
+    /* Debug: print actual type */
+    printf("DEBUG array_length: type kind = %d (HARRAY=%d, HDYN=%d)\n", val->t->kind, HARRAY, HDYN);
+    fflush(stdout);
+
+    /* Arrays can be wrapped in dynamic values */
+    if (val->t->kind == HDYN && val->v.ptr) {
+        /* Unwrap dynamic */
+        val = (vdynamic*)val->v.ptr;
+        printf("DEBUG array_length: after unwrap, type kind = %d\n", val->t->kind);
+        fflush(stdout);
+    }
+
+    /* Check if this is actually an array */
+    /* Note: Haxe Arrays can be HOBJ (11) or HARRAY (12) depending on context */
+    if (val->t->kind == HOBJ) {
+        /* For objects, check if it's a Haxe Array by looking at type name */
+        if (val->t->obj && val->t->obj->name) {
+            char type_name[128];
+            utostr(type_name, sizeof(type_name), val->t->obj->name);
+            printf("DEBUG array_length: HOBJ type name = '%s'\n", type_name);
+            fflush(stdout);
+
+            /* Check if this is a HashLink Array type (e.g., "hl.types.ArrayBytes_Int") */
+            if (strncmp(type_name, "hl.types.Array", 14) == 0) {
+                /* This is a Haxe Array object with fields: bytes (data) and size (length) */
+                /* Access the 'size' field using hl_dyn_geti */
+                int hashed_size = hl_hash_utf8("size");
+                int length = hl_dyn_geti(val, hashed_size, &hlt_i32);
+                printf("DEBUG array_length: got size from field = %d\n", length);
+                fflush(stdout);
+                return length;
+            }
+        }
+        printf("DEBUG array_length: HOBJ is not an Array\n");
+        return -1;
+    } else if (val->t->kind == HARRAY) {
+        /* Direct varray */
+        varray* array = (varray*)val;
+        printf("DEBUG array_length: HARRAY, size = %d\n", array->size);
+        fflush(stdout);
+        return array->size;
+    } else {
+        printf("DEBUG array_length: rejecting type kind %d\n", val->t->kind);
+        return -1;
+    }
+}
+
+hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index) {
+    if (!vm || !arr || !arr->hl_value) return NULL;
+
+    vdynamic* val = arr->hl_value;
+
+    /* Arrays can be wrapped in dynamic values */
+    if (val->t->kind == HDYN && val->v.ptr) {
+        val = (vdynamic*)val->v.ptr;
+    }
+
+    varray* array = NULL;
+
+    /* Handle both HARRAY (raw varray) and HOBJ (Haxe Array object) */
+    if (val->t->kind == HARRAY) {
+        array = (varray*)val;
+    } else if (val->t->kind == HOBJ) {
+        /* Check if this is a Haxe Array object */
+        if (val->t->obj && val->t->obj->name) {
+            char type_name[128];
+            utostr(type_name, sizeof(type_name), val->t->obj->name);
+
+            if (strncmp(type_name, "hl.types.Array", 14) == 0) {
+                /* Haxe Array objects: fields are [bytes, size] */
+                /* Access fields directly as object field data */
+                vobj* obj = (vobj*)val;
+                void** fields = (void**)(obj + 1);  /* Fields start after type pointer */
+
+                /* Note: Based on field names, field[0] = bytes, field[1] = size */
+                /* But actual memory layout is: field[0] = size (int), field[1] = bytes (varray*) */
+                int size = (int)(size_t)fields[0];  /* size is stored directly as int */
+                varray* bytes_array = (varray*)fields[1];
+
+                printf("DEBUG array_get: bytes_array = %p, size from field[0] = %d\n", (void*)bytes_array, size);
+                fflush(stdout);
+
+                if (bytes_array && index >= 0 && index < size) {
+                    /* Infer element type from type name */
+                    if (strstr(type_name, "_Int")) {
+                        /* Array<Int> - bytes_array might be varray* or direct data pointer */
+                        /* Try direct cast first */
+                        int* data = (int*)bytes_array;
+                        printf("DEBUG array_get: direct cast: array[%d] = %d\n", index, data[index]);
+
+                        /* Try as varray */
+                        varray* varr = (varray*)bytes_array;
+                        if (varr->t && varr->t->kind == HARRAY) {
+                            int* vdata = (int*)hl_aptr(varr, int);
+                            printf("DEBUG array_get: as varray: array[%d] = %d\n", index, vdata[index]);
+                            fflush(stdout);
+                            return hlffi_value_int(vm, vdata[index]);
+                        }
+
+                        fflush(stdout);
+                        return hlffi_value_int(vm, data[index]);
+                    }
+                    /* TODO: Add support for other array types (Float, String, etc.) */
+                }
+                fflush(stdout);
+                set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Cannot access array element");
+                return NULL;
+            }
+        }
+    }
+
+    if (!array) {
+        set_error(vm, HLFFI_ERROR_TYPE_MISMATCH, "Value is not an array");
+        return NULL;
+    }
+
+    /* Bounds check */
+    if (index < 0 || index >= array->size) {
+        set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array index out of bounds");
+        return NULL;
+    }
+
+    hl_type* elem_type = array->at;
+
+    /* Get element based on type */
+    if (elem_type->kind == HI32) {
+        int* data = (int*)hl_aptr(array, int);
+        return hlffi_value_int(vm, data[index]);
+    } else if (elem_type->kind == HF64) {
+        double* data = (double*)hl_aptr(array, double);
+        return hlffi_value_float(vm, data[index]);
+    } else if (elem_type->kind == HBOOL) {
+        bool* data = (bool*)hl_aptr(array, bool);
+        return hlffi_value_bool(vm, data[index]);
+    } else {
+        /* Pointer types (dynamic, object, string, etc.) */
+        vdynamic** data = (vdynamic**)hl_aptr(array, vdynamic*);
+        vdynamic* elem = data[index];
+
+        if (!elem) {
+            return hlffi_value_null(vm);
+        }
+
+        /* Wrap the element */
+        hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
+        if (!wrapped) return NULL;
+        wrapped->hl_value = elem;
+        wrapped->is_rooted = false;
+        return wrapped;
+    }
+}
+
+bool hlffi_array_set(hlffi_vm* vm, hlffi_value* arr, int index, hlffi_value* value) {
+    if (!vm || !arr || !arr->hl_value) return false;
+
+    vdynamic* val = arr->hl_value;
+
+    /* Arrays can be wrapped in dynamic values */
+    if (val->t->kind == HDYN && val->v.ptr) {
+        val = (vdynamic*)val->v.ptr;
+    }
+
+    varray* array = NULL;
+
+    /* Handle both HARRAY (raw varray) and HOBJ (Haxe Array object) */
+    if (val->t->kind == HARRAY) {
+        array = (varray*)val;
+    } else if (val->t->kind == HOBJ) {
+        /* Check if this is a Haxe Array object */
+        if (val->t->obj && val->t->obj->name) {
+            char type_name[128];
+            utostr(type_name, sizeof(type_name), val->t->obj->name);
+
+            if (strncmp(type_name, "hl.types.Array", 14) == 0) {
+                /* Extract the 'bytes' field which contains the varray */
+                int hashed_bytes = hl_hash_utf8("bytes");
+                array = (varray*)hl_dyn_getp(val, hashed_bytes, &hlt_bytes);
+            }
+        }
+    }
+
+    if (!array) {
+        set_error(vm, HLFFI_ERROR_TYPE_MISMATCH, "Value is not an array");
+        return false;
+    }
+
+    /* Bounds check */
+    if (index < 0 || index >= array->size) {
+        set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array index out of bounds");
+        return false;
+    }
+
+    hl_type* elem_type = array->at;
+
+    /* Set element based on type */
+    if (elem_type->kind == HI32) {
+        int* data = (int*)hl_aptr(array, int);
+        data[index] = hlffi_value_as_int(value, 0);
+    } else if (elem_type->kind == HF64) {
+        double* data = (double*)hl_aptr(array, double);
+        data[index] = hlffi_value_as_float(value, 0.0);
+    } else if (elem_type->kind == HBOOL) {
+        bool* data = (bool*)hl_aptr(array, bool);
+        data[index] = hlffi_value_as_bool(value, false);
+    } else {
+        /* Pointer types */
+        vdynamic** data = (vdynamic**)hl_aptr(array, vdynamic*);
+        data[index] = value ? value->hl_value : NULL;
+    }
+
+    return true;
+}
+
+bool hlffi_array_push(hlffi_vm* vm, hlffi_value* arr, hlffi_value* value) {
+    /* Note: HashLink arrays are fixed-size, so push requires creating a new array
+     * This is a convenience function that creates a new array with size+1 and copies data */
+    if (!vm || !arr || !arr->hl_value) return false;
+
+    vdynamic* val = arr->hl_value;
+
+    /* Arrays can be wrapped in dynamic values */
+    if (val->t->kind == HDYN && val->v.ptr) {
+        val = (vdynamic*)val->v.ptr;
+    }
+
+    /* Check if this is actually an array (HARRAY or Haxe Array object) */
+    if (val->t->kind != HARRAY && val->t->kind != HOBJ) {
+        set_error(vm, HLFFI_ERROR_TYPE_MISMATCH, "Value is not an array");
+        return false;
+    }
+
+    varray* old_array = (varray*)val;
+    int old_size = old_array->size;
+    hl_type* elem_type = old_array->at;
+
+    HLFFI_UPDATE_STACK_TOP();
+
+    /* Allocate new array with size+1 */
+    varray* new_array = hl_alloc_array(elem_type, old_size + 1);
+    if (!new_array) {
+        set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate new array");
+        return false;
+    }
+
+    /* Copy old data */
+    int elem_size = hl_type_size(elem_type);
+    void* old_data = hl_aptr(old_array, void);
+    void* new_data = hl_aptr(new_array, void);
+    memcpy(new_data, old_data, old_size * elem_size);
+
+    /* Add new element at the end */
+    if (elem_type->kind == HI32) {
+        int* data = (int*)new_data;
+        data[old_size] = hlffi_value_as_int(value, 0);
+    } else if (elem_type->kind == HF64) {
+        double* data = (double*)new_data;
+        data[old_size] = hlffi_value_as_float(value, 0.0);
+    } else if (elem_type->kind == HBOOL) {
+        bool* data = (bool*)new_data;
+        data[old_size] = hlffi_value_as_bool(value, false);
+    } else {
+        vdynamic** data = (vdynamic**)new_data;
+        data[old_size] = value ? value->hl_value : NULL;
+    }
+
+    /* Replace old array with new one */
+    arr->hl_value = (vdynamic*)new_array;
+
+    return true;
+}

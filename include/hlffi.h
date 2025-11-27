@@ -49,6 +49,12 @@ typedef struct hlffi_vm hlffi_vm;
 typedef struct hlffi_type hlffi_type;
 
 /**
+ * Forward declaration of HashLink's hl_type.
+ * Used for advanced operations like array creation with specific element types.
+ */
+typedef struct hl_type hl_type;
+
+/**
  * Opaque value handle - TEMPORARY CONVERSION WRAPPER.
  *
  * DESIGN INTENT: hlffi_value is for CONVERSION and PASSING data between
@@ -910,6 +916,85 @@ char* hlffi_value_as_string(hlffi_value* value);
  * @return true if value is null or NULL pointer
  */
 bool hlffi_value_is_null(hlffi_value* value);
+
+/* ========== PHASE 5: ARRAY OPERATIONS ========== */
+
+/**
+ * Create a new array.
+ *
+ * @param vm VM instance
+ * @param element_type Type of array elements (use &hlt_i32, &hlt_f64, &hlt_dyn, etc.)
+ *                     Pass NULL for dynamic arrays
+ * @param length Initial array length
+ * @return New array value, or NULL on error
+ *
+ * Example:
+ *   // Create int array of length 10
+ *   hlffi_value* arr = hlffi_array_new(vm, &hlt_i32, 10);
+ *
+ *   // Create dynamic array of length 5
+ *   hlffi_value* arr = hlffi_array_new(vm, NULL, 5);
+ */
+hlffi_value* hlffi_array_new(hlffi_vm* vm, hl_type* element_type, int length);
+
+/**
+ * Get array length.
+ *
+ * @param arr Array value
+ * @return Array length, or -1 if not an array
+ */
+int hlffi_array_length(hlffi_value* arr);
+
+/**
+ * Get array element at index.
+ *
+ * @param vm VM instance
+ * @param arr Array value
+ * @param index Element index (0-based)
+ * @return Element value, or NULL on error/out of bounds
+ *
+ * @note Returned value must be freed with hlffi_value_free()
+ *
+ * Example:
+ *   hlffi_value* elem = hlffi_array_get(vm, arr, 0);
+ *   int value = hlffi_value_as_int(elem, 0);
+ *   hlffi_value_free(elem);
+ */
+hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index);
+
+/**
+ * Set array element at index.
+ *
+ * @param vm VM instance
+ * @param arr Array value
+ * @param index Element index (0-based)
+ * @param value New value for element
+ * @return true on success, false on error/out of bounds
+ *
+ * Example:
+ *   hlffi_value* val = hlffi_value_int(vm, 42);
+ *   hlffi_array_set(vm, arr, 0, val);
+ *   hlffi_value_free(val);
+ */
+bool hlffi_array_set(hlffi_vm* vm, hlffi_value* arr, int index, hlffi_value* value);
+
+/**
+ * Append element to end of array.
+ *
+ * @param vm VM instance
+ * @param arr Array value (will be modified to point to new larger array)
+ * @param value Value to append
+ * @return true on success, false on error
+ *
+ * @warning This creates a new array and copies all elements! O(n) operation.
+ *          For building large arrays, preallocate with hlffi_array_new() and use hlffi_array_set()
+ *
+ * Example:
+ *   hlffi_value* val = hlffi_value_int(vm, 99);
+ *   hlffi_array_push(vm, arr, val);
+ *   hlffi_value_free(val);
+ */
+bool hlffi_array_push(hlffi_vm* vm, hlffi_value* arr, hlffi_value* value);
 
 /**
  * Get static field value.
