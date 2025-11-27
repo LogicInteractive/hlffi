@@ -1276,6 +1276,10 @@ bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func f
  * Use this instead:
  *   hlffi_register_callback(vm, "onAdd", callback, 2);  // Works!
  *   // In Haxe: public static var onAdd:Dynamic = null;
+ *
+ * @note NEEDS IMPROVEMENT: To fix this, typed wrapper functions must be created
+ *       for all type combinations, or a dynamic wrapper generation system using
+ *       libffi or similar must be implemented. See TODO in src/hlffi_callbacks.c
  */
 bool hlffi_register_callback_typed(
     hlffi_vm* vm,

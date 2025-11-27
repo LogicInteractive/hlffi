@@ -340,6 +340,23 @@ bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func f
     return true;
 }
 
+/* TODO: Fix typed callbacks to work with primitive types
+ *
+ * Current limitation: Wrapper functions expect vdynamic* for all arguments,
+ * but typed closures pass primitives (Int/Float/Bool) as raw values.
+ * This causes crashes when callbacks with primitive arguments are invoked.
+ *
+ * Required fix: Create typed wrapper functions for all type combinations:
+ *   - wrapper_ii_i for (Int,Int)->Int
+ *   - wrapper_fff_f for (Float,Float,Float)->Float
+ *   - wrapper_sis_s for (String,Int,String)->String
+ *   - etc.
+ *
+ * Alternatively: Generate wrappers dynamically based on type signature,
+ * or use libffi/similar to handle arbitrary function signatures.
+ *
+ * Until fixed, use hlffi_register_callback() with Dynamic types in Haxe.
+ */
 bool hlffi_register_callback_typed(
     hlffi_vm* vm,
     const char* name,
