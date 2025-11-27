@@ -273,6 +273,59 @@ const char* hlffi_get_error(hlffi_vm* vm);
  */
 const char* hlffi_get_error_string(hlffi_error_code code);
 
+/* ========== GC STACK SCANNING FIX ========== */
+
+/**
+ * Update the GC stack top to current stack position.
+ *
+ * BACKGROUND:
+ * HashLink's GC scans the C call stack to find object references. When embedding
+ * HashLink, the initial stack_top pointer may point to heap memory instead of
+ * the actual stack, causing incorrect GC behavior (crashes in Debug, corruption
+ * in Release). See docs/GC_STACK_SCANNING.md for full details.
+ *
+ * CURRENT STATUS:
+ * HLFFI now handles this internally - all HLFFI functions that allocate GC memory
+ * automatically update stack_top. You typically don't need to call this manually.
+ *
+ * WHEN TO USE THIS:
+ * Only if you encounter GC-related crashes and the internal fix is insufficient
+ * (e.g., complex threading scenarios, or calling HashLink directly without HLFFI).
+ *
+ * @param stack_marker Address of a local variable on the call stack
+ *
+ * Usage:
+ *   void my_update_loop(hlffi_vm* vm) {
+ *       int stack_marker;
+ *       hlffi_update_stack_top(&stack_marker);
+ *       // ... now safe to call hlffi functions in loop ...
+ *   }
+ *
+ * @note The stack_marker MUST be a local variable (on the stack), not heap-allocated
+ * @note See: https://github.com/HaxeFoundation/hashlink/issues/752
+ */
+void hlffi_update_stack_top(void* stack_marker);
+
+/**
+ * Macro to update stack top using current stack frame.
+ * Automatically creates a local variable and updates stack_top.
+ *
+ * CURRENT STATUS:
+ * Not normally needed - HLFFI handles this internally. Provided as a fallback
+ * if you encounter GC issues in edge cases.
+ *
+ * Usage:
+ *   void my_update_loop(hlffi_vm* vm) {
+ *       HLFFI_ENTER_SCOPE();  // Must be early in the function
+ *       // ... now safe to call hlffi functions in loop ...
+ *   }
+ */
+#define HLFFI_ENTER_SCOPE() \
+    do { \
+        int _hlffi_stack_marker; \
+        hlffi_update_stack_top(&_hlffi_stack_marker); \
+    } while(0)
+
 /* ========== INTEGRATION MODE SETUP ========== */
 
 /**
@@ -752,6 +805,16 @@ hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str);
  * @return Boxed null value
  */
 hlffi_value* hlffi_value_null(hlffi_vm* vm);
+
+/**
+ * Free a value handle.
+ *
+ * This removes the GC root and frees the wrapper struct.
+ * IMPORTANT: Always use this function instead of free() on hlffi_value pointers.
+ *
+ * @param value Value handle to free (can be NULL)
+ */
+void hlffi_value_free(hlffi_value* value);
 
 /**
  * Extract integer from value.

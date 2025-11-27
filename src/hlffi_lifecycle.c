@@ -328,3 +328,16 @@ const char* hlffi_get_error(hlffi_vm* vm) {
     if (!vm) return "NULL VM";
     return vm->error_msg[0] ? vm->error_msg : "No error";
 }
+
+void hlffi_update_stack_top(void* stack_marker) {
+    /* Get current thread info */
+    hl_thread_info* t = hl_get_thread();
+    if (!t) return;  /* Thread not registered */
+
+    /* Update stack_top to point to the caller's stack frame.
+     * This is critical for proper GC root scanning.
+     * The GC scans from stack_top down to the current stack pointer.
+     * If stack_top points to heap memory, GC scanning is incorrect.
+     */
+    t->stack_top = stack_marker;
+}

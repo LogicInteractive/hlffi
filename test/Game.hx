@@ -254,4 +254,53 @@ class Game {
     public static function getIsRunning():Bool {
         return isRunning;
     }
+
+    // === Game Loop / Timer Test Methods ===
+
+    public static var frameCount:Int = 0;
+    public static var totalTime:Float = 0.0;
+    public static var lastDelta:Float = 0.0;
+
+    public static function update(deltaTime:Float):Void {
+        if (!isRunning) return;
+
+        frameCount++;
+        totalTime += deltaTime;
+        lastDelta = deltaTime;
+
+        // Trace each frame to verify Haxe code is executing
+        trace('Frame $frameCount: dt=${Math.round(deltaTime * 1000)}ms, total=${Math.round(totalTime * 1000)}ms');
+
+        // Every 10 frames, add points based on multiplier
+        if (frameCount % 10 == 0) {
+            var points = Math.round(10 * multiplier);
+            score += points;
+            trace('  +$points points! Score: $score');
+        }
+    }
+
+    public static function getFrameCount():Int {
+        return frameCount;
+    }
+
+    public static function getTotalTime():Float {
+        return totalTime;
+    }
+
+    public static function getLastDelta():Float {
+        return lastDelta;
+    }
+
+    public static function getStatus():String {
+        return 'Frame: $frameCount, Time: ${Math.round(totalTime * 1000)}ms, Score: $score';
+    }
+
+    public static function resetGameLoop():Void {
+        frameCount = 0;
+        totalTime = 0.0;
+        lastDelta = 0.0;
+        score = 0;
+        isRunning = true;
+        multiplier = 1.0;
+    }
 }

@@ -10,6 +10,45 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* ========== INTERNAL GC STACK FIX ========== */
+
+/**
+ * Internal macro to update GC stack_top before any GC allocation.
+ * This ensures proper stack scanning when HLFFI is embedded.
+ *
+ * THE PROBLEM:
+ * When hl_register_thread() was called in hlffi_init(), we passed a pointer
+ * to heap memory (vm->stack_context). The GC uses stack_top to scan the call
+ * stack for roots, but heap memory isn't the stack. This caused:
+ *   - Debug builds: allocator.c(369) : FATAL ERROR : assert
+ *   - Release builds: Random crashes, memory corruption
+ *
+ * THE FIX:
+ * Update stack_top to point to the current stack frame before any GC allocation.
+ * This way the GC scans the actual call stack where vdynamic* pointers live.
+ *
+ * This is called automatically by HLFFI functions, so users don't need
+ * to call HLFFI_ENTER_SCOPE() manually.
+ *
+ * TROUBLESHOOTING:
+ * If you still see GC crashes after this fix:
+ * 1. Ensure you're on the main thread (same thread that called hlffi_init)
+ * 2. For worker threads, call hlffi_worker_register() first
+ * 3. Try adding HLFFI_ENTER_SCOPE() at the top of your function as a fallback
+ * 4. Check if you're calling HashLink functions directly (bypass this fix)
+ *
+ * See: docs/GC_STACK_SCANNING.md
+ * See: https://github.com/HaxeFoundation/hashlink/issues/752
+ */
+#define HLFFI_UPDATE_STACK_TOP() \
+    do { \
+        hl_thread_info* _t = hl_get_thread(); \
+        if (_t) { \
+            int _stack_marker; \
+            _t->stack_top = &_stack_marker; \
+        } \
+    } while(0)
+
 /* HashLink internal function - declared as extern to access it
  * Defined as static in vendor/hashlink/src/std/obj.c:64
  * But exists in compiled libhl.a and can be accessed via extern declaration
@@ -33,9 +72,10 @@ struct hlffi_vm {
     const char* loaded_file;
 };
 
-/* hlffi_value wraps a HashLink vdynamic* */
+/* hlffi_value wraps a HashLink vdynamic* with GC root protection */
 struct hlffi_value {
     vdynamic* hl_value;
+    bool is_rooted;  /* Track if we added a GC root */
 };
 
 /* Helper: Set error */
@@ -55,12 +95,15 @@ static void set_error(hlffi_vm* vm, hlffi_error_code code, const char* msg) {
 hlffi_value* hlffi_value_int(hlffi_vm* vm, int value) {
     if (!vm) return NULL;
 
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
+
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
 
     /* Box the integer */
     wrapped->hl_value = hl_alloc_dynamic(&hlt_i32);
     wrapped->hl_value->v.i = value;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -68,12 +111,15 @@ hlffi_value* hlffi_value_int(hlffi_vm* vm, int value) {
 hlffi_value* hlffi_value_float(hlffi_vm* vm, double value) {
     if (!vm) return NULL;
 
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
+
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
 
     /* Box the float */
     wrapped->hl_value = hl_alloc_dynamic(&hlt_f64);
     wrapped->hl_value->v.d = value;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -81,12 +127,15 @@ hlffi_value* hlffi_value_float(hlffi_vm* vm, double value) {
 hlffi_value* hlffi_value_bool(hlffi_vm* vm, bool value) {
     if (!vm) return NULL;
 
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
+
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
 
     /* Box the boolean */
     wrapped->hl_value = hl_alloc_dynamic(&hlt_bool);
     wrapped->hl_value->v.b = value;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -94,6 +143,8 @@ hlffi_value* hlffi_value_bool(hlffi_vm* vm, bool value) {
 hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str) {
     if (!vm) return NULL;
     if (!str) return hlffi_value_null(vm);
+
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
 
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
@@ -124,6 +175,7 @@ hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str) {
     vstr->t = &hlt_bytes;
 
     wrapped->hl_value = (vdynamic*)vstr;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -135,8 +187,21 @@ hlffi_value* hlffi_value_null(hlffi_vm* vm) {
     if (!wrapped) return NULL;
 
     wrapped->hl_value = NULL;
+    wrapped->is_rooted = false;  /* NULL doesn't need rooting */
 
     return wrapped;
+}
+
+void hlffi_value_free(hlffi_value* value) {
+    if (!value) return;
+
+    /* Remove GC root if we added one */
+    if (value->is_rooted && value->hl_value) {
+        hl_remove_root(&value->hl_value);
+    }
+
+    /* Free the wrapper struct */
+    free(value);
 }
 
 /* ========== VALUE UNBOXING ========== */
@@ -243,6 +308,8 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Class name or field name is NULL");
         return NULL;
     }
+
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
 
     /* Hash the class name (NO $ prefix for global_value access) */
     int class_hash = hl_hash_utf8(class_name);
@@ -357,6 +424,7 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
             break;
         }
     }
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -371,6 +439,8 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Class name, field name, or value is NULL");
         return HLFFI_ERROR_INVALID_ARGUMENT;
     }
+
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
 
     /* Hash the class name (NO $ prefix for global_value access) */
     int class_hash = hl_hash_utf8(class_name);
@@ -487,6 +557,8 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Class name or method name is NULL");
         return NULL;
     }
+
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
 
     /* Hash the class name (NO $ prefix - use regular class for global_value access) */
     int class_hash = hl_hash_utf8(class_name);
@@ -605,6 +677,7 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
     wrapped->hl_value = result;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
