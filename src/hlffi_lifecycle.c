@@ -4,53 +4,13 @@
  * Phase 1 implementation
  */
 
-#include "../include/hlffi.h"
-#include <hl.h>
-#include <hlmodule.h>
+#include "hlffi_internal.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
-/* Internal VM structure */
-struct hlffi_vm {
-    /* HashLink module and code */
-    hl_module* module;
-    hl_code* code;
-
-    /* Integration mode */
-    hlffi_integration_mode integration_mode;
-
-    /* Persistent context for stack_top (CRITICAL: must persist!) */
-    /* This is passed to hl_register_thread and MUST remain valid */
-    void* stack_context;
-
-    /* Error state */
-    char error_msg[512];
-    hlffi_error_code last_error;
-
-    /* Initialization flags */
-    bool hl_initialized;
-    bool thread_registered;
-    bool module_loaded;
-    bool entry_called;
-
-    /* Hot reload support */
-    bool hot_reload_enabled;
-    const char* loaded_file;
-};
-
-/* ========== HELPER FUNCTIONS ========== */
-
-static void set_error(hlffi_vm* vm, hlffi_error_code code, const char* msg) {
-    if (!vm) return;
-    vm->last_error = code;
-    if (msg) {
-        strncpy(vm->error_msg, msg, sizeof(vm->error_msg) - 1);
-        vm->error_msg[sizeof(vm->error_msg) - 1] = '\0';
-    } else {
-        vm->error_msg[0] = '\0';
-    }
-}
+/* Use hlffi_set_error from internal header, create local alias */
+#define set_error hlffi_set_error
 
 static hl_code* load_code_from_file(const char* path, char** error_msg) {
     FILE* f = fopen(path, "rb");

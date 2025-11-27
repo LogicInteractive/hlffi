@@ -4,14 +4,9 @@
  * Phase 1 implementation
  */
 
-#include "../include/hlffi.h"
-#include <hl.h>
-#include <hlmodule.h>
+#include "hlffi_internal.h"
 #include <stdlib.h>
 #include <string.h>
-
-/* External VM structure (defined in hlffi_lifecycle.c) */
-struct hlffi_vm;
 
 /* ========== INTEGRATION MODE MANAGEMENT ========== */
 
@@ -46,11 +41,19 @@ hlffi_integration_mode hlffi_get_integration_mode(hlffi_vm* vm) {
 hlffi_error_code hlffi_update(hlffi_vm* vm, float delta_time) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
 
-    /* TODO: Process event loops
-     * This will be implemented in hlffi_events.c
-     * For now, just return success */
+    /* Process both UV and Haxe event loops
+     * This processes:
+     * - UV async I/O, network, file system (libuv)
+     * - Haxe timers, MainLoop callbacks, thread messages (EventLoop)
+     */
+    hlffi_error_code result = hlffi_process_events(vm, HLFFI_EVENTLOOP_ALL);
+    if (result != HLFFI_OK) {
+        return result;
+    }
 
-    (void)delta_time; /* Unused for now */
+    /* delta_time is provided for user convenience but not used internally
+     * Host application can pass it to their own update methods */
+    (void)delta_time;
 
     return HLFFI_OK;
 }
@@ -58,11 +61,8 @@ hlffi_error_code hlffi_update(hlffi_vm* vm, float delta_time) {
 bool hlffi_has_pending_work(hlffi_vm* vm) {
     if (!vm) return false;
 
-    /* TODO: Check if event loops have pending work
-     * This will be implemented in hlffi_events.c
-     * For now, return false */
-
-    return false;
+    /* Check if either UV or Haxe event loops have pending work */
+    return hlffi_has_pending_events(vm, HLFFI_EVENTLOOP_ALL);
 }
 
 /* ========== THREADED MODE (Mode 2) ========== */
