@@ -1226,6 +1226,18 @@ bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func f
 hlffi_value* hlffi_get_callback(hlffi_vm* vm, const char* name);
 
 /**
+ * Unregister a callback and remove its GC root.
+ *
+ * @param vm VM instance
+ * @param name Callback name (from hlffi_register_callback)
+ * @return true if callback was found and removed, false otherwise
+ *
+ * @note After unregistering, the closure becomes eligible for GC.
+ *       Any Haxe references to this callback will become invalid.
+ */
+bool hlffi_unregister_callback(hlffi_vm* vm, const char* name);
+
+/**
  * Call result for exception-safe calls.
  */
 typedef enum {

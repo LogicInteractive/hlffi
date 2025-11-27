@@ -364,6 +364,41 @@ int main(int argc, char** argv) {
         }
     }
 
+    /* Test 13: Unregister callback */
+    {
+        /* Verify callback exists */
+        hlffi_value* cb = hlffi_get_callback(vm, "onMessage");
+        if (cb) {
+            hlffi_value_free(cb);
+
+            /* Unregister it */
+            if (hlffi_unregister_callback(vm, "onMessage")) {
+                /* Try to get it again - should be NULL */
+                hlffi_value* cb2 = hlffi_get_callback(vm, "onMessage");
+                if (cb2 == NULL) {
+                    TEST_PASS("Unregister callback");
+                } else {
+                    TEST_FAIL("Unregister callback (still exists after unregister)");
+                    hlffi_value_free(cb2);
+                }
+            } else {
+                TEST_FAIL("Unregister callback (unregister failed)");
+            }
+        } else {
+            TEST_FAIL("Unregister callback (callback not found)");
+        }
+    }
+
+    /* Test 14: Unregister non-existent callback returns false */
+    {
+        bool result = hlffi_unregister_callback(vm, "doesNotExist");
+        if (!result) {
+            TEST_PASS("Unregister non-existent callback returns false");
+        } else {
+            TEST_FAIL("Unregister non-existent callback returns false");
+        }
+    }
+
     /* Cleanup */
     hlffi_destroy(vm);
 

@@ -300,6 +300,42 @@ hlffi_value* hlffi_get_callback(hlffi_vm* vm, const char* name) {
     return NULL;
 }
 
+bool hlffi_unregister_callback(hlffi_vm* vm, const char* name) {
+    if (!vm || !name) return false;
+
+    /* Find callback entry */
+    for (int i = 0; i < vm->callback_count; i++) {
+        hlffi_callback_entry* entry = &vm->callbacks[i];
+        if (strcmp(entry->name, name) == 0) {
+            /* Remove GC root if it was rooted */
+            if (entry->is_rooted && entry->hl_closure) {
+                hl_remove_root(&entry->hl_closure);
+            }
+
+            /* Free the function type if it was dynamically allocated */
+            if (entry->hl_closure && entry->hl_closure->t) {
+                free_function_type(entry->hl_closure->t);
+            }
+
+            /* Clear the entry by shifting remaining callbacks down */
+            for (int j = i; j < vm->callback_count - 1; j++) {
+                vm->callbacks[j] = vm->callbacks[j + 1];
+            }
+
+            /* Clear the last entry */
+            memset(&vm->callbacks[vm->callback_count - 1], 0, sizeof(hlffi_callback_entry));
+
+            /* Decrement count */
+            vm->callback_count--;
+
+            return true;
+        }
+    }
+
+    set_error(vm, "Callback not found");
+    return false;
+}
+
 /* ========== EXCEPTION HANDLING (IMPLEMENTED) ========== */
 
 hlffi_call_result hlffi_try_call_static(
