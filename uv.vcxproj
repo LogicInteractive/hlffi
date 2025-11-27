@@ -71,7 +71,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(SolutionDir)vendor\hashlink\x64\Debug\libhl.lib;ws2_32.lib;winmm.lib;user32.lib;psapi.lib;iphlpapi.lib;userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(SolutionDir)x64\Debug\libhl.lib;ws2_32.lib;winmm.lib;user32.lib;psapi.lib;iphlpapi.lib;userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -94,7 +94,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(SolutionDir)vendor\hashlink\x64\Release\libhl.lib;ws2_32.lib;winmm.lib;user32.lib;psapi.lib;iphlpapi.lib;userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(SolutionDir)x64\Release\libhl.lib;ws2_32.lib;winmm.lib;user32.lib;psapi.lib;iphlpapi.lib;userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
