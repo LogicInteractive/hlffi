@@ -56,6 +56,12 @@ struct hlffi_vm {
     char exception_stack[2048];
 };
 
+/* hlffi_value structure (also defined in other source files) */
+struct hlffi_value {
+    vdynamic* hl_value;
+    bool is_rooted;  /* Track if we added a GC root */
+};
+
 /* ========== HELPER FUNCTIONS ========== */
 
 static void set_error(hlffi_vm* vm, const char* msg) {
@@ -130,78 +136,40 @@ static vdynamic* native_wrapper(void* user_data, vdynamic** args, int nargs) {
 
 /* ========== PUBLIC API ========== */
 
+/* ========== CALLBACKS (NOT IMPLEMENTED - Phase 6 Future Work) ========== */
+
+/*
+ * CALLBACKS ARE NOT YET IMPLEMENTED
+ *
+ * Implementing C→Haxe callbacks requires:
+ * 1. Dynamic hl_type creation for function signatures
+ * 2. vclosure allocation and setup
+ * 3. Native wrapper bridge with proper context passing
+ * 4. GC root management for closures
+ *
+ * This is complex and deferred to Phase 6b.
+ * Current priority: Exception handling (implemented below).
+ *
+ * Estimated implementation time: 3-4 hours
+ */
+
 bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func func, int nargs) {
-    if (!vm || !name || !func) {
-        set_error(vm, "Invalid arguments to hlffi_register_callback");
-        return false;
-    }
+    (void)name; (void)func; (void)nargs;  /* Suppress unused warnings */
 
-    if (vm->callback_count >= MAX_CALLBACKS) {
-        set_error(vm, "Maximum number of callbacks reached");
-        return false;
-    }
-
-    /* Find or create callback entry */
-    callback_entry* entry = NULL;
-    for (int i = 0; i < vm->callback_count; i++) {
-        if (strcmp(vm->callbacks[i].name, name) == 0) {
-            entry = &vm->callbacks[i];
-            break;
-        }
-    }
-
-    if (!entry) {
-        entry = &vm->callbacks[vm->callback_count++];
-        memset(entry, 0, sizeof(callback_entry));
-        strncpy(entry->name, name, sizeof(entry->name) - 1);
-    }
-
-    /* Store C function */
-    entry->c_func = func;
-    entry->nargs = nargs;
-
-    /* Create HashLink closure wrapping the C function */
-    /* TODO: Implement proper vclosure creation */
-    /* This is complex and requires:
-     * 1. Creating a hl_type for the function signature
-     * 2. Creating a vclosure pointing to native_wrapper
-     * 3. Setting up user_data to point to callback_entry
-     * 4. Adding GC root
-     */
-
-    entry->hl_closure = NULL;  /* TODO */
-    entry->is_rooted = false;
-
-    return true;
+    if (!vm) return false;
+    set_error(vm, "Callbacks not yet implemented - Phase 6 future work");
+    return false;
 }
 
 hlffi_value* hlffi_get_callback(hlffi_vm* vm, const char* name) {
-    if (!vm || !name) return NULL;
+    (void)name;  /* Suppress unused warning */
 
-    /* Find callback */
-    for (int i = 0; i < vm->callback_count; i++) {
-        if (strcmp(vm->callbacks[i].name, name) == 0) {
-            callback_entry* entry = &vm->callbacks[i];
-
-            if (!entry->hl_closure) {
-                set_error(vm, "Callback closure not created");
-                return NULL;
-            }
-
-            /* Wrap closure in hlffi_value */
-            hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
-            if (!wrapped) return NULL;
-
-            wrapped->hl_value = (vdynamic*)entry->hl_closure;
-            wrapped->is_rooted = true;  /* Callback is GC-rooted */
-
-            return wrapped;
-        }
-    }
-
-    set_error(vm, "Callback not found");
+    if (!vm) return NULL;
+    set_error(vm, "Callbacks not yet implemented - Phase 6 future work");
     return NULL;
 }
+
+/* ========== EXCEPTION HANDLING (IMPLEMENTED) ========== */
 
 hlffi_call_result hlffi_try_call_static(
     hlffi_vm* vm,
@@ -218,22 +186,48 @@ hlffi_call_result hlffi_try_call_static(
         return HLFFI_CALL_ERROR;
     }
 
-    /* Use existing hlffi_call_static but with exception handling */
-    /* The key is using hl_dyn_call_safe which sets isException flag */
+    /* Clear previous exception state */
+    vm->exception_msg[0] = '\0';
+    vm->exception_stack[0] = '\0';
 
-    /* TODO: This requires refactoring hlffi_call_static to expose the
-     * hl_dyn_call_safe call so we can check isException.
-     * For now, implement inline:
-     */
+    /* Call the normal hlffi_call_static */
+    /* The function already uses hl_dyn_call_safe internally */
+    hlffi_value* result = hlffi_call_static(vm, class_name, method_name, argc, argv);
 
-    /* Find class type */
-    /* Find method */
-    /* Call with hl_dyn_call_safe */
-    /* Check isException flag */
+    /* Check if an exception occurred by looking at the error code */
+    if (!result && vm->last_error == HLFFI_ERROR_EXCEPTION_THROWN) {
+        /* Exception was thrown */
+        /* Note: The actual exception object was returned by hl_dyn_call_safe,
+         * but hlffi_call_static currently doesn't store it.
+         * For now, we return the error message from the VM.
+         */
+        if (out_result) *out_result = NULL;
+        if (out_error) {
+            /* Store exception message */
+            const char* err_msg = hlffi_get_error(vm);
+            if (err_msg && err_msg[0]) {
+                strncpy(vm->exception_msg, err_msg, sizeof(vm->exception_msg) - 1);
+                vm->exception_msg[sizeof(vm->exception_msg) - 1] = '\0';
+                *out_error = vm->exception_msg;
+            } else {
+                *out_error = "Exception thrown (no message)";
+            }
+        }
+        return HLFFI_CALL_EXCEPTION;
+    } else if (!result) {
+        /* Regular error (not exception) */
+        if (out_result) *out_result = NULL;
+        if (out_error) {
+            const char* err_msg = hlffi_get_error(vm);
+            *out_error = err_msg ? err_msg : "Unknown error";
+        }
+        return HLFFI_CALL_ERROR;
+    }
 
-    if (out_result) *out_result = NULL;
-    if (out_error) *out_error = "Not yet implemented";
-    return HLFFI_CALL_ERROR;
+    /* Success */
+    if (out_result) *out_result = result;
+    if (out_error) *out_error = NULL;
+    return HLFFI_CALL_OK;
 }
 
 hlffi_call_result hlffi_try_call_method(
@@ -250,11 +244,24 @@ hlffi_call_result hlffi_try_call_method(
         return HLFFI_CALL_ERROR;
     }
 
-    /* TODO: Implement with exception handling */
+    /* Get VM from obj (we need to store it in hlffi_value) */
+    /* For now, we can't distinguish exceptions from errors without VM context */
+    /* This is a limitation - we need VM pointer in hlffi_value for proper exception handling */
 
-    if (out_result) *out_result = NULL;
-    if (out_error) *out_error = "Not yet implemented";
-    return HLFFI_CALL_ERROR;
+    /* Call the normal hlffi_call_method */
+    hlffi_value* result = hlffi_call_method(obj, method_name, argc, argv);
+
+    if (!result) {
+        /* Could be exception or error, but we can't distinguish without VM */
+        if (out_result) *out_result = NULL;
+        if (out_error) *out_error = "Method call failed (cannot distinguish exception without VM context)";
+        return HLFFI_CALL_ERROR;
+    }
+
+    /* Success */
+    if (out_result) *out_result = result;
+    if (out_error) *out_error = NULL;
+    return HLFFI_CALL_OK;
 }
 
 const char* hlffi_get_exception_message(hlffi_vm* vm) {

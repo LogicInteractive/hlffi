@@ -1373,37 +1373,6 @@ public:
     BlockingGuard& operator=(const BlockingGuard&) = delete;
 };
 
-} // namespace hlffi
-
-#endif /* __cplusplus */
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* ========== C++ RAII GUARDS ========== */
-
-namespace hlffi {
-
-/**
- * RAII guard for blocking operations.
- * Automatically calls hlffi_blocking_begin/end.
- *
- * Usage:
- *   {
- *       hlffi::BlockingGuard guard;
- *       // ... blocking I/O ...
- *   } // Automatically calls hlffi_blocking_end()
- */
-class BlockingGuard {
-public:
-    BlockingGuard() { hlffi_blocking_begin(); }
-    ~BlockingGuard() { hlffi_blocking_end(); }
-
-    BlockingGuard(const BlockingGuard&) = delete;
-    BlockingGuard& operator=(const BlockingGuard&) = delete;
-};
-
 /**
  * RAII guard for worker threads.
  * Automatically calls hlffi_worker_register/unregister.
