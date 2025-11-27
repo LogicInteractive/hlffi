@@ -92,6 +92,7 @@ TEST_HELLO = test_hello
 TEST_RUNNER = test_runner
 TEST_REFLECTION = test_reflection
 TEST_STATIC = test_static
+TEST_INSTANCE_BASIC = test_instance_basic
 
 # Linker flags for tests
 # CRITICAL: Must use --whole-archive for libhl.a to expose all primitives to dlsym()
@@ -137,7 +138,7 @@ $(BIN_DIR):
 
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
-	rm -f $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION)
+	rm -f $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC)
 	@echo "Cleaned build artifacts"
 
 # Print detailed info
@@ -149,7 +150,7 @@ verbose: info
 	@for src in $(HLFFI_SRC); do echo "  - $$src"; done
 
 # Test targets
-tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC)
+tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC)
 	@echo ""
 	@echo "✓ All tests built successfully!"
 	@echo ""
@@ -159,6 +160,7 @@ tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STAT
 	@echo "  ./$(TEST_RUNNER) test/hello.hl   - Test HLFFI wrapper API"
 	@echo "  ./$(TEST_REFLECTION) test/hello.hl - Test Phase 2 type reflection"
 	@echo "  ./$(TEST_STATIC) test/static_test.hl - Test Phase 3 static members & values"
+	@echo "  ./$(TEST_INSTANCE_BASIC) test/player.hl - Test Phase 4 instance members"
 	@echo ""
 
 $(TEST_LIBHL): test_libhl.c $(LIBHL)
@@ -178,5 +180,9 @@ $(TEST_REFLECTION): test_reflection.c $(LIBHL) $(HLFFI)
 	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
 
 $(TEST_STATIC): test_static.c $(LIBHL) $(HLFFI)
+	@echo "Building $@..."
+	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
+
+$(TEST_INSTANCE_BASIC): test_instance_basic.c $(LIBHL) $(HLFFI)
 	@echo "Building $@..."
 	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)

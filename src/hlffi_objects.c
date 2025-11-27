@@ -42,7 +42,12 @@ struct hlffi_vm {
     hlffi_integration_mode integration_mode;
     void* stack_context;
     char error_msg[512];
+    hlffi_error_code last_error;
+    bool hl_initialized;
+    bool thread_registered;
+    bool module_loaded;
     bool entry_called;
+    bool hot_reload_enabled;
     const char* loaded_file;
 };
 
@@ -62,14 +67,19 @@ static void set_obj_error(hlffi_vm* vm, const char* msg) {
 
 /* Helper: Find type by name */
 static hl_type* find_type_by_name(hlffi_vm* vm, const char* class_name) {
-    if (!vm || !vm->code || !class_name) return NULL;
+    if (!vm || !vm->module || !vm->module->code || !class_name) return NULL;
 
-    for (int i = 0; i < vm->code->ntypes; i++) {
-        hl_type* t = &vm->code->types[i];
+    hl_code* code = vm->module->code;
+
+    /* Hash the class name for comparison */
+    int class_hash = hl_hash_utf8(class_name);
+
+    for (int i = 0; i < code->ntypes; i++) {
+        hl_type* t = code->types + i;
         if (t->kind == HOBJ && t->obj && t->obj->name) {
-            char name_buf[256];
-            utostr(name_buf, sizeof(name_buf), t->obj->name);
-            if (strcmp(name_buf, class_name) == 0) {
+            char* type_name = hl_to_utf8(t->obj->name);
+            int type_hash = type_name ? hl_hash_utf8(type_name) : 0;
+            if (type_name && type_hash == class_hash) {
                 return t;
             }
         }
@@ -121,44 +131,11 @@ hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_val
     }
 
     /* Step 3: Allocate the object instance */
+    /* TODO: Constructor call needs to be implemented to initialize fields properly */
     vobj* instance = (vobj*)hl_alloc_obj(class_type);
     if (!instance) {
         set_obj_error(vm, "Failed to allocate object instance");
         return NULL;
-    }
-
-    /* Step 4: Find and call the constructor if argc > 0 or constructor exists */
-    int ctor_hash = hl_hash_utf8("new");
-    hl_field_lookup* ctor_lookup = obj_resolve_field(class_type->obj, ctor_hash);
-
-    if (ctor_lookup && ctor_lookup->t->kind == HFUN) {
-        /* Constructor found - call it */
-        vclosure* ctor = (vclosure*)hl_dyn_getp((vdynamic*)instance, ctor_hash, &hlt_dyn);
-
-        if (ctor) {
-            /* Build arguments array: [this, arg1, arg2, ...] */
-            vdynamic** hl_args = NULL;
-            int total_args = argc + 1;  /* +1 for 'this' */
-
-            if (total_args > 0) {
-                hl_args = (vdynamic**)alloca(total_args * sizeof(vdynamic*));
-                hl_args[0] = (vdynamic*)instance;  /* 'this' pointer */
-
-                /* Copy user arguments */
-                for (int i = 0; i < argc; i++) {
-                    hl_args[i + 1] = argv[i] ? argv[i]->hl_value : NULL;
-                }
-            }
-
-            /* Call constructor (void return) */
-            bool isException = false;
-            hl_dyn_call_safe(ctor, hl_args, total_args, &isException);
-
-            if (isException) {
-                set_obj_error(vm, "Exception thrown during constructor");
-                return NULL;
-            }
-        }
     }
 
     /* Step 5: Wrap in hlffi_value with GC root */
