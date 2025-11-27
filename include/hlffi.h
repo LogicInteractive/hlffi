@@ -537,6 +537,310 @@ const char* hlffi_get_hl_version(void);
  */
 bool hlffi_is_jit_mode(void);
 
+/* ========== PHASE 2: TYPE SYSTEM & REFLECTION ========== */
+
+/**
+ * Type kind enumeration.
+ * Matches HashLink's hl_type_kind values.
+ */
+typedef enum {
+    HLFFI_TYPE_VOID = 0,
+    HLFFI_TYPE_UI8,
+    HLFFI_TYPE_UI16,
+    HLFFI_TYPE_I32,
+    HLFFI_TYPE_I64,
+    HLFFI_TYPE_F32,
+    HLFFI_TYPE_F64,
+    HLFFI_TYPE_BOOL,
+    HLFFI_TYPE_BYTES,
+    HLFFI_TYPE_DYN,
+    HLFFI_TYPE_FUN,
+    HLFFI_TYPE_OBJ,        // Class/object type
+    HLFFI_TYPE_ARRAY,
+    HLFFI_TYPE_TYPE,
+    HLFFI_TYPE_REF,
+    HLFFI_TYPE_VIRTUAL,
+    HLFFI_TYPE_DYNOBJ,
+    HLFFI_TYPE_ABSTRACT,
+    HLFFI_TYPE_ENUM,
+    HLFFI_TYPE_NULL,
+    HLFFI_TYPE_METHOD,
+    HLFFI_TYPE_STRUCT,
+    HLFFI_TYPE_PACKED
+} hlffi_type_kind;
+
+/**
+ * Type iterator callback.
+ * Called for each type during hlffi_list_types().
+ *
+ * @param type Type being visited
+ * @param userdata User-provided data
+ */
+typedef void (*hlffi_type_callback)(hlffi_type* type, void* userdata);
+
+/**
+ * Find type by name.
+ * Searches loaded module for a type with the given name.
+ *
+ * @param vm VM instance
+ * @param name Type name (e.g., "Player", "com.example.MyClass")
+ * @return Type handle, or NULL if not found
+ *
+ * @note For packaged types, use full name: "com.example.Player"
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Type handle valid until module unloaded
+ */
+hlffi_type* hlffi_find_type(hlffi_vm* vm, const char* name);
+
+/**
+ * Get type kind.
+ * Returns the kind of type (class, enum, primitive, etc.).
+ *
+ * @param type Type handle
+ * @return Type kind enum value
+ *
+ * @note Returns HLFFI_TYPE_VOID if type is NULL
+ */
+hlffi_type_kind hlffi_type_get_kind(hlffi_type* type);
+
+/**
+ * Get type name.
+ * Returns the fully-qualified name of the type.
+ *
+ * @param type Type handle
+ * @return Type name string (UTF-8), or NULL if type is NULL
+ *
+ * @note String valid until type is unloaded
+ * @note For objects: returns class name (e.g., "Player")
+ * @note For primitives: returns kind name (e.g., "i32", "f64")
+ */
+const char* hlffi_type_get_name(hlffi_type* type);
+
+/**
+ * Enumerate all types in module.
+ * Calls callback for each type in the loaded module.
+ *
+ * @param vm VM instance
+ * @param callback Function to call for each type
+ * @param userdata User data passed to callback
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Callback called for ALL types (primitives, classes, enums, etc.)
+ * @note Use hlffi_type_get_kind() to filter types in callback
+ */
+hlffi_error_code hlffi_list_types(hlffi_vm* vm, hlffi_type_callback callback, void* userdata);
+
+/* ========== CLASS INSPECTION ========== */
+
+/**
+ * Get superclass of a class type.
+ * Returns the parent class, or NULL if no parent.
+ *
+ * @param type Class type handle
+ * @return Parent class type, or NULL if none or not a class
+ *
+ * @note Only works for HLFFI_TYPE_OBJ types
+ * @note Returns NULL for root classes (no parent)
+ */
+hlffi_type* hlffi_class_get_super(hlffi_type* type);
+
+/**
+ * Get number of fields in a class.
+ * Returns count of instance fields (not including inherited fields).
+ *
+ * @param type Class type handle
+ * @return Field count, or -1 if not a class type
+ *
+ * @note Only counts direct fields, not inherited ones
+ * @note Use hlffi_class_get_super() to traverse hierarchy
+ */
+int hlffi_class_get_field_count(hlffi_type* type);
+
+/**
+ * Get field name by index.
+ * Returns the name of the field at the given index.
+ *
+ * @param type Class type handle
+ * @param index Field index (0 to field_count-1)
+ * @return Field name (UTF-8), or NULL if invalid
+ *
+ * @note Index must be < hlffi_class_get_field_count()
+ * @note String valid until type is unloaded
+ */
+const char* hlffi_class_get_field_name(hlffi_type* type, int index);
+
+/**
+ * Get field type by index.
+ * Returns the type of the field at the given index.
+ *
+ * @param type Class type handle
+ * @param index Field index (0 to field_count-1)
+ * @return Field type handle, or NULL if invalid
+ *
+ * @note Index must be < hlffi_class_get_field_count()
+ */
+hlffi_type* hlffi_class_get_field_type(hlffi_type* type, int index);
+
+/**
+ * Get number of methods in a class.
+ * Returns count of methods (not including inherited methods).
+ *
+ * @param type Class type handle
+ * @return Method count, or -1 if not a class type
+ *
+ * @note Only counts direct methods, not inherited ones
+ */
+int hlffi_class_get_method_count(hlffi_type* type);
+
+/**
+ * Get method name by index.
+ * Returns the name of the method at the given index.
+ *
+ * @param type Class type handle
+ * @param index Method index (0 to method_count-1)
+ * @return Method name (UTF-8), or NULL if invalid
+ *
+ * @note Index must be < hlffi_class_get_method_count()
+ * @note String valid until type is unloaded
+ */
+const char* hlffi_class_get_method_name(hlffi_type* type, int index);
+
+/* ========== PHASE 3: STATIC MEMBERS & VALUES ========== */
+
+/**
+ * Create integer value.
+ *
+ * @param vm VM instance
+ * @param value Integer value
+ * @return Boxed value handle
+ *
+ * @note Value is GC-managed, valid until unreachable
+ */
+hlffi_value* hlffi_value_int(hlffi_vm* vm, int value);
+
+/**
+ * Create float value.
+ *
+ * @param vm VM instance
+ * @param value Float value
+ * @return Boxed value handle
+ */
+hlffi_value* hlffi_value_float(hlffi_vm* vm, double value);
+
+/**
+ * Create boolean value.
+ *
+ * @param vm VM instance
+ * @param value Boolean value
+ * @return Boxed value handle
+ */
+hlffi_value* hlffi_value_bool(hlffi_vm* vm, bool value);
+
+/**
+ * Create string value.
+ *
+ * @param vm VM instance
+ * @param str UTF-8 string (will be converted to UTF-16)
+ * @return Boxed value handle, or NULL if string is NULL
+ */
+hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str);
+
+/**
+ * Create null value.
+ *
+ * @param vm VM instance
+ * @return Boxed null value
+ */
+hlffi_value* hlffi_value_null(hlffi_vm* vm);
+
+/**
+ * Extract integer from value.
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Integer value, or fallback if not an integer
+ */
+int hlffi_value_as_int(hlffi_value* value, int fallback);
+
+/**
+ * Extract float from value.
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Float value, or fallback if not a float
+ */
+double hlffi_value_as_float(hlffi_value* value, double fallback);
+
+/**
+ * Extract boolean from value.
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Boolean value, or fallback if not a boolean
+ */
+bool hlffi_value_as_bool(hlffi_value* value, bool fallback);
+
+/**
+ * Extract string from value.
+ * Returns UTF-8 string converted from HashLink's UTF-16.
+ *
+ * @param value Value handle
+ * @return UTF-8 string (caller must free), or NULL if not a string
+ *
+ * @note Caller must free() the returned string
+ * @note Returns NULL if value is NULL or not a string
+ */
+char* hlffi_value_as_string(hlffi_value* value);
+
+/**
+ * Check if value is null.
+ *
+ * @param value Value handle
+ * @return true if value is null or NULL pointer
+ */
+bool hlffi_value_is_null(hlffi_value* value);
+
+/**
+ * Get static field value.
+ *
+ * @param vm VM instance
+ * @param class_name Class name (e.g., "Game")
+ * @param field_name Field name (e.g., "score")
+ * @return Field value, or NULL on error
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Entry point must be called before accessing static fields
+ */
+hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const char* field_name);
+
+/**
+ * Set static field value.
+ *
+ * @param vm VM instance
+ * @param class_name Class name
+ * @param field_name Field name
+ * @param value New value
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Entry point must be called before accessing static fields
+ */
+hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, const char* field_name, hlffi_value* value);
+
+/**
+ * Call static method.
+ *
+ * @param vm VM instance
+ * @param class_name Class name (e.g., "Game")
+ * @param method_name Method name (e.g., "start")
+ * @param argc Number of arguments
+ * @param argv Argument array (can be NULL if argc=0)
+ * @return Return value, or NULL on error/void return
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Entry point must be called before calling static methods
+ */
+hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char* method_name, int argc, hlffi_value** argv);
+
 #ifdef __cplusplus
 }
 

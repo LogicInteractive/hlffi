@@ -58,6 +58,14 @@ test_libhl
 test_hello
 test_hashlink_direct
 test_runner
+test_reflection
+test_simple_reflection
+test_string_details
+test_static
+
+# Backup files
+*_old.h
+*_v2_old.h
 
 # Vendor dependencies (cloned/downloaded, not tracked)
 vendor/hashlink/

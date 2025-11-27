@@ -1,0 +1,3 @@
+https://aramallo.com/blog/hashlink/calling-c.html, 
+and https://aramallo.com/blog/hashlink/compiling-hlc.html ...
+Add this to the docs

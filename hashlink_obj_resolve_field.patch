@@ -1,0 +1,16 @@
+diff --git a/src/std/obj.c b/src/std/obj.c
+index f90854f..87df3ba 100644
+--- a/src/std/obj.c
++++ b/src/std/obj.c
+@@ -61,7 +61,10 @@ static int hl_lookup_find_index( hl_field_lookup *l, int size, int hash ) {
+ 	return (min + max) >> 1;
+ }
+ 
+-static hl_field_lookup *obj_resolve_field( hl_type_obj *o, int hfield ) {
++/* Made non-static for HLFFI static field access - this is the key to accessing static fields!
++ * Original: static hl_field_lookup *obj_resolve_field( hl_type_obj *o, int hfield )
++ */
++hl_field_lookup *obj_resolve_field( hl_type_obj *o, int hfield ) {
+ 	hl_runtime_obj *rt = o->rt;
+ 	do {
+ 		hl_field_lookup *f = hl_lookup_find(rt->lookup,rt->nlookup,hfield);
