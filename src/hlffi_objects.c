@@ -368,3 +368,137 @@ bool hlffi_is_instance_of(hlffi_value* obj, const char* class_name) {
 
     return false;
 }
+
+/* ========== CONVENIENCE API IMPLEMENTATIONS ========== */
+
+/**
+ * Convenience functions for direct field access without intermediate hlffi_value.
+ * These eliminate the need to create/free hlffi_value wrappers for simple get/set operations.
+ */
+
+int hlffi_get_field_int(hlffi_value* obj, const char* field_name, int fallback) {
+    hlffi_value* field = hlffi_get_field(obj, field_name);
+    if (!field) return fallback;
+
+    int value = hlffi_value_as_int(field, fallback);
+    hlffi_value_free(field);
+    return value;
+}
+
+float hlffi_get_field_float(hlffi_value* obj, const char* field_name, float fallback) {
+    hlffi_value* field = hlffi_get_field(obj, field_name);
+    if (!field) return fallback;
+
+    float value = hlffi_value_as_float(field, fallback);
+    hlffi_value_free(field);
+    return value;
+}
+
+bool hlffi_get_field_bool(hlffi_value* obj, const char* field_name, bool fallback) {
+    hlffi_value* field = hlffi_get_field(obj, field_name);
+    if (!field) return fallback;
+
+    bool value = hlffi_value_as_bool(field, fallback);
+    hlffi_value_free(field);
+    return value;
+}
+
+char* hlffi_get_field_string(hlffi_value* obj, const char* field_name) {
+    hlffi_value* field = hlffi_get_field(obj, field_name);
+    if (!field) return NULL;
+
+    char* value = hlffi_value_as_string(field);
+    hlffi_value_free(field);
+    return value;  /* Caller must free() */
+}
+
+bool hlffi_set_field_int(hlffi_vm* vm, hlffi_value* obj, const char* field_name, int value) {
+    if (!vm || !obj) return false;
+
+    hlffi_value* temp = hlffi_value_int(vm, value);
+    if (!temp) return false;
+
+    bool result = hlffi_set_field(obj, field_name, temp);
+    hlffi_value_free(temp);
+    return result;
+}
+
+bool hlffi_set_field_float(hlffi_vm* vm, hlffi_value* obj, const char* field_name, float value) {
+    if (!vm || !obj) return false;
+
+    hlffi_value* temp = hlffi_value_float(vm, value);
+    if (!temp) return false;
+
+    bool result = hlffi_set_field(obj, field_name, temp);
+    hlffi_value_free(temp);
+    return result;
+}
+
+bool hlffi_set_field_bool(hlffi_vm* vm, hlffi_value* obj, const char* field_name, bool value) {
+    if (!vm || !obj) return false;
+
+    hlffi_value* temp = hlffi_value_bool(vm, value);
+    if (!temp) return false;
+
+    bool result = hlffi_set_field(obj, field_name, temp);
+    hlffi_value_free(temp);
+    return result;
+}
+
+bool hlffi_set_field_string(hlffi_vm* vm, hlffi_value* obj, const char* field_name, const char* value) {
+    if (!vm || !obj) return false;
+
+    hlffi_value* temp = hlffi_value_string(vm, value);
+    if (!temp) return false;
+
+    bool result = hlffi_set_field(obj, field_name, temp);
+    hlffi_value_free(temp);
+    return result;
+}
+
+/* Method call convenience functions */
+
+bool hlffi_call_method_void(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv) {
+    hlffi_value* result = hlffi_call_method(obj, method_name, argc, argv);
+    if (result) {
+        hlffi_value_free(result);
+        return true;
+    }
+    return false;  /* Method failed or threw exception */
+}
+
+int hlffi_call_method_int(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, int fallback) {
+    hlffi_value* result = hlffi_call_method(obj, method_name, argc, argv);
+    if (!result) return fallback;
+
+    int value = hlffi_value_as_int(result, fallback);
+    hlffi_value_free(result);
+    return value;
+}
+
+float hlffi_call_method_float(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, float fallback) {
+    hlffi_value* result = hlffi_call_method(obj, method_name, argc, argv);
+    if (!result) return fallback;
+
+    float value = hlffi_value_as_float(result, fallback);
+    hlffi_value_free(result);
+    return value;
+}
+
+bool hlffi_call_method_bool(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, bool fallback) {
+    hlffi_value* result = hlffi_call_method(obj, method_name, argc, argv);
+    if (!result) return fallback;
+
+    bool value = hlffi_value_as_bool(result, fallback);
+    hlffi_value_free(result);
+    return value;
+}
+
+char* hlffi_call_method_string(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv) {
+    hlffi_value* result = hlffi_call_method(obj, method_name, argc, argv);
+    if (!result) return NULL;
+
+    char* value = hlffi_value_as_string(result);
+    hlffi_value_free(result);
+    return value;  /* Caller must free() */
+}

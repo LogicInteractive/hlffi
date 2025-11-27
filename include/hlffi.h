@@ -1018,6 +1018,68 @@ hlffi_value* hlffi_get_field(hlffi_value* obj, const char* field_name);
  */
 bool hlffi_set_field(hlffi_value* obj, const char* field_name, hlffi_value* value);
 
+/* ========== CONVENIENCE API: Direct Field Access ========== */
+
+/**
+ * Get integer field directly (convenience function).
+ *
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @param fallback Fallback value if field not found or wrong type
+ * @return Field value as int, or fallback on error
+ *
+ * Example:
+ *   int health = hlffi_get_field_int(player, "health", 0);
+ */
+int hlffi_get_field_int(hlffi_value* obj, const char* field_name, int fallback);
+
+/**
+ * Get float field directly (convenience function).
+ */
+float hlffi_get_field_float(hlffi_value* obj, const char* field_name, float fallback);
+
+/**
+ * Get boolean field directly (convenience function).
+ */
+bool hlffi_get_field_bool(hlffi_value* obj, const char* field_name, bool fallback);
+
+/**
+ * Get string field directly (convenience function).
+ *
+ * @return String (caller must free), or NULL on error
+ * @note Caller must free() the returned string
+ */
+char* hlffi_get_field_string(hlffi_value* obj, const char* field_name);
+
+/**
+ * Set integer field directly (convenience function).
+ *
+ * @param vm VM instance (needed to create temporary value)
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @param value Value to set
+ * @return true on success, false on error
+ *
+ * Example:
+ *   hlffi_set_field_int(vm, player, "health", 100);
+ */
+bool hlffi_set_field_int(hlffi_vm* vm, hlffi_value* obj, const char* field_name, int value);
+
+/**
+ * Set float field directly (convenience function).
+ */
+bool hlffi_set_field_float(hlffi_vm* vm, hlffi_value* obj, const char* field_name, float value);
+
+/**
+ * Set boolean field directly (convenience function).
+ */
+bool hlffi_set_field_bool(hlffi_vm* vm, hlffi_value* obj, const char* field_name, bool value);
+
+/**
+ * Set string field directly (convenience function).
+ */
+bool hlffi_set_field_string(hlffi_vm* vm, hlffi_value* obj, const char* field_name, const char* value);
+
 /**
  * Call an instance method.
  *
@@ -1038,6 +1100,60 @@ bool hlffi_set_field(hlffi_value* obj, const char* field_name, hlffi_value* valu
  *   hlffi_value_free(damage);
  */
 hlffi_value* hlffi_call_method(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
+
+/* ========== CONVENIENCE API: Direct Method Calls ========== */
+
+/**
+ * Call void method directly (convenience function).
+ *
+ * Calls a method that returns no value. No need to manage return value.
+ *
+ * @param obj Object instance
+ * @param method_name Method name (UTF-8)
+ * @param argc Number of arguments
+ * @param argv Array of argument values (can be NULL if argc == 0)
+ * @return true on success, false on error
+ *
+ * Example:
+ *   hlffi_value* damage = hlffi_value_int(vm, 25);
+ *   hlffi_call_method_void(player, "takeDamage", 1, &damage);
+ *   hlffi_value_free(damage);
+ */
+bool hlffi_call_method_void(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
+
+/**
+ * Call method and get int return directly (convenience function).
+ *
+ * @param fallback Fallback value if method fails or returns wrong type
+ * @return Method return value as int, or fallback on error
+ *
+ * Example:
+ *   int health = hlffi_call_method_int(player, "getHealth", 0, NULL, 0);
+ */
+int hlffi_call_method_int(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, int fallback);
+
+/**
+ * Call method and get float return directly (convenience function).
+ */
+float hlffi_call_method_float(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, float fallback);
+
+/**
+ * Call method and get bool return directly (convenience function).
+ */
+bool hlffi_call_method_bool(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, bool fallback);
+
+/**
+ * Call method and get string return directly (convenience function).
+ *
+ * @return String (caller must free), or NULL on error
+ * @note Caller must free() the returned string
+ *
+ * Example:
+ *   char* name = hlffi_call_method_string(player, "getName", 0, NULL);
+ *   printf("Name: %s\n", name);
+ *   free(name);
+ */
+char* hlffi_call_method_string(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
 
 /**
  * Check if a value is an instance of a given class.
