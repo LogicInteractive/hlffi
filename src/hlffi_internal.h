@@ -23,6 +23,7 @@ typedef struct {
     int nargs;
     vclosure* hl_closure;
     bool is_rooted;
+    struct hlffi_vm* vm;  /* VM pointer for wrapper access */
 } hlffi_callback_entry;
 
 /**
