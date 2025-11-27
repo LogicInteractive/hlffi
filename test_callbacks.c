@@ -8,6 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* For debugging closure structures */
+#include <hl.h>
+
 #define TEST_PASS(name) printf("[PASS] Test %d: %s\n", ++test_count, name)
 #define TEST_FAIL(name) do { printf("[FAIL] Test %d: %s\n", ++test_count, name); failed++; } while(0)
 
@@ -204,7 +207,23 @@ int main(int argc, char** argv) {
                 printf("  Warning: hlffi_set_static_field failed: %s\n", hlffi_get_error(vm));
             } else {
                 printf("  Set static field successfully\n");
+
+                /* Verify field was actually set by reading it back */
+                hlffi_value* check = hlffi_get_static_field(vm, "Callbacks", "onMessage");
+                if (check) {
+                    /* Check if the value is non-null by trying to convert to string */
+                    const char* str = hlffi_value_as_string(check);
+                    if (str && strlen(str) > 0) {
+                        printf("  Verify: Field has value (string repr): %s\n", str);
+                    } else {
+                        printf("  Verify: Field appears to be non-string type (likely function)\n");
+                    }
+                    hlffi_value_free(check);
+                } else {
+                    printf("  Verify: Failed to read field back\n");
+                }
             }
+
             hlffi_value_free(cb);
         } else {
             TEST_FAIL("Get registered callback");
@@ -216,6 +235,12 @@ int main(int argc, char** argv) {
     {
         call_void(vm, "Callbacks", "reset", 0, NULL);
 
+        /* Set callback after reset */
+        hlffi_value* cb = hlffi_get_callback(vm, "onMessage");
+        hlffi_set_static_field(vm, "Callbacks", "onMessage", cb);
+        hlffi_value_free(cb);
+
+        /* Call from Haxe */
         hlffi_value* msg_arg = hlffi_value_string(vm, "Hello from C");
         hlffi_value* args[] = {msg_arg};
         call_void(vm, "Callbacks", "callMessageCallback", 1, args);

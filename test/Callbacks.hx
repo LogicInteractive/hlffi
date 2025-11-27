@@ -4,11 +4,12 @@
  */
 
 class Callbacks {
-    /* Callback storage - C code will set these via hlffi_register_callback */
-    public static var onMessage:String->Void = null;
-    public static var onAdd:(Int, Int)->Int = null;
-    public static var onNotify:Void->Void = null;
-    public static var onCompute:(Int, Int, Int)->Int = null;
+    /* Callback storage - C code will set these via hlffi_register_callback
+     * Using Dynamic type to accept closures with vdynamic signatures */
+    public static var onMessage:Dynamic = null;
+    public static var onAdd:Dynamic = null;
+    public static var onNotify:Dynamic = null;
+    public static var onCompute:Dynamic = null;
 
     /* Test counters */
     static var messageReceived:String = "";
