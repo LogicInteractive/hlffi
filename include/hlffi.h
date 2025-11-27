@@ -817,13 +817,22 @@ const char* hlffi_class_get_method_name(hlffi_type* type, int index);
 hlffi_value* hlffi_value_int(hlffi_vm* vm, int value);
 
 /**
- * Create float value.
+ * Create float value (F64).
  *
  * @param vm VM instance
- * @param value Float value
+ * @param value Float value (64-bit double)
  * @return Boxed value handle
  */
 hlffi_value* hlffi_value_float(hlffi_vm* vm, double value);
+
+/**
+ * Create f32 value (F32).
+ *
+ * @param vm VM instance
+ * @param value Float value (32-bit float)
+ * @return Boxed value handle
+ */
+hlffi_value* hlffi_value_f32(hlffi_vm* vm, float value);
 
 /**
  * Create boolean value.
@@ -871,13 +880,22 @@ void hlffi_value_free(hlffi_value* value);
 int hlffi_value_as_int(hlffi_value* value, int fallback);
 
 /**
- * Extract float from value.
+ * Extract float from value (F64).
  *
  * @param value Value handle
  * @param fallback Fallback value if conversion fails
- * @return Float value, or fallback if not a float
+ * @return Float value (64-bit double), or fallback if not a float
  */
 double hlffi_value_as_float(hlffi_value* value, double fallback);
+
+/**
+ * Extract f32 from value (F32).
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Float value (32-bit float), or fallback if not an f32
+ */
+float hlffi_value_as_f32(hlffi_value* value, float fallback);
 
 /**
  * Extract boolean from value.

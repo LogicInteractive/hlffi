@@ -45,6 +45,22 @@ hlffi_value* hlffi_value_float(hlffi_vm* vm, double value) {
     return wrapped;
 }
 
+hlffi_value* hlffi_value_f32(hlffi_vm* vm, float value) {
+    if (!vm) return NULL;
+
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
+
+    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
+    if (!wrapped) return NULL;
+
+    /* Box the f32 */
+    wrapped->hl_value = hl_alloc_dynamic(&hlt_f32);
+    wrapped->hl_value->v.f = value;
+    wrapped->is_rooted = false;
+
+    return wrapped;
+}
+
 hlffi_value* hlffi_value_bool(hlffi_vm* vm, bool value) {
     if (!vm) return NULL;
 
@@ -158,6 +174,23 @@ double hlffi_value_as_float(hlffi_value* value, double fallback) {
         return (double)v->v.f;  /* 32-bit float */
     } else if (v->t->kind == HI32) {
         return (double)v->v.i;  /* Allow int->float conversion */
+    }
+
+    return fallback;
+}
+
+float hlffi_value_as_f32(hlffi_value* value, float fallback) {
+    if (!value || !value->hl_value) return fallback;
+
+    vdynamic* v = value->hl_value;
+
+    /* Check type by kind */
+    if (v->t->kind == HF32) {
+        return v->v.f;  /* 32-bit float - no conversion */
+    } else if (v->t->kind == HF64) {
+        return (float)v->v.d;  /* Downcast from F64 if needed */
+    } else if (v->t->kind == HI32) {
+        return (float)v->v.i;  /* Allow int->float conversion */
     }
 
     return fallback;
@@ -622,6 +655,8 @@ static hl_type* find_haxe_array_type(hlffi_vm* vm, hl_type* element_type) {
         array_type_name = "hl.types.ArrayDyn";
     } else if (element_type->kind == HI32) {
         array_type_name = "hl.types.ArrayBytes_Int";
+    } else if (element_type->kind == HF32) {
+        array_type_name = "hl.types.ArrayBytes_F32";
     } else if (element_type->kind == HF64) {
         array_type_name = "hl.types.ArrayBytes_F64";
     } else {
@@ -824,6 +859,9 @@ hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index) {
                     if (strstr(type_name, "_Int")) {
                         int* data = (int*)bytes;
                         return hlffi_value_int(vm, data[index]);
+                    } else if (strstr(type_name, "_F32")) {
+                        float* data = (float*)bytes;
+                        return hlffi_value_f32(vm, data[index]);
                     } else if (strstr(type_name, "_F64")) {
                         double* data = (double*)bytes;
                         return hlffi_value_float(vm, data[index]);
@@ -868,6 +906,9 @@ hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index) {
     if (elem_type->kind == HI32) {
         int* data = (int*)hl_aptr(array, int);
         return hlffi_value_int(vm, data[index]);
+    } else if (elem_type->kind == HF32) {
+        float* data = (float*)hl_aptr(array, float);
+        return hlffi_value_f32(vm, data[index]);
     } else if (elem_type->kind == HF64) {
         double* data = (double*)hl_aptr(array, double);
         return hlffi_value_float(vm, data[index]);
@@ -937,6 +978,10 @@ bool hlffi_array_set(hlffi_vm* vm, hlffi_value* arr, int index, hlffi_value* val
                     int* data = (int*)bytes;
                     data[index] = hlffi_value_as_int(value, 0);
                     return true;
+                } else if (strstr(type_name, "_F32")) {
+                    float* data = (float*)bytes;
+                    data[index] = hlffi_value_as_f32(value, 0.0f);
+                    return true;
                 } else if (strstr(type_name, "_F64")) {
                     double* data = (double*)bytes;
                     data[index] = hlffi_value_as_float(value, 0.0);
@@ -970,6 +1015,9 @@ bool hlffi_array_set(hlffi_vm* vm, hlffi_value* arr, int index, hlffi_value* val
     if (elem_type->kind == HI32) {
         int* data = (int*)hl_aptr(array, int);
         data[index] = hlffi_value_as_int(value, 0);
+    } else if (elem_type->kind == HF32) {
+        float* data = (float*)hl_aptr(array, float);
+        data[index] = hlffi_value_as_f32(value, 0.0f);
     } else if (elem_type->kind == HF64) {
         double* data = (double*)hl_aptr(array, double);
         data[index] = hlffi_value_as_float(value, 0.0);

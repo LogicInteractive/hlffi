@@ -45,8 +45,76 @@ class Arrays {
         return sum;
     }
 
+    public static function printIntArray(arr:Array<Int>):Void {
+        trace("[Haxe] Received Int array with " + arr.length + " elements:");
+        for (i in 0...arr.length) {
+            trace("    [Haxe] arr[" + i + "] = " + arr[i]);
+        }
+    }
+
+    public static function sumFloatArray(arr:Array<Float>):Float {
+        var sum = 0.0;
+        for (val in arr) {
+            sum += val;
+        }
+        return sum;
+    }
+
+    public static function printFloatArray(arr:Array<Float>):Void {
+        trace("[Haxe] Received Float array with " + arr.length + " elements:");
+        for (i in 0...arr.length) {
+            trace("    [Haxe] arr[" + i + "] = " + arr[i]);
+        }
+    }
+
+    public static function sumSingleArray(arr:Array<Single>):Single {
+        var sum:Single = 0.0;
+        for (val in arr) {
+            sum += val;
+        }
+        return sum;
+    }
+
+    public static function printSingleArray(arr:Array<Single>):Void {
+        trace("[Haxe] Received Single array with " + arr.length + " elements:");
+        for (i in 0...arr.length) {
+            trace("    [Haxe] arr[" + i + "] = " + arr[i]);
+        }
+    }
+
+    public static function joinStrings(arr:Array<String>):String {
+        return arr.join(" ");
+    }
+
+    public static function printStringArray(arr:Array<String>):Void {
+        trace("[Haxe] Received String array with " + arr.length + " elements:");
+        for (i in 0...arr.length) {
+            trace("    [Haxe] arr[" + i + "] = \"" + arr[i] + "\" (length: " + arr[i].length + ")");
+        }
+    }
+
     public static function countStrings(arr:Array<String>):Int {
         return arr.length;
+    }
+
+    public static function printDynamicArray(arr:Array<Dynamic>):Void {
+        trace("[Haxe] Received Dynamic array with " + arr.length + " elements:");
+        for (i in 0...arr.length) {
+            var val = arr[i];
+            if (val == null) {
+                trace("    [Haxe] arr[" + i + "] = null");
+            } else if (Std.isOfType(val, Int)) {
+                trace("    [Haxe] arr[" + i + "] = " + val + " (Int)");
+            } else if (Std.isOfType(val, Float)) {
+                trace("    [Haxe] arr[" + i + "] = " + val + " (Float)");
+            } else if (Std.isOfType(val, Bool)) {
+                trace("    [Haxe] arr[" + i + "] = " + val + " (Bool)");
+            } else if (Std.isOfType(val, String)) {
+                trace("    [Haxe] arr[" + i + "] = \"" + val + "\" (String)");
+            } else {
+                trace("    [Haxe] arr[" + i + "] = " + val + " (unknown type)");
+            }
+        }
     }
 
     public static function firstElement(arr:Array<Int>):Int {
