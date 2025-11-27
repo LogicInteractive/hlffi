@@ -1,16 +1,27 @@
+From ec3b7715d50d8c6b795db00be4276d05ec05f9d2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 26 Nov 2025 23:55:19 +0000
+Subject: [PATCH] Make obj_resolve_field non-static for HLFFI access
+
+This function is needed by HLFFI for static field/method resolution.
+---
+ src/std/obj.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
 diff --git a/src/std/obj.c b/src/std/obj.c
-index f90854f..87df3ba 100644
+index f90854f..0be8c8f 100644
 --- a/src/std/obj.c
 +++ b/src/std/obj.c
-@@ -61,7 +61,10 @@ static int hl_lookup_find_index( hl_field_lookup *l, int size, int hash ) {
+@@ -61,7 +61,8 @@ static int hl_lookup_find_index( hl_field_lookup *l, int size, int hash ) {
  	return (min + max) >> 1;
  }
  
 -static hl_field_lookup *obj_resolve_field( hl_type_obj *o, int hfield ) {
-+/* Made non-static for HLFFI static field access - this is the key to accessing static fields!
-+ * Original: static hl_field_lookup *obj_resolve_field( hl_type_obj *o, int hfield )
-+ */
++/* Made non-static for HLFFI static field/method access */
 +hl_field_lookup *obj_resolve_field( hl_type_obj *o, int hfield ) {
  	hl_runtime_obj *rt = o->rt;
  	do {
  		hl_field_lookup *f = hl_lookup_find(rt->lookup,rt->nlookup,hfield);
+-- 
+2.43.0
+
