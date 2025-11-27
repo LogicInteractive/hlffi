@@ -168,6 +168,8 @@ double hlffi_value_as_float(hlffi_value* value, double fallback) {
     /* Check type by kind */
     if (v->t->kind == HF64) {
         return v->v.d;
+    } else if (v->t->kind == HF32) {
+        return (double)v->v.f;  /* 32-bit float */
     } else if (v->t->kind == HI32) {
         return (double)v->v.i;  /* Allow int->float conversion */
     }
@@ -300,18 +302,61 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
         return NULL;
     }
 
-    /* Get field value using hl_dyn_getp with the correct field type from lookup
-     * Using lookup->t prevents crashes that occur with &hlt_dyn
+    /* Get field value using the appropriate accessor based on field type.
+     * IMPORTANT: Primitive types (int, float, bool) are returned inline by hl_dyn_get*,
+     * not as vdynamic pointers. We must use the correct accessor and box the result.
      */
-    vdynamic* field_value = (vdynamic*)hl_dyn_getp(global, lookup->hashed_name, lookup->t);
-
-    /* Wrap and return */
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) {
         set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate hlffi_value");
         return NULL;
     }
-    wrapped->hl_value = field_value;
+
+    switch (lookup->t->kind) {
+        case HI32:
+        case HUI8:
+        case HUI16: {
+            /* Integer types - use hl_dyn_geti and box the result */
+            int val = hl_dyn_geti(global, lookup->hashed_name, lookup->t);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_i32);
+            wrapped->hl_value->v.i = val;
+            break;
+        }
+        case HI64: {
+            /* 64-bit integer */
+            int64 val = hl_dyn_geti64(global, lookup->hashed_name);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_i64);
+            wrapped->hl_value->v.i64 = val;
+            break;
+        }
+        case HF32: {
+            /* 32-bit float - use hl_dyn_getf */
+            float val = hl_dyn_getf(global, lookup->hashed_name);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_f32);
+            wrapped->hl_value->v.f = val;
+            break;
+        }
+        case HF64: {
+            /* 64-bit float - use hl_dyn_getd */
+            double val = hl_dyn_getd(global, lookup->hashed_name);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_f64);
+            wrapped->hl_value->v.d = val;
+            break;
+        }
+        case HBOOL: {
+            /* Boolean - use hl_dyn_geti and treat as bool */
+            int val = hl_dyn_geti(global, lookup->hashed_name, lookup->t);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_bool);
+            wrapped->hl_value->v.b = (val != 0);
+            break;
+        }
+        default: {
+            /* Pointer types (objects, strings, etc.) - use hl_dyn_getp */
+            vdynamic* field_value = (vdynamic*)hl_dyn_getp(global, lookup->hashed_name, lookup->t);
+            wrapped->hl_value = field_value;
+            break;
+        }
+    }
 
     return wrapped;
 }
@@ -378,10 +423,54 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
         return HLFFI_ERROR_FIELD_NOT_FOUND;
     }
 
-    /* Set field value using hl_dyn_setp with the field type from lookup
-     * Using lookup->t for type-safe field assignment
+    /* Set field value using the appropriate setter based on field type.
+     * IMPORTANT: Primitive types (int, float, bool) need their specific setters.
+     * We extract the primitive value from the boxed hlffi_value.
      */
-    hl_dyn_setp(global, lookup->hashed_name, lookup->t, value->hl_value);
+    switch (lookup->t->kind) {
+        case HI32:
+        case HUI8:
+        case HUI16: {
+            /* Integer types - extract int value and use hl_dyn_seti */
+            int val = hlffi_value_as_int(value, 0);
+            hl_dyn_seti(global, lookup->hashed_name, lookup->t, val);
+            break;
+        }
+        case HI64: {
+            /* 64-bit integer */
+            if (value->hl_value && value->hl_value->t->kind == HI64) {
+                hl_dyn_seti64(global, lookup->hashed_name, value->hl_value->v.i64);
+            } else {
+                /* Fallback: convert from int */
+                int64 val = (int64)hlffi_value_as_int(value, 0);
+                hl_dyn_seti64(global, lookup->hashed_name, val);
+            }
+            break;
+        }
+        case HF32: {
+            /* 32-bit float - use hl_dyn_setf */
+            float val = (float)hlffi_value_as_float(value, 0.0);
+            hl_dyn_setf(global, lookup->hashed_name, val);
+            break;
+        }
+        case HF64: {
+            /* 64-bit float - use hl_dyn_setd */
+            double val = hlffi_value_as_float(value, 0.0);
+            hl_dyn_setd(global, lookup->hashed_name, val);
+            break;
+        }
+        case HBOOL: {
+            /* Boolean - use hl_dyn_seti with 0/1 */
+            int val = hlffi_value_as_bool(value, false) ? 1 : 0;
+            hl_dyn_seti(global, lookup->hashed_name, lookup->t, val);
+            break;
+        }
+        default: {
+            /* Pointer types (objects, strings, etc.) - use hl_dyn_setp */
+            hl_dyn_setp(global, lookup->hashed_name, lookup->t, value->hl_value);
+            break;
+        }
+    }
 
     return HLFFI_OK;
 }

@@ -12,20 +12,20 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{F7A8B1E3-9C4D-4E5F-8A6B-1D2E3F4A5B6C}</ProjectGuid>
+    <ProjectGuid>{E5F6A7B8-C9D0-1234-EF01-23456789ABCD}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>hlffi</RootNamespace>
+    <RootNamespace>teststatic</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -58,21 +58,15 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_LIB;HAVE_CONFIG_H;PCRE2_CODE_UNIT_WIDTH=16;MBEDTLS_USER_CONFIG_FILE=&lt;mbedtls_user_config.h&gt;;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)vendor\hashlink\src;$(ProjectDir)vendor\hashlink\include\pcre;$(ProjectDir)vendor\hashlink\include\libuv\include;$(ProjectDir)vendor\hashlink\include\libuv\src;$(ProjectDir)vendor\hashlink\include\mbedtls\include;$(ProjectDir)vendor\hashlink\libs\ssl;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp17</LanguageStandard>
-      <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <TreatWarningAsError>false</TreatWarningAsError>
-      <DisableSpecificWarnings>4244;4267;4456;4459;4127;4100;4201;4706;4996;4477;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)include;$(ProjectDir)vendor\hashlink\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(SolutionDir)bin\x64\Debug\hlffi.lib;$(SolutionDir)vendor\hashlink\x64\Debug\libhl.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <Lib>
-      <AdditionalDependencies>ws2_32.lib;advapi32.lib;psapi.lib;user32.lib;iphlpapi.lib;userenv.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -81,45 +75,26 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_LIB;HAVE_CONFIG_H;PCRE2_CODE_UNIT_WIDTH=16;MBEDTLS_USER_CONFIG_FILE=&lt;mbedtls_user_config.h&gt;;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>false</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)vendor\hashlink\src;$(ProjectDir)vendor\hashlink\include\pcre;$(ProjectDir)vendor\hashlink\include\libuv\include;$(ProjectDir)vendor\hashlink\include\libuv\src;$(ProjectDir)vendor\hashlink\include\mbedtls\include;$(ProjectDir)vendor\hashlink\libs\ssl;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp17</LanguageStandard>
-      <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <TreatWarningAsError>false</TreatWarningAsError>
-      <DisableSpecificWarnings>4244;4267;4456;4459;4127;4100;4201;4706;4996;4477;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)include;$(ProjectDir)vendor\hashlink\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(SolutionDir)bin\x64\Release\hlffi.lib;$(SolutionDir)vendor\hashlink\x64\Release\libhl.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <Lib>
-      <AdditionalDependencies>ws2_32.lib;advapi32.lib;psapi.lib;user32.lib;iphlpapi.lib;userenv.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="include\hlffi.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- HLFFI wrapper code (only) - HashLink loader files must be compiled into application -->
-    <ClCompile Include="src\hlffi_core.c" />
-    <ClCompile Include="src\hlffi_events.c" />
-    <ClCompile Include="src\hlffi_integration.c" />
-    <ClCompile Include="src\hlffi_lifecycle.c" />
-    <ClCompile Include="src\hlffi_types.c" />
-    <ClCompile Include="src\hlffi_values.c" />
-    <ClCompile Include="src\hlffi_reload.c" />
-    <ClCompile Include="src\hlffi_threading.c" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- HashLink loader sources (must be compiled into application, not in hlffi.lib) -->
-    <None Include="vendor\hashlink\src\code.c" />
-    <None Include="vendor\hashlink\src\module.c" />
-    <None Include="vendor\hashlink\src\jit.c" />
-    <None Include="vendor\hashlink\src\debugger.c" />
-    <None Include="vendor\hashlink\src\profile.c" />
+    <ClCompile Include="test_static.c" />
+    <!-- HashLink loader sources (required for hlffi_load/hlffi_call) -->
+    <ClCompile Include="vendor\hashlink\src\code.c" />
+    <ClCompile Include="vendor\hashlink\src\module.c" />
+    <ClCompile Include="vendor\hashlink\src\jit.c" />
+    <ClCompile Include="vendor\hashlink\src\debugger.c" />
+    <ClCompile Include="vendor\hashlink\src\profile.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

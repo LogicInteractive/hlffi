@@ -1,8 +1,8 @@
 # Phase 3: Static Members & Values - COMPLETE ✅
 
-**Status:** 100% Complete (10/10 tests passing)
-**Completion Date:** November 26, 2025
-**Test Coverage:** All static field access and method call scenarios
+**Status:** 100% Complete (56/56 extended tests + 10 basic tests passing)
+**Completion Date:** November 27, 2025
+**Test Coverage:** All static field access and method call scenarios, including edge cases
 
 ---
 
@@ -44,7 +44,7 @@ Phase 3 implements comprehensive support for accessing Haxe static members from 
 **Solution Discovered:**
 - Static fields ARE accessible after calling the entry point (Main.main())
 - Entry point initialization creates global instances for classes with static members
-- Use `obj_resolve_field()` (made non-static) for field lookups
+- Use `obj_resolve_field()` (made non-static with `HL_API` export) for field lookups
 - Handle NULL int fields by creating vdynamic with 0 value
 - Handle HOBJ string fields with `hl_to_string()` conversion
 
@@ -52,10 +52,64 @@ Phase 3 implements comprehensive support for accessing Haxe static members from 
 /* Key pattern from working implementation */
 vdynamic* global = *(vdynamic**)class_type->obj->global_value;  // Non-NULL after entry!
 hl_field_lookup* lookup = obj_resolve_field(global->t->obj, field_hash);
-vdynamic* field_value = (vdynamic*)hl_dyn_getp(global, lookup->hashed_name, lookup->t);
+/* Use type-specific accessors based on lookup->t->kind */
 ```
 
-### 2. String Method Arguments (Test 8 Fix)
+### 2. Primitive Type Accessor Functions (Critical Fix)
+
+**Problem:** Segfault when accessing primitive static fields (int, float, bool).
+
+**Root Cause:** HashLink has different accessor functions for different type kinds:
+- `hl_dyn_getp()` returns a pointer for object types
+- `hl_dyn_geti()` returns an `int` directly for integer types
+- `hl_dyn_getd()` returns a `double` directly for float types
+
+Using `hl_dyn_getp()` for primitive types returns the raw value as if it were a pointer, causing segfaults when dereferenced.
+
+**Solution:** Check `lookup->t->kind` and use the appropriate accessor:
+
+```c
+switch (lookup->t->kind) {
+    case HI32:
+    case HUI8:
+    case HUI16: {
+        int val = hl_dyn_geti(global, lookup->hashed_name, lookup->t);
+        wrapped->hl_value = hl_alloc_dynamic(&hlt_i32);
+        wrapped->hl_value->v.i = val;
+        break;
+    }
+    case HF64: {
+        double val = hl_dyn_getd(global, lookup->hashed_name);
+        wrapped->hl_value = hl_alloc_dynamic(&hlt_f64);
+        wrapped->hl_value->v.d = val;
+        break;
+    }
+    case HBOOL: {
+        int val = hl_dyn_geti(global, lookup->hashed_name, lookup->t);
+        wrapped->hl_value = hl_alloc_dynamic(&hlt_bool);
+        wrapped->hl_value->v.b = (val != 0);
+        break;
+    }
+    default: {
+        /* Pointer types (objects, strings, etc.) - use hl_dyn_getp */
+        vdynamic* field_value = (vdynamic*)hl_dyn_getp(global, lookup->hashed_name, lookup->t);
+        wrapped->hl_value = field_value;
+        break;
+    }
+}
+```
+
+**Same fix applied to `hlffi_set_static_field()`:**
+
+| Type Kind | Getter | Setter |
+|-----------|--------|--------|
+| `HI32`, `HUI8`, `HUI16`, `HBOOL` | `hl_dyn_geti()` | `hl_dyn_seti()` |
+| `HI64` | `hl_dyn_geti64()` | `hl_dyn_seti64()` |
+| `HF32` | `hl_dyn_getf()` | `hl_dyn_setf()` |
+| `HF64` | `hl_dyn_getd()` | `hl_dyn_setd()` |
+| Pointer types | `hl_dyn_getp()` | `hl_dyn_setp()` |
+
+### 3. String Method Arguments (Test 8 Fix)
 
 **Problem:** Methods expecting `String` parameters throw exceptions when passed HBYTES vstrings.
 
@@ -88,7 +142,7 @@ if (argc > 0 && method->t->kind == HFUN) {
 
 **Key Insight:** vstring structure is identical for HBYTES and HOBJ - only the type pointer differs! Conversion is zero-cost (no data copying).
 
-### 3. String Return Values
+### 4. String Return Values
 
 **Problem:** Methods returning String objects (HOBJ) extracted as "(null)".
 
@@ -866,10 +920,11 @@ if (method_expects_String) {
 
 ### Test Coverage
 
-**Test File:** `test_static.c`
+**Basic Test File:** `test_static.c` (10 tests)
+**Extended Test File:** `test_static_extended.c` (56 tests)
 **Haxe Code:** `test/Game.hx`, `test/StaticMain.hx`
 
-**10 Test Cases (All Passing):**
+**Basic Test Cases (10/10 Passing):**
 
 1. ✅ Get static int field (after reset)
 2. ✅ Get static string field (after reset)
@@ -881,6 +936,19 @@ if (method_expects_String) {
 8. ✅ Call static method with string argument → string return
 9. ✅ Call static method with multiple int arguments
 10. ✅ Call static method with multiple float arguments
+
+**Extended Test Cases (56/56 Passing):**
+
+- **Static Field Edge Cases:** negative int, zero int, max int, empty string, zero float, negative float, false bool
+- **Boolean Operations:** isActive, toggleRunning, AND, OR, NOT
+- **Integer Operations:** negate, subtract, divide, modulo, abs, max, min
+- **Float Operations:** divide, sqrt, pow, floor, ceil, round, abs
+- **String Operations:** concat, length, toUpper, toLower, substring, repeat, reverse
+- **Type Conversions:** intToString, floatToString, stringToInt, stringToFloat
+- **Multiple Arguments (3+):** sum3, sum4, avg3, formatScore
+- **Comparison Operations:** isGreater, isEqual, compareStrings
+- **Void Returns:** doNothing, printMessage
+- **Set and Verify Fields:** isRunning, multiplier, score
 
 ### Running Tests
 
@@ -1004,6 +1072,7 @@ Phase 4 will extend Phase 3's foundation to support:
 - Entry point initialization requirement for static globals
 - Zero-cost HBYTES ↔ HOBJ conversion via type pointer reassignment
 - HOBJ string extraction using `hl_to_string()`
+- Primitive type accessor functions (hl_dyn_geti/getd vs hl_dyn_getp)
 
-**Completion Date:** November 26, 2025
-**Final Status:** ✅ 100% Complete (10/10 tests passing)
+**Completion Date:** November 27, 2025
+**Final Status:** ✅ 100% Complete (56/56 extended + 10/10 basic tests passing)
