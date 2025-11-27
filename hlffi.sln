@@ -41,6 +41,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_static", "test_static.
 	EndProjectSection
 EndProject
 
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_instance_basic", "test_instance_basic.vcxproj", "{F6A7B8C9-D0E1-2345-F012-3456789ABCDE}"
+	ProjectSection(ProjectDependencies) = postProject
+		{F7A8B1E3-9C4D-4E5F-8A6B-1D2E3F4A5B6C} = {F7A8B1E3-9C4D-4E5F-8A6B-1D2E3F4A5B6C}
+	EndProjectSection
+EndProject
+
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -77,6 +83,11 @@ Global
 		{E5F6A7B8-C9D0-1234-EF01-23456789ABCD}.Debug|x64.Build.0 = Debug|x64
 		{E5F6A7B8-C9D0-1234-EF01-23456789ABCD}.Release|x64.ActiveCfg = Release|x64
 		{E5F6A7B8-C9D0-1234-EF01-23456789ABCD}.Release|x64.Build.0 = Release|x64
+
+		{F6A7B8C9-D0E1-2345-F012-3456789ABCDE}.Debug|x64.ActiveCfg = Debug|x64
+		{F6A7B8C9-D0E1-2345-F012-3456789ABCDE}.Debug|x64.Build.0 = Debug|x64
+		{F6A7B8C9-D0E1-2345-F012-3456789ABCDE}.Release|x64.ActiveCfg = Release|x64
+		{F6A7B8C9-D0E1-2345-F012-3456789ABCDE}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 
 	GlobalSection(SolutionProperties) = preSolution

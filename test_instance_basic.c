@@ -4,9 +4,9 @@
  *
  * Tests:
  * - hlffi_new() with no-arg constructor
- * - hlffi_get_field() for primitives and strings
- * - hlffi_set_field() for primitives
- * - hlffi_call_method() for void and return values
+ * - hlffi_get_field_int/string/bool() convenience APIs
+ * - hlffi_set_field_int() convenience API
+ * - hlffi_call_method_void/int/bool/string() convenience APIs
  * - GC root management with hlffi_value_free()
  */
 
@@ -62,129 +62,84 @@ int main(int argc, char** argv) {
     /* ========== TEST 2: Get primitive field (int) ========== */
     printf("\n--- Test 2: Get primitive field (health:Int) ---\n");
 
-    hlffi_value* health = hlffi_get_field(player, "health");
-    if (!health) {
-        TEST_ERROR(vm);
+    int hp = hlffi_get_field_int(player, "health", -1);
+    printf("player.health = %d\n", hp);
+    if (hp != 100) {
+        TEST_FAIL("Expected health = 100 (from constructor)");
     }
-
-    int hp = hlffi_value_as_int(health, 0);
-    printf("player.health = %d (NOTE: 0 because constructor not yet implemented)\n", hp);
-    /* TODO: Constructor not yet working, expecting 0 instead of 100 */
-    if (hp != 0) {
-        TEST_FAIL("Expected health = 0 (uninitialized)");
-    }
-    TEST_PASS("Got health field correctly (value is 0 as expected without constructor)");
-    free(health);  /* Field values are borrowed, but wrapper needs freeing */
+    TEST_PASS("Got health field correctly (constructor initialized to 100)");
 
     /* ========== TEST 3: Get string field ========== */
     printf("\n--- Test 3: Get string field (name:String) ---\n");
 
-    hlffi_value* name = hlffi_get_field(player, "name");
-    if (!name) {
-        TEST_ERROR(vm);
+    char* name_str = hlffi_get_field_string(player, "name");
+    printf("player.name = \"%s\"\n", name_str ? name_str : "(null)");
+    if (name_str == NULL || strcmp(name_str, "Unnamed") != 0) {
+        TEST_FAIL("Expected name = \"Unnamed\" (from constructor)");
     }
-
-    char* name_str = hlffi_value_as_string(name);
-    printf("player.name = \"%s\" (NOTE: NULL because constructor not yet implemented)\n", name_str ? name_str : "(null)");
-    /* TODO: Constructor not working, expecting NULL instead of "Unnamed" */
-    if (name_str != NULL) {
-        TEST_FAIL("Expected name = NULL (uninitialized)");
-    }
-    TEST_PASS("Got name field correctly (value is NULL as expected without constructor)");
+    TEST_PASS("Got name field correctly (constructor initialized to \"Unnamed\")");
     if (name_str) free(name_str);
-    free(name);
 
     /* ========== TEST 4: Set primitive field ========== */
     printf("\n--- Test 4: Set primitive field (health = 50) ---\n");
 
-    hlffi_value* new_health = hlffi_value_int(vm, 50);
-    if (!hlffi_set_field(player, "health", new_health)) {
+    if (!hlffi_set_field_int(vm, player, "health", 50)) {
         TEST_ERROR(vm);
     }
-    hlffi_value_free(new_health);
 
     /* Verify it was set */
-    health = hlffi_get_field(player, "health");
-    hp = hlffi_value_as_int(health, 0);
+    hp = hlffi_get_field_int(player, "health", -1);
     printf("player.health = %d (after set)\n", hp);
     if (hp != 50) {
         TEST_FAIL("Expected health = 50 after set");
     }
     TEST_PASS("Set health field correctly");
-    free(health);
 
     /* ========== TEST 5: Call void method ========== */
     printf("\n--- Test 5: Call void method (takeDamage(25)) ---\n");
 
     hlffi_value* damage = hlffi_value_int(vm, 25);
-    hlffi_value* result = hlffi_call_method(player, "takeDamage", 1, &damage);
+    hlffi_call_method_void(player, "takeDamage", 1, &damage);
     hlffi_value_free(damage);
 
-    /* Void method returns NULL (not an error) */
-    if (result) {
-        free(result);
-    }
-
     /* Verify health decreased */
-    health = hlffi_get_field(player, "health");
-    hp = hlffi_value_as_int(health, 0);
+    hp = hlffi_get_field_int(player, "health", -1);
     printf("player.health = %d (after takeDamage(25))\n", hp);
     if (hp != 25) {
         TEST_FAIL("Expected health = 25 after takeDamage(25)");
     }
     TEST_PASS("Called takeDamage() successfully");
-    free(health);
 
     /* ========== TEST 6: Call method with return value (int) ========== */
     printf("\n--- Test 6: Call method with int return (getHealth()) ---\n");
 
-    result = hlffi_call_method(player, "getHealth", 0, NULL);
-    if (!result) {
-        TEST_ERROR(vm);
-    }
-
-    hp = hlffi_value_as_int(result, 0);
+    hp = hlffi_call_method_int(player, "getHealth", 0, NULL, -1);
     printf("player.getHealth() = %d\n", hp);
     if (hp != 25) {
         TEST_FAIL("Expected getHealth() = 25");
     }
     TEST_PASS("Called getHealth() successfully");
-    free(result);
 
     /* ========== TEST 7: Call method with return value (bool) ========== */
     printf("\n--- Test 7: Call method with bool return (checkAlive()) ---\n");
 
-    result = hlffi_call_method(player, "checkAlive", 0, NULL);
-    if (!result) {
-        TEST_ERROR(vm);
+    bool alive = hlffi_call_method_bool(player, "checkAlive", 0, NULL, false);
+    printf("player.checkAlive() = %s\n", alive ? "true" : "false");
+    if (!alive) {
+        TEST_FAIL("Expected checkAlive() = true (player has health > 0)");
     }
-
-    bool alive = hlffi_value_as_bool(result, false);
-    printf("player.checkAlive() = %s (NOTE: false because constructor not yet implemented)\n", alive ? "true" : "false");
-    /* TODO: Constructor not working, expecting false instead of true */
-    if (alive) {
-        TEST_FAIL("Expected checkAlive() = false (uninitialized)");
-    }
-    TEST_PASS("Called checkAlive() successfully (value is false as expected without constructor)");
-    free(result);
+    TEST_PASS("Called checkAlive() successfully (isAlive=true from constructor)");
 
     /* ========== TEST 8: Call method with string return ========== */
     printf("\n--- Test 8: Call method with string return (getName()) ---\n");
 
-    result = hlffi_call_method(player, "getName", 0, NULL);
-    if (!result) {
-        TEST_ERROR(vm);
+    char* player_name = hlffi_call_method_string(player, "getName", 0, NULL);
+    printf("player.getName() = \"%s\"\n", player_name ? player_name : "(null)");
+    if (player_name == NULL || strcmp(player_name, "Unnamed") != 0) {
+        TEST_FAIL("Expected getName() = \"Unnamed\" (from constructor)");
     }
-
-    char* player_name = hlffi_value_as_string(result);
-    printf("player.getName() = \"%s\" (NOTE: (null) because constructor not yet implemented)\n", player_name ? player_name : "(null)");
-    /* TODO: Constructor not working, expecting NULL instead of "Unnamed" */
-    if (player_name != NULL) {
-        TEST_FAIL("Expected getName() = NULL (uninitialized)");
-    }
-    TEST_PASS("Called getName() successfully (value is NULL as expected without constructor)");
+    TEST_PASS("Called getName() successfully (returns \"Unnamed\" from constructor)");
     if (player_name) free(player_name);
-    free(result);
 
     /* ========== TEST 9: Type checking ========== */
     printf("\n--- Test 9: Type checking (is_instance_of) ---\n");

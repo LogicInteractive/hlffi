@@ -97,6 +97,8 @@ static hl_type* find_type_by_name(hlffi_vm* vm, const char* class_name) {
  * 2. Constructor is a method named "new"
  * 3. We must allocate the object THEN call the constructor on it
  * 4. Object is automatically GC-rooted for safety
+ *
+ * Constructor calling follows the pattern from MASTER_PLAN.md Issue #253 workaround.
  */
 hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_value** argv) {
     if (!vm) return NULL;
@@ -131,12 +133,190 @@ hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_val
     }
 
     /* Step 3: Allocate the object instance */
-    /* TODO: Constructor call needs to be implemented to initialize fields properly */
     vobj* instance = (vobj*)hl_alloc_obj(class_type);
     if (!instance) {
         set_obj_error(vm, "Failed to allocate object instance");
         return NULL;
     }
+
+#ifdef HLFFI_DEBUG
+    printf("[HLFFI] Allocated instance: %p\n", (void*)instance);
+    printf("[HLFFI] Instance->t: %p (expected %p)\n", (void*)instance->t, (void*)class_type);
+#endif
+
+    /* Step 4: Find and call the constructor */
+    /* First ensure runtime object is initialized */
+    hl_runtime_obj* rt = hl_get_obj_proto(class_type);
+
+#ifdef HLFFI_DEBUG
+    printf("[HLFFI] Runtime object: %p\n", (void*)rt);
+    if (rt) {
+        printf("[HLFFI] rt->nlookup = %d, rt->lookup = %p\n", rt->nlookup, (void*)rt->lookup);
+        printf("[HLFFI] rt->nmethods = %d, rt->methods = %p\n", rt->nmethods, (void*)rt->methods);
+        printf("[HLFFI] rt->nbindings = %d, rt->bindings = %p\n", rt->nbindings, (void*)rt->bindings);
+        printf("[HLFFI] class_type->obj->nbindings = %d, bindings = %p\n",
+               class_type->obj->nbindings, (void*)class_type->obj->bindings);
+        /* Dump raw bindings from type obj (pairs of fid, mid) */
+        for (int i = 0; i < class_type->obj->nbindings; i++) {
+            int fid = class_type->obj->bindings[i<<1];
+            int mid = class_type->obj->bindings[(i<<1)|1];
+            printf("[HLFFI] obj->bindings[%d]: fid=%d, mid=%d\n", i, fid, mid);
+        }
+    }
+#endif
+
+    /* Find constructor function */
+    void* ctor_func = NULL;
+    hl_type* ctor_type = NULL;
+
+    /*
+     * Strategy 1: Search in bindings (for classes with __constructor__ binding)
+     */
+    int ctor_hash = hl_hash_utf8("__constructor__");
+    if (rt && rt->bindings) {
+        for (int i = 0; i < rt->nbindings; i++) {
+            hl_runtime_binding* b = &rt->bindings[i];
+            if (b->fid == ctor_hash) {
+                ctor_func = b->ptr;
+                ctor_type = b->closure;
+#ifdef HLFFI_DEBUG
+                printf("[HLFFI] Found constructor in bindings: ptr=%p\n", ctor_func);
+#endif
+                break;
+            }
+        }
+    }
+
+    /*
+     * Strategy 2: Search module functions for constructor
+     * In HL bytecode, constructor is named "$ClassName.__constructor__"
+     * The $ prefix indicates the Class type's static members
+     */
+    if (!ctor_func && vm->module && vm->module->code) {
+        hl_code* code = vm->module->code;
+
+        /* Build the expected constructor name: $ClassName */
+        char expected_class_name[256];
+        snprintf(expected_class_name, sizeof(expected_class_name), "$%s", class_name);
+
+#ifdef HLFFI_DEBUG
+        printf("[HLFFI] Searching for constructor '%s.__constructor__' in %d functions...\n",
+               expected_class_name, code->nfunctions);
+#endif
+
+        /* Search through all functions */
+        for (int i = 0; i < code->nfunctions; i++) {
+            hl_function* f = &code->functions[i];
+            hl_type_obj* fobj = fun_obj(f);
+            const uchar* fname = fun_field_name(f);
+
+            if (fobj && fname) {
+                /* Check if this function belongs to our class and is named "__constructor__" */
+                char obj_name[256];
+                char field_name[256];
+                utostr(obj_name, sizeof(obj_name), fobj->name);
+                utostr(field_name, sizeof(field_name), fname);
+
+#ifdef HLFFI_DEBUG
+                if (i < 15 || strstr(obj_name, class_name) != NULL) {
+                    printf("[HLFFI] func[%d]: %s.%s\n", i, obj_name, field_name);
+                }
+#endif
+
+                if (strcmp(obj_name, expected_class_name) == 0 && strcmp(field_name, "__constructor__") == 0) {
+                    /* Found the constructor function! */
+                    /* f->findex is the actual function index in the module */
+                    ctor_func = vm->module->functions_ptrs[f->findex];
+                    ctor_type = f->type;
+#ifdef HLFFI_DEBUG
+                    printf("[HLFFI] Found constructor at code index %d, findex=%d: ptr=%p, type=%p\n",
+                           i, f->findex, ctor_func, (void*)ctor_type);
+#endif
+                    break;
+                }
+            }
+        }
+    }
+
+    /* Call constructor if found */
+    if (ctor_func) {
+#ifdef HLFFI_DEBUG
+        printf("[HLFFI] Calling constructor: func=%p, type=%p\n", ctor_func, (void*)ctor_type);
+        if (ctor_type && ctor_type->kind == HFUN) {
+            printf("[HLFFI] Constructor type: nargs=%d\n", ctor_type->fun->nargs);
+            for (int argi = 0; argi < ctor_type->fun->nargs; argi++) {
+                printf("[HLFFI]   arg[%d] kind=%d\n", argi, ctor_type->fun->args[argi]->kind);
+            }
+            printf("[HLFFI] Instance type kind=%d\n", class_type->kind);
+        }
+#endif
+        /*
+         * The __constructor__ function is a JIT-compiled method.
+         * For a no-arg constructor, signature is: (this:Player) -> Void
+         *
+         * We must call the JIT function directly, NOT through hl_dyn_call_safe,
+         * because hl_dyn_call_safe is for closures with dynamic dispatch which
+         * has different calling conventions.
+         */
+
+#ifdef HLFFI_DEBUG
+        printf("[HLFFI] Calling constructor directly with this=%p\n", (void*)instance);
+#endif
+
+        /* For no-arg constructor, call directly via function pointer */
+        if (argc == 0 && ctor_type && ctor_type->kind == HFUN && ctor_type->fun->nargs == 1) {
+            /* Direct call: constructor(this) */
+            typedef void (*ctor_fn)(vdynamic*);
+            ctor_fn fn = (ctor_fn)ctor_func;
+            fn((vdynamic*)instance);
+#ifdef HLFFI_DEBUG
+            printf("[HLFFI] Constructor completed successfully (direct call)\n");
+#endif
+        } else {
+            /* For constructors with arguments, use hl_dyn_call_safe */
+            int total_args = argc + 1;
+            vdynamic** hl_args = (vdynamic**)alloca(total_args * sizeof(vdynamic*));
+            hl_args[0] = (vdynamic*)instance;
+
+            for (int i = 0; i < argc; i++) {
+                hl_args[i + 1] = argv[i] ? argv[i]->hl_value : NULL;
+            }
+
+            vclosure cl;
+            cl.t = ctor_type;
+            cl.fun = ctor_func;
+            cl.hasValue = 0;
+            cl.value = NULL;
+
+#ifdef HLFFI_DEBUG
+            printf("[HLFFI] Calling with %d args via hl_dyn_call_safe\n", total_args);
+#endif
+
+            bool isException = false;
+            vdynamic* result = hl_dyn_call_safe(&cl, hl_args, total_args, &isException);
+
+            if (isException) {
+                set_obj_error(vm, "Exception thrown in constructor");
+#ifdef HLFFI_DEBUG
+                if (result) {
+                    printf("[HLFFI] Exception result: %p\n", (void*)result);
+                    hl_print_uncaught_exception(result);
+                }
+#endif
+                return NULL;
+            }
+
+#ifdef HLFFI_DEBUG
+            printf("[HLFFI] Constructor completed successfully (dynamic call)\n");
+#endif
+        }
+    }
+#ifdef HLFFI_DEBUG
+    else {
+        printf("[HLFFI] No constructor found (ok for classes without explicit constructor)\n");
+    }
+#endif
+    /* If no constructor found, that's OK - some classes may not have one */
 
     /* Step 5: Wrap in hlffi_value with GC root */
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
