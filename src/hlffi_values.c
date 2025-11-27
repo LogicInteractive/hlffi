@@ -3,92 +3,13 @@
  * Phase 3: Value boxing/unboxing, static field access, static method calls
  */
 
-#include "../include/hlffi.h"
-#include <hl.h>
-#include <hlmodule.h>
+#include "hlffi_internal.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
-/* ========== INTERNAL GC STACK FIX ========== */
-
-/**
- * Internal macro to update GC stack_top before any GC allocation.
- * This ensures proper stack scanning when HLFFI is embedded.
- *
- * THE PROBLEM:
- * When hl_register_thread() was called in hlffi_init(), we passed a pointer
- * to heap memory (vm->stack_context). The GC uses stack_top to scan the call
- * stack for roots, but heap memory isn't the stack. This caused:
- *   - Debug builds: allocator.c(369) : FATAL ERROR : assert
- *   - Release builds: Random crashes, memory corruption
- *
- * THE FIX:
- * Update stack_top to point to the current stack frame before any GC allocation.
- * This way the GC scans the actual call stack where vdynamic* pointers live.
- *
- * This is called automatically by HLFFI functions, so users don't need
- * to call HLFFI_ENTER_SCOPE() manually.
- *
- * TROUBLESHOOTING:
- * If you still see GC crashes after this fix:
- * 1. Ensure you're on the main thread (same thread that called hlffi_init)
- * 2. For worker threads, call hlffi_worker_register() first
- * 3. Try adding HLFFI_ENTER_SCOPE() at the top of your function as a fallback
- * 4. Check if you're calling HashLink functions directly (bypass this fix)
- *
- * See: docs/GC_STACK_SCANNING.md
- * See: https://github.com/HaxeFoundation/hashlink/issues/752
- */
-#define HLFFI_UPDATE_STACK_TOP() \
-    do { \
-        hl_thread_info* _t = hl_get_thread(); \
-        if (_t) { \
-            int _stack_marker; \
-            _t->stack_top = &_stack_marker; \
-        } \
-    } while(0)
-
-/* HashLink internal function - declared as extern to access it
- * Defined as static in vendor/hashlink/src/std/obj.c:64
- * But exists in compiled libhl.a and can be accessed via extern declaration
- * Pattern discovered from working FFI code - this is the KEY to static field access!
- */
-extern hl_field_lookup* obj_resolve_field(hl_type_obj *o, int hfield);
-
-/* Forward declaration of VM structure */
-struct hlffi_vm {
-    hl_module* module;
-    hl_code* code;
-    hlffi_integration_mode integration_mode;
-    void* stack_context;
-    char error_msg[512];
-    hlffi_error_code last_error;
-    bool hl_initialized;
-    bool thread_registered;
-    bool module_loaded;
-    bool entry_called;
-    bool hot_reload_enabled;
-    const char* loaded_file;
-};
-
-/* hlffi_value wraps a HashLink vdynamic* with GC root protection */
-struct hlffi_value {
-    vdynamic* hl_value;
-    bool is_rooted;  /* Track if we added a GC root */
-};
-
-/* Helper: Set error */
-static void set_error(hlffi_vm* vm, hlffi_error_code code, const char* msg) {
-    if (!vm) return;
-    vm->last_error = code;
-    if (msg) {
-        strncpy(vm->error_msg, msg, sizeof(vm->error_msg) - 1);
-        vm->error_msg[sizeof(vm->error_msg) - 1] = '\0';
-    } else {
-        vm->error_msg[0] = '\0';
-    }
-}
+/* Use hlffi_set_error from internal header, create local alias */
+#define set_error hlffi_set_error
 
 /* ========== VALUE BOXING ========== */
 

@@ -3,64 +3,10 @@
  * Phase 6: Bidirectional C↔Haxe calls, exception handling, external blocking wrappers
  */
 
-#include "../include/hlffi.h"
-#include <hl.h>
-#include <hlmodule.h>
+#include "hlffi_internal.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-
-#define MAX_CALLBACKS 64
-
-/* Callback entry storage */
-typedef struct {
-    char name[64];
-    hlffi_native_func c_func;
-    int nargs;
-    vclosure* hl_closure;
-    bool is_rooted;
-} callback_entry;
-
-/* Extended VM structure with callbacks */
-struct hlffi_vm {
-    /* HashLink module and code */
-    hl_module* module;
-    hl_code* code;
-
-    /* Integration mode */
-    hlffi_integration_mode integration_mode;
-
-    /* Persistent context for stack_top */
-    void* stack_context;
-
-    /* Error state */
-    char error_msg[512];
-    hlffi_error_code last_error;
-
-    /* Initialization flags */
-    bool hl_initialized;
-    bool thread_registered;
-    bool module_loaded;
-    bool entry_called;
-
-    /* Hot reload support */
-    bool hot_reload_enabled;
-    const char* loaded_file;
-
-    /* Phase 6: Callback storage */
-    callback_entry callbacks[MAX_CALLBACKS];
-    int callback_count;
-
-    /* Phase 6: Exception storage */
-    char exception_msg[512];
-    char exception_stack[2048];
-};
-
-/* hlffi_value structure (also defined in other source files) */
-struct hlffi_value {
-    vdynamic* hl_value;
-    bool is_rooted;  /* Track if we added a GC root */
-};
 
 /* ========== HELPER FUNCTIONS ========== */
 
@@ -97,7 +43,7 @@ static void store_exception(hlffi_vm* vm, vdynamic* exception) {
 
 /* Native function wrapper - bridges C callback to HashLink */
 static vdynamic* native_wrapper(void* user_data, vdynamic** args, int nargs) {
-    callback_entry* entry = (callback_entry*)user_data;
+    hlffi_callback_entry* entry = (hlffi_callback_entry*)user_data;
     if (!entry || !entry->c_func) {
         return NULL;
     }

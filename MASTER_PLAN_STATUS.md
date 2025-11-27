@@ -1,14 +1,14 @@
 # HLFFI v3.0 — Master Plan Status Update
 **Last Updated:** November 27, 2025
-**Status:** Phases 0-4 Complete, Production Ready for Core FFI
+**Status:** Phases 0-4 Complete, Phase 6 Partial, Production Ready for Core FFI
 
 ---
 
 ## Executive Summary
 
 **✅ COMPLETE:** Phases 0, 1, 2, 3, 4 (100%)
-**⚠️ PARTIAL:** Phase 1 (Hot Reload & Threading not implemented)
-**❌ TODO:** Phases 5, 6, 7, 8, 9
+**⚠️ PARTIAL:** Phase 1 (Hot Reload & Threading not implemented), Phase 6 (Exception handling working)
+**❌ TODO:** Phases 5, 7, 8, 9
 
 **Current Capability:** Full bidirectional C↔Haxe FFI with:
 - VM lifecycle management
@@ -227,23 +227,36 @@ int health = hlffi_get_field_int(player, "health", 0);
 
 ---
 
-### ❌ Phase 6: Callbacks & Exceptions (0% Complete)
+### ⚠️ Phase 6: Callbacks & Exceptions (60% Complete)
 
-**Status:** NOT STARTED
+**Status:** EXCEPTION HANDLING COMPLETE, Callbacks TODO
+**Test Results:** 9/9 tests passing
 
-**Planned:**
-- Register C function as Haxe callback
-- Call C from Haxe
-- Try/catch for Haxe exceptions
-- Get exception message/stack
-- External blocking call wrappers
+**Completed:**
+- ✅ `hlffi_try_call_static()` - call with exception catching
+- ✅ `hlffi_get_exception_message()` - get exception text
+- ✅ `hlffi_has_exception()` - check for pending exception
+- ✅ `hlffi_clear_exception()` - clear exception state
+- ✅ `hlffi_blocking_begin/end()` - GC blocking notification
+- ✅ Exception storage in VM struct
+- ✅ All 9 exception tests passing
 
-**Priority:** HIGH (needed for production robustness)
+**Not Implemented:**
+- ❌ Register C function as Haxe callback
+- ❌ Call C from Haxe
+- ❌ Stack trace extraction (message only)
 
-**Critical for:**
-- Error handling
-- Bidirectional callbacks
-- External I/O integration
+**Files:**
+- `src/hlffi_callbacks.c` (~8KB) - Exception handling + callback stubs
+- `test_exceptions.c` - 9 comprehensive tests
+- `test/Exceptions.hx` - Haxe test class
+
+**Critical Bug Fix (Nov 27):**
+- Fixed heap corruption caused by mismatched `struct hlffi_vm` definitions
+- Created `src/hlffi_internal.h` to unify struct definitions across all source files
+- See `docs/STRUCT_MISMATCH_FIX.md` for details
+
+**Priority:** MEDIUM (exception handling done, callbacks nice-to-have)
 
 ---
 

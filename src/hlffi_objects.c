@@ -10,54 +10,11 @@
  * - hlffi_is_instance_of() - Type checking
  */
 
-#include "../include/hlffi.h"
-#include <hl.h>
-#include <hlmodule.h>
+#include "hlffi_internal.h"
 #include <string.h>
 #include <stdlib.h>
 
-/* ========== INTERNAL GC STACK FIX (from Phase 3) ========== */
-
-/**
- * Update GC stack_top before any GC allocation.
- * This is critical for proper stack scanning when HLFFI is embedded.
- * See: docs/GC_STACK_SCANNING.md
- */
-#define HLFFI_UPDATE_STACK_TOP() \
-    do { \
-        hl_thread_info* _t = hl_get_thread(); \
-        if (_t) { \
-            int _stack_marker; \
-            _t->stack_top = &_stack_marker; \
-        } \
-    } while(0)
-
-/* HashLink internal function for field resolution */
-HL_API hl_field_lookup* obj_resolve_field(hl_type_obj* o, int hfield);
-
-/* Internal VM structure (defined in hlffi_lifecycle.c) */
-struct hlffi_vm {
-    hl_module* module;
-    hl_code* code;
-    hlffi_integration_mode integration_mode;
-    void* stack_context;
-    char error_msg[512];
-    hlffi_error_code last_error;
-    bool hl_initialized;
-    bool thread_registered;
-    bool module_loaded;
-    bool entry_called;
-    bool hot_reload_enabled;
-    const char* loaded_file;
-};
-
-/* hlffi_value wraps a HashLink vdynamic* with GC root protection */
-struct hlffi_value {
-    vdynamic* hl_value;
-    bool is_rooted;  /* Track if we added a GC root */
-};
-
-/* Helper: Set error message */
+/* Helper: Set error message (simple version for this file) */
 static void set_obj_error(hlffi_vm* vm, const char* msg) {
     if (vm) {
         strncpy(vm->error_msg, msg, sizeof(vm->error_msg) - 1);

@@ -3,40 +3,13 @@
  * Phase 2: Type System & Reflection
  */
 
-#include "../include/hlffi.h"
-#include <hl.h>
-#include <hlmodule.h>
+#include "hlffi_internal.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
-/* Forward declaration of VM structure (from hlffi_lifecycle.c) */
-struct hlffi_vm {
-    hl_module* module;
-    hl_code* code;
-    hlffi_integration_mode integration_mode;
-    void* stack_context;
-    char error_msg[512];
-    hlffi_error_code last_error;
-    bool hl_initialized;
-    bool thread_registered;
-    bool module_loaded;
-    bool entry_called;
-    bool hot_reload_enabled;
-    const char* loaded_file;
-};
-
-/* Helper: Set error */
-static void set_error(hlffi_vm* vm, hlffi_error_code code, const char* msg) {
-    if (!vm) return;
-    vm->last_error = code;
-    if (msg) {
-        strncpy(vm->error_msg, msg, sizeof(vm->error_msg) - 1);
-        vm->error_msg[sizeof(vm->error_msg) - 1] = '\0';
-    } else {
-        vm->error_msg[0] = '\0';
-    }
-}
+/* Use hlffi_set_error from internal header, create local alias */
+#define set_error hlffi_set_error
 
 /* ========== TYPE LOOKUP ========== */
 
