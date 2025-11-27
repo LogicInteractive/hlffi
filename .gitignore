@@ -71,6 +71,7 @@ test_static_extended
 test_hlffi_hello
 test_nonblocking
 test_minimal
+test_typed_minimal
 
 # Backup files
 *_old.h
