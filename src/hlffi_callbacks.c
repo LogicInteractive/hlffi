@@ -307,15 +307,16 @@ bool hlffi_unregister_callback(hlffi_vm* vm, const char* name) {
     for (int i = 0; i < vm->callback_count; i++) {
         hlffi_callback_entry* entry = &vm->callbacks[i];
         if (strcmp(entry->name, name) == 0) {
-            /* Remove GC root if it was rooted */
+            /* Remove GC root if it was rooted
+             * This makes the closure eligible for garbage collection.
+             * HashLink's GC will clean up the closure and its type automatically. */
             if (entry->is_rooted && entry->hl_closure) {
                 hl_remove_root(&entry->hl_closure);
             }
 
-            /* Free the function type if it was dynamically allocated */
-            if (entry->hl_closure && entry->hl_closure->t) {
-                free_function_type(entry->hl_closure->t);
-            }
+            /* NOTE: Do NOT manually free the closure or its type!
+             * The closure is GC-managed. After removing the root, the GC will
+             * automatically clean it up during the next collection cycle. */
 
             /* Clear the entry by shifting remaining callbacks down */
             for (int j = i; j < vm->callback_count - 1; j++) {
