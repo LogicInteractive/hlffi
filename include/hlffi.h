@@ -49,8 +49,47 @@ typedef struct hlffi_vm hlffi_vm;
 typedef struct hlffi_type hlffi_type;
 
 /**
- * Opaque value handle.
- * Represents a Haxe value (object, primitive, etc.).
+ * Opaque value handle - TEMPORARY CONVERSION WRAPPER.
+ *
+ * DESIGN INTENT: hlffi_value is for CONVERSION and PASSING data between
+ * C and Haxe, NOT for long-term storage in C data structures.
+ *
+ * ✅ SAFE USAGE PATTERN (Temporary Conversion):
+ *    hlffi_value* temp = hlffi_value_int(vm, 100);
+ *    hlffi_call_method(obj, "setHealth", 1, &temp);
+ *    hlffi_value_free(temp);  // Use immediately, then free
+ *
+ * ✅ SAFE: Extract and store native types:
+ *    hlffi_value* hp = hlffi_get_field(obj, "health");
+ *    int health = hlffi_value_as_int(hp, 0);  // Copy to C int
+ *    hlffi_value_free(hp);
+ *    // Now 'health' is a C-owned value, safe to store anywhere
+ *
+ * ✅ SAFE: Store Haxe objects created with hlffi_new():
+ *    struct Game { hlffi_value* player; };
+ *    game->player = hlffi_new(vm, "Player", 0, NULL);  // GC-rooted
+ *    // This is safe because hlffi_new() adds an explicit GC root
+ *    // Must call hlffi_value_free() when done to remove root
+ *
+ * ❌ UNSAFE: Storing temporary wrappers:
+ *    struct Data { hlffi_value* temp; };  // DON'T DO THIS!
+ *    data->temp = hlffi_value_int(vm, 100);  // NOT GC-rooted!
+ *
+ * ❌ UNSAFE: Global/static storage:
+ *    static hlffi_value* g_value = NULL;  // DON'T DO THIS!
+ *
+ * MEMORY MANAGEMENT:
+ * - ALWAYS call hlffi_value_free() when done (safe for all values)
+ * - Values from hlffi_new() are GC-rooted (safe to store)
+ * - Values from hlffi_value_int/float/bool/string() are NOT rooted (temporary)
+ * - Values from hlffi_get_field/hlffi_call_method() are NOT rooted (temporary)
+ * - Strings from hlffi_value_as_string() must be freed with free()
+ *
+ * GC SAFETY:
+ * Non-rooted values rely on GC stack scanning for protection. They are safe
+ * when stored in local (stack) variables and used immediately within the same
+ * function. They become unsafe when stored in heap-allocated structs, globals,
+ * or passed across async boundaries.
  */
 typedef struct hlffi_value hlffi_value;
 
@@ -272,6 +311,59 @@ const char* hlffi_get_error(hlffi_vm* vm);
  * @return Human-readable error message
  */
 const char* hlffi_get_error_string(hlffi_error_code code);
+
+/* ========== GC STACK SCANNING FIX ========== */
+
+/**
+ * Update the GC stack top to current stack position.
+ *
+ * BACKGROUND:
+ * HashLink's GC scans the C call stack to find object references. When embedding
+ * HashLink, the initial stack_top pointer may point to heap memory instead of
+ * the actual stack, causing incorrect GC behavior (crashes in Debug, corruption
+ * in Release). See docs/GC_STACK_SCANNING.md for full details.
+ *
+ * CURRENT STATUS:
+ * HLFFI now handles this internally - all HLFFI functions that allocate GC memory
+ * automatically update stack_top. You typically don't need to call this manually.
+ *
+ * WHEN TO USE THIS:
+ * Only if you encounter GC-related crashes and the internal fix is insufficient
+ * (e.g., complex threading scenarios, or calling HashLink directly without HLFFI).
+ *
+ * @param stack_marker Address of a local variable on the call stack
+ *
+ * Usage:
+ *   void my_update_loop(hlffi_vm* vm) {
+ *       int stack_marker;
+ *       hlffi_update_stack_top(&stack_marker);
+ *       // ... now safe to call hlffi functions in loop ...
+ *   }
+ *
+ * @note The stack_marker MUST be a local variable (on the stack), not heap-allocated
+ * @note See: https://github.com/HaxeFoundation/hashlink/issues/752
+ */
+void hlffi_update_stack_top(void* stack_marker);
+
+/**
+ * Macro to update stack top using current stack frame.
+ * Automatically creates a local variable and updates stack_top.
+ *
+ * CURRENT STATUS:
+ * Not normally needed - HLFFI handles this internally. Provided as a fallback
+ * if you encounter GC issues in edge cases.
+ *
+ * Usage:
+ *   void my_update_loop(hlffi_vm* vm) {
+ *       HLFFI_ENTER_SCOPE();  // Must be early in the function
+ *       // ... now safe to call hlffi functions in loop ...
+ *   }
+ */
+#define HLFFI_ENTER_SCOPE() \
+    do { \
+        int _hlffi_stack_marker; \
+        hlffi_update_stack_top(&_hlffi_stack_marker); \
+    } while(0)
 
 /* ========== INTEGRATION MODE SETUP ========== */
 
@@ -754,6 +846,16 @@ hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str);
 hlffi_value* hlffi_value_null(hlffi_vm* vm);
 
 /**
+ * Free a value handle.
+ *
+ * This removes the GC root and frees the wrapper struct.
+ * IMPORTANT: Always use this function instead of free() on hlffi_value pointers.
+ *
+ * @param value Value handle to free (can be NULL)
+ */
+void hlffi_value_free(hlffi_value* value);
+
+/**
  * Extract integer from value.
  *
  * @param value Value handle
@@ -785,10 +887,19 @@ bool hlffi_value_as_bool(hlffi_value* value, bool fallback);
  * Returns UTF-8 string converted from HashLink's UTF-16.
  *
  * @param value Value handle
- * @return UTF-8 string (caller must free), or NULL if not a string
+ * @return UTF-8 string, or NULL if not a string
  *
- * @note Caller must free() the returned string
+ * @note MEMORY OWNERSHIP: Caller must free() the returned string with free()
  * @note Returns NULL if value is NULL or not a string
+ * @note The string is a COPY - safe to store and use after freeing hlffi_value
+ *
+ * Example:
+ *   hlffi_value* name = hlffi_get_field(obj, "name");
+ *   char* str = hlffi_value_as_string(name);
+ *   hlffi_value_free(name);  // Can free value immediately
+ *   // str is still valid - it's an independent copy
+ *   printf("Name: %s\n", str);
+ *   free(str);  // Must free the string when done
  */
 char* hlffi_value_as_string(hlffi_value* value);
 
@@ -840,6 +951,223 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
  * @note Entry point must be called before calling static methods
  */
 hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char* method_name, int argc, hlffi_value** argv);
+
+/* ========== PHASE 4: INSTANCE MEMBERS (OBJECTS) ========== */
+
+/**
+ * Create a new instance of a class (call constructor).
+ *
+ * Creates a new object instance by calling the class constructor.
+ * The object is automatically GC-rooted and must be freed with hlffi_value_free().
+ *
+ * @param vm VM instance
+ * @param class_name Fully qualified class name (e.g., "Player", "com.example.MyClass")
+ * @param argc Number of constructor arguments
+ * @param argv Array of argument values (can be NULL if argc == 0)
+ * @return New object instance, or NULL on error
+ *
+ * @note Entry point must be called before creating instances
+ * @note Object is GC-rooted - call hlffi_value_free() when done
+ * @note Check hlffi_get_error() if NULL is returned
+ *
+ * Example:
+ *   // Player has: new(name:String)
+ *   hlffi_value* name = hlffi_value_string(vm, "Hero");
+ *   hlffi_value* player = hlffi_new(vm, "Player", 1, &name);
+ *   // ... use player ...
+ *   hlffi_value_free(player);
+ */
+hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_value** argv);
+
+/**
+ * Get an instance field value.
+ *
+ * Retrieves the value of an object's instance field by name.
+ * Works for all field types (primitives, objects, strings, etc.).
+ *
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @return Field value, or NULL on error
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Returned value does NOT need to be freed (it's a borrowed reference)
+ *
+ * Example:
+ *   hlffi_value* health = hlffi_get_field(player, "health");
+ *   int hp = hlffi_value_as_int(health);
+ */
+hlffi_value* hlffi_get_field(hlffi_value* obj, const char* field_name);
+
+/**
+ * Set an instance field value.
+ *
+ * Sets the value of an object's instance field by name.
+ * Works for all field types (primitives, objects, strings, etc.).
+ *
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @param value New value to set
+ * @return true on success, false on error
+ *
+ * @note Check hlffi_get_error() if false is returned
+ *
+ * Example:
+ *   hlffi_value* new_health = hlffi_value_int(vm, 50);
+ *   hlffi_set_field(player, "health", new_health);
+ *   hlffi_value_free(new_health);
+ */
+bool hlffi_set_field(hlffi_value* obj, const char* field_name, hlffi_value* value);
+
+/* ========== CONVENIENCE API: Direct Field Access ========== */
+
+/**
+ * Get integer field directly (convenience function).
+ *
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @param fallback Fallback value if field not found or wrong type
+ * @return Field value as int, or fallback on error
+ *
+ * Example:
+ *   int health = hlffi_get_field_int(player, "health", 0);
+ */
+int hlffi_get_field_int(hlffi_value* obj, const char* field_name, int fallback);
+
+/**
+ * Get float field directly (convenience function).
+ */
+float hlffi_get_field_float(hlffi_value* obj, const char* field_name, float fallback);
+
+/**
+ * Get boolean field directly (convenience function).
+ */
+bool hlffi_get_field_bool(hlffi_value* obj, const char* field_name, bool fallback);
+
+/**
+ * Get string field directly (convenience function).
+ *
+ * @return String (caller must free), or NULL on error
+ * @note Caller must free() the returned string
+ */
+char* hlffi_get_field_string(hlffi_value* obj, const char* field_name);
+
+/**
+ * Set integer field directly (convenience function).
+ *
+ * @param vm VM instance (needed to create temporary value)
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @param value Value to set
+ * @return true on success, false on error
+ *
+ * Example:
+ *   hlffi_set_field_int(vm, player, "health", 100);
+ */
+bool hlffi_set_field_int(hlffi_vm* vm, hlffi_value* obj, const char* field_name, int value);
+
+/**
+ * Set float field directly (convenience function).
+ */
+bool hlffi_set_field_float(hlffi_vm* vm, hlffi_value* obj, const char* field_name, float value);
+
+/**
+ * Set boolean field directly (convenience function).
+ */
+bool hlffi_set_field_bool(hlffi_vm* vm, hlffi_value* obj, const char* field_name, bool value);
+
+/**
+ * Set string field directly (convenience function).
+ */
+bool hlffi_set_field_string(hlffi_vm* vm, hlffi_value* obj, const char* field_name, const char* value);
+
+/**
+ * Call an instance method.
+ *
+ * Calls a method on an object instance with the given arguments.
+ *
+ * @param obj Object instance
+ * @param method_name Method name (UTF-8)
+ * @param argc Number of arguments
+ * @param argv Array of argument values (can be NULL if argc == 0)
+ * @return Return value, or NULL on error/void return
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Returned value should be freed with hlffi_value_free()
+ *
+ * Example:
+ *   hlffi_value* damage = hlffi_value_int(vm, 25);
+ *   hlffi_call_method(player, "takeDamage", 1, &damage);
+ *   hlffi_value_free(damage);
+ */
+hlffi_value* hlffi_call_method(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
+
+/* ========== CONVENIENCE API: Direct Method Calls ========== */
+
+/**
+ * Call void method directly (convenience function).
+ *
+ * Calls a method that returns no value. No need to manage return value.
+ *
+ * @param obj Object instance
+ * @param method_name Method name (UTF-8)
+ * @param argc Number of arguments
+ * @param argv Array of argument values (can be NULL if argc == 0)
+ * @return true on success, false on error
+ *
+ * Example:
+ *   hlffi_value* damage = hlffi_value_int(vm, 25);
+ *   hlffi_call_method_void(player, "takeDamage", 1, &damage);
+ *   hlffi_value_free(damage);
+ */
+bool hlffi_call_method_void(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
+
+/**
+ * Call method and get int return directly (convenience function).
+ *
+ * @param fallback Fallback value if method fails or returns wrong type
+ * @return Method return value as int, or fallback on error
+ *
+ * Example:
+ *   int health = hlffi_call_method_int(player, "getHealth", 0, NULL, 0);
+ */
+int hlffi_call_method_int(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, int fallback);
+
+/**
+ * Call method and get float return directly (convenience function).
+ */
+float hlffi_call_method_float(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, float fallback);
+
+/**
+ * Call method and get bool return directly (convenience function).
+ */
+bool hlffi_call_method_bool(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, bool fallback);
+
+/**
+ * Call method and get string return directly (convenience function).
+ *
+ * @return String (caller must free), or NULL on error
+ * @note Caller must free() the returned string
+ *
+ * Example:
+ *   char* name = hlffi_call_method_string(player, "getName", 0, NULL);
+ *   printf("Name: %s\n", name);
+ *   free(name);
+ */
+char* hlffi_call_method_string(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
+
+/**
+ * Check if a value is an instance of a given class.
+ *
+ * @param obj Object instance to check
+ * @param class_name Class name to check against
+ * @return true if obj is an instance of class_name, false otherwise
+ *
+ * Example:
+ *   if (hlffi_is_instance_of(value, "Player")) {
+ *       // Safe to use as Player
+ *   }
+ */
+bool hlffi_is_instance_of(hlffi_value* obj, const char* class_name);
 
 #ifdef __cplusplus
 }

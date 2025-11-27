@@ -17,8 +17,10 @@ static hl_field_lookup *obj_resolve_field( hl_type_obj *o, int hfield ) {
 
 // After:
 /* Made non-static for HLFFI static field/method access */
-hl_field_lookup *obj_resolve_field( hl_type_obj *o, int hfield ) {
+HL_API hl_field_lookup *obj_resolve_field( hl_type_obj *o, int hfield ) {
 ```
+
+**Important:** The `HL_API` macro is required on Windows to export the function from the DLL. Without it, you'll get "unresolved external symbol" linker errors. On other platforms, `HL_API` expands to visibility attributes that make the symbol available.
 
 This makes the function accessible to HLFFI for:
 - Static field access (`hlffi_get_static_field`, `hlffi_set_static_field`)

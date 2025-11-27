@@ -10,6 +10,45 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* ========== INTERNAL GC STACK FIX ========== */
+
+/**
+ * Internal macro to update GC stack_top before any GC allocation.
+ * This ensures proper stack scanning when HLFFI is embedded.
+ *
+ * THE PROBLEM:
+ * When hl_register_thread() was called in hlffi_init(), we passed a pointer
+ * to heap memory (vm->stack_context). The GC uses stack_top to scan the call
+ * stack for roots, but heap memory isn't the stack. This caused:
+ *   - Debug builds: allocator.c(369) : FATAL ERROR : assert
+ *   - Release builds: Random crashes, memory corruption
+ *
+ * THE FIX:
+ * Update stack_top to point to the current stack frame before any GC allocation.
+ * This way the GC scans the actual call stack where vdynamic* pointers live.
+ *
+ * This is called automatically by HLFFI functions, so users don't need
+ * to call HLFFI_ENTER_SCOPE() manually.
+ *
+ * TROUBLESHOOTING:
+ * If you still see GC crashes after this fix:
+ * 1. Ensure you're on the main thread (same thread that called hlffi_init)
+ * 2. For worker threads, call hlffi_worker_register() first
+ * 3. Try adding HLFFI_ENTER_SCOPE() at the top of your function as a fallback
+ * 4. Check if you're calling HashLink functions directly (bypass this fix)
+ *
+ * See: docs/GC_STACK_SCANNING.md
+ * See: https://github.com/HaxeFoundation/hashlink/issues/752
+ */
+#define HLFFI_UPDATE_STACK_TOP() \
+    do { \
+        hl_thread_info* _t = hl_get_thread(); \
+        if (_t) { \
+            int _stack_marker; \
+            _t->stack_top = &_stack_marker; \
+        } \
+    } while(0)
+
 /* HashLink internal function - declared as extern to access it
  * Defined as static in vendor/hashlink/src/std/obj.c:64
  * But exists in compiled libhl.a and can be accessed via extern declaration
@@ -33,9 +72,10 @@ struct hlffi_vm {
     const char* loaded_file;
 };
 
-/* hlffi_value wraps a HashLink vdynamic* */
+/* hlffi_value wraps a HashLink vdynamic* with GC root protection */
 struct hlffi_value {
     vdynamic* hl_value;
+    bool is_rooted;  /* Track if we added a GC root */
 };
 
 /* Helper: Set error */
@@ -55,12 +95,15 @@ static void set_error(hlffi_vm* vm, hlffi_error_code code, const char* msg) {
 hlffi_value* hlffi_value_int(hlffi_vm* vm, int value) {
     if (!vm) return NULL;
 
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
+
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
 
     /* Box the integer */
     wrapped->hl_value = hl_alloc_dynamic(&hlt_i32);
     wrapped->hl_value->v.i = value;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -68,12 +111,15 @@ hlffi_value* hlffi_value_int(hlffi_vm* vm, int value) {
 hlffi_value* hlffi_value_float(hlffi_vm* vm, double value) {
     if (!vm) return NULL;
 
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
+
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
 
     /* Box the float */
     wrapped->hl_value = hl_alloc_dynamic(&hlt_f64);
     wrapped->hl_value->v.d = value;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -81,12 +127,15 @@ hlffi_value* hlffi_value_float(hlffi_vm* vm, double value) {
 hlffi_value* hlffi_value_bool(hlffi_vm* vm, bool value) {
     if (!vm) return NULL;
 
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
+
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
 
     /* Box the boolean */
     wrapped->hl_value = hl_alloc_dynamic(&hlt_bool);
     wrapped->hl_value->v.b = value;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -94,6 +143,8 @@ hlffi_value* hlffi_value_bool(hlffi_vm* vm, bool value) {
 hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str) {
     if (!vm) return NULL;
     if (!str) return hlffi_value_null(vm);
+
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
 
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
@@ -124,6 +175,7 @@ hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str) {
     vstr->t = &hlt_bytes;
 
     wrapped->hl_value = (vdynamic*)vstr;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -135,8 +187,21 @@ hlffi_value* hlffi_value_null(hlffi_vm* vm) {
     if (!wrapped) return NULL;
 
     wrapped->hl_value = NULL;
+    wrapped->is_rooted = false;  /* NULL doesn't need rooting */
 
     return wrapped;
+}
+
+void hlffi_value_free(hlffi_value* value) {
+    if (!value) return;
+
+    /* Remove GC root if we added one */
+    if (value->is_rooted && value->hl_value) {
+        hl_remove_root(&value->hl_value);
+    }
+
+    /* Free the wrapper struct */
+    free(value);
 }
 
 /* ========== VALUE UNBOXING ========== */
@@ -168,6 +233,8 @@ double hlffi_value_as_float(hlffi_value* value, double fallback) {
     /* Check type by kind */
     if (v->t->kind == HF64) {
         return v->v.d;
+    } else if (v->t->kind == HF32) {
+        return (double)v->v.f;  /* 32-bit float */
     } else if (v->t->kind == HI32) {
         return (double)v->v.i;  /* Allow int->float conversion */
     }
@@ -242,6 +309,8 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
         return NULL;
     }
 
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
+
     /* Hash the class name (NO $ prefix for global_value access) */
     int class_hash = hl_hash_utf8(class_name);
     int field_hash = hl_hash_utf8(field_name);
@@ -300,18 +369,62 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
         return NULL;
     }
 
-    /* Get field value using hl_dyn_getp with the correct field type from lookup
-     * Using lookup->t prevents crashes that occur with &hlt_dyn
+    /* Get field value using the appropriate accessor based on field type.
+     * IMPORTANT: Primitive types (int, float, bool) are returned inline by hl_dyn_get*,
+     * not as vdynamic pointers. We must use the correct accessor and box the result.
      */
-    vdynamic* field_value = (vdynamic*)hl_dyn_getp(global, lookup->hashed_name, lookup->t);
-
-    /* Wrap and return */
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) {
         set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate hlffi_value");
         return NULL;
     }
-    wrapped->hl_value = field_value;
+
+    switch (lookup->t->kind) {
+        case HI32:
+        case HUI8:
+        case HUI16: {
+            /* Integer types - use hl_dyn_geti and box the result */
+            int val = hl_dyn_geti(global, lookup->hashed_name, lookup->t);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_i32);
+            wrapped->hl_value->v.i = val;
+            break;
+        }
+        case HI64: {
+            /* 64-bit integer */
+            int64 val = hl_dyn_geti64(global, lookup->hashed_name);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_i64);
+            wrapped->hl_value->v.i64 = val;
+            break;
+        }
+        case HF32: {
+            /* 32-bit float - use hl_dyn_getf */
+            float val = hl_dyn_getf(global, lookup->hashed_name);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_f32);
+            wrapped->hl_value->v.f = val;
+            break;
+        }
+        case HF64: {
+            /* 64-bit float - use hl_dyn_getd */
+            double val = hl_dyn_getd(global, lookup->hashed_name);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_f64);
+            wrapped->hl_value->v.d = val;
+            break;
+        }
+        case HBOOL: {
+            /* Boolean - use hl_dyn_geti and treat as bool */
+            int val = hl_dyn_geti(global, lookup->hashed_name, lookup->t);
+            wrapped->hl_value = hl_alloc_dynamic(&hlt_bool);
+            wrapped->hl_value->v.b = (val != 0);
+            break;
+        }
+        default: {
+            /* Pointer types (objects, strings, etc.) - use hl_dyn_getp */
+            vdynamic* field_value = (vdynamic*)hl_dyn_getp(global, lookup->hashed_name, lookup->t);
+            wrapped->hl_value = field_value;
+            break;
+        }
+    }
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
@@ -326,6 +439,8 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Class name, field name, or value is NULL");
         return HLFFI_ERROR_INVALID_ARGUMENT;
     }
+
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
 
     /* Hash the class name (NO $ prefix for global_value access) */
     int class_hash = hl_hash_utf8(class_name);
@@ -378,10 +493,54 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
         return HLFFI_ERROR_FIELD_NOT_FOUND;
     }
 
-    /* Set field value using hl_dyn_setp with the field type from lookup
-     * Using lookup->t for type-safe field assignment
+    /* Set field value using the appropriate setter based on field type.
+     * IMPORTANT: Primitive types (int, float, bool) need their specific setters.
+     * We extract the primitive value from the boxed hlffi_value.
      */
-    hl_dyn_setp(global, lookup->hashed_name, lookup->t, value->hl_value);
+    switch (lookup->t->kind) {
+        case HI32:
+        case HUI8:
+        case HUI16: {
+            /* Integer types - extract int value and use hl_dyn_seti */
+            int val = hlffi_value_as_int(value, 0);
+            hl_dyn_seti(global, lookup->hashed_name, lookup->t, val);
+            break;
+        }
+        case HI64: {
+            /* 64-bit integer */
+            if (value->hl_value && value->hl_value->t->kind == HI64) {
+                hl_dyn_seti64(global, lookup->hashed_name, value->hl_value->v.i64);
+            } else {
+                /* Fallback: convert from int */
+                int64 val = (int64)hlffi_value_as_int(value, 0);
+                hl_dyn_seti64(global, lookup->hashed_name, val);
+            }
+            break;
+        }
+        case HF32: {
+            /* 32-bit float - use hl_dyn_setf */
+            float val = (float)hlffi_value_as_float(value, 0.0);
+            hl_dyn_setf(global, lookup->hashed_name, val);
+            break;
+        }
+        case HF64: {
+            /* 64-bit float - use hl_dyn_setd */
+            double val = hlffi_value_as_float(value, 0.0);
+            hl_dyn_setd(global, lookup->hashed_name, val);
+            break;
+        }
+        case HBOOL: {
+            /* Boolean - use hl_dyn_seti with 0/1 */
+            int val = hlffi_value_as_bool(value, false) ? 1 : 0;
+            hl_dyn_seti(global, lookup->hashed_name, lookup->t, val);
+            break;
+        }
+        default: {
+            /* Pointer types (objects, strings, etc.) - use hl_dyn_setp */
+            hl_dyn_setp(global, lookup->hashed_name, lookup->t, value->hl_value);
+            break;
+        }
+    }
 
     return HLFFI_OK;
 }
@@ -398,6 +557,8 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Class name or method name is NULL");
         return NULL;
     }
+
+    HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
 
     /* Hash the class name (NO $ prefix - use regular class for global_value access) */
     int class_hash = hl_hash_utf8(class_name);
@@ -516,6 +677,7 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
     if (!wrapped) return NULL;
     wrapped->hl_value = result;
+    wrapped->is_rooted = false;
 
     return wrapped;
 }
