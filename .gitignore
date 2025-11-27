@@ -72,6 +72,7 @@ test_hlffi_hello
 test_nonblocking
 test_minimal
 test_typed_minimal
+test_arrays
 
 # Backup files
 *_old.h

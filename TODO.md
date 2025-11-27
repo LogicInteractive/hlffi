@@ -4,41 +4,53 @@ This file tracks known issues, limitations, and planned improvements for the HLF
 
 ## High Priority
 
-### Complete C→Haxe Array Passing (Phase 5)
-**Status:** Nearly Complete (90% - 9/10 tests passing)
-**Issue:** Passing C-created arrays TO Haxe methods fails due to type incompatibility.
+### ✅ Complete C→Haxe Array Passing (Phase 5) - COMPLETED!
+**Status:** ✅ **100% Complete (10/10 tests passing)**
 
-**What Works:**
-- ✅ C-created arrays (`hlffi_array_new`) - full CRUD operations
-- ✅ Array length detection for both C and Haxe arrays
-- ✅ Element access (`hlffi_array_get`) for Haxe Array objects (FIXED!)
-- ✅ Tests 1-9 passing
+**Implementation Summary:**
+- ✅ C-created arrays (`hlffi_array_new`) automatically wrapped as Haxe Array<T> objects
+- ✅ Bidirectional array passing (C↔Haxe) fully functional
+- ✅ Support for Int, Float, Dynamic, and String array types
+- ✅ Array operations: create, get, set, push, length
+- ✅ Proper bounds checking and error handling
 
-**What Doesn't Work:**
-- ❌ Passing C-created arrays (varray) to Haxe methods expecting Array<T> objects
-- ❌ Test 10 failing
+**Key Technical Achievement:**
+Discovered and implemented HashLink's optimized field memory layout:
+- Field names: [bytes, size]
+- Memory layout: [size(int), bytes(ptr)] - reordered for alignment
+- Direct memory access bypasses broken `hl_dyn_getp` for array field access
 
-**Root Cause (Test 10):**
-- C-created arrays use raw `varray` type (HARRAY)
-- Haxe methods expect `hl.types.ArrayBytes_T` wrapper objects (HOBJ)
-- Would need array type conversion/wrapping to pass C arrays to Haxe
-- The reverse direction (Haxe→C) works perfectly after discovering field layout
+**Solution Implemented:**
+1. `find_haxe_array_type()` - Locates hl.types.ArrayBytes_* types in module
+2. `wrap_varray_as_haxe_array()` - Converts C varrays to Haxe Array objects
+3. Updated `hlffi_array_new()` - Creates wrapped arrays by default
+4. Updated `hlffi_array_get/set/push()` - Handle both HARRAY and HOBJ types
+5. Updated `hlffi_array_length()` - Direct memory read for wrapped arrays
 
-**Solution Implemented (Tests 1-9):**
-- ✅ Discovered HashLink optimizes field layout in memory
-- ✅ Field names [bytes, size] but memory layout is [size(int), bytes(ptr)]
-- ✅ Read size from first 4 bytes, bytes pointer from offset sizeof(void*)
-- ✅ Cast bytes pointer directly to typed data (int*, double*, etc.)
-- ✅ Supports Int and Float arrays from Haxe
+**Supported Array Types:**
+- ✅ hl.types.ArrayBytes_Int (i32)
+- ✅ hl.types.ArrayBytes_F64 (f64)
+- ✅ hl.types.ArrayDyn (dynamic/mixed types)
+- ⚠️ hl.types.ArrayBytes_String (fallback to varray)
+- ⚠️ hl.types.ArrayBytes_UI8 (bool - fallback to varray)
 
-**Next Steps:**
-1. Implement array wrapper conversion for C→Haxe direction (Test 10)
-2. Add support for String, Bool, and Dynamic arrays
-3. Consider convenience helpers for common array operations
+**Test Coverage:** All 10 tests passing
+1. ✅ Create empty array
+2. ✅ Create array with length
+3. ✅ Set and get int array elements
+4. ✅ Float array operations
+5. ✅ String array operations
+6. ✅ Dynamic array operations
+7. ✅ Array push
+8. ✅ Bounds checking
+9. ✅ Get array from Haxe (Haxe→C)
+10. ✅ Pass array to Haxe (C→Haxe) - **THE BREAKTHROUGH!**
 
-**Files to modify:**
-- `src/hlffi_values.c` - Fix `hlffi_array_get` and `hlffi_array_set`
-- `test_arrays.c` - All tests should pass
+**Files Modified:**
+- `src/hlffi_values.c` - Complete array implementation with wrapping
+- `include/hlffi.h` - Array API declarations
+- `test_arrays.c` - Comprehensive test suite
+- `test/Arrays.hx` - Haxe test methods
 
 ---
 
@@ -117,7 +129,7 @@ Use `hlffi_register_callback()` with Dynamic types in Haxe.
 - ✅ Phase 3: Static variable access
 - ✅ Phase 4: Value boxing/unboxing
 - ✅ Phase 4: Object instance methods
-- 🟢 Phase 5: Array operations (9/10 tests passing - C arrays + Haxe→C arrays working)
+- ✅ Phase 5: Array operations (10/10 tests passing - Full bidirectional C↔Haxe array support!)
 - ✅ Phase 6: Dynamic callbacks (working)
 - ✅ Phase 6: Callback unregistration
 
