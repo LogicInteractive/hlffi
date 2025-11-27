@@ -722,9 +722,18 @@ static vdynamic* wrap_varray_as_haxe_array(hlffi_vm* vm, varray* arr) {
     utostr(type_name, sizeof(type_name), array_type->obj->name);
 
     if (strstr(type_name, "ArrayObj")) {
-        /* ArrayObj: single field [0] = array (varray*) */
-        varray** array_field = (varray**)(obj + 1);
+        /* ArrayObj: single field [0] = array (varray*)
+         * Use runtime's field index to get correct offset */
+        int field_offset = rt->fields_indexes[0];  /* field 0 is "array" */
+        varray** array_field = (varray**)((char*)obj + field_offset);
         *array_field = arr;
+
+        /* Debug: verify the storage */
+        fprintf(stderr, "[DEBUG wrap] ArrayObj created:\n");
+        fprintf(stderr, "  obj=%p, type=%s\n", (void*)obj, type_name);
+        fprintf(stderr, "  field_offset=%d, array_field=%p\n", field_offset, (void*)array_field);
+        fprintf(stderr, "  varray=%p, varray->size=%d\n", (void*)arr, arr->size);
+        fprintf(stderr, "  stored value=%p\n", (void*)*array_field);
     } else {
         /* ArrayBytes_*: fields [0] = bytes, [1] = size
          * But memory layout is [size(int), bytes(ptr)] due to alignment */
@@ -816,10 +825,19 @@ int hlffi_array_length(hlffi_value* arr) {
                 vobj* obj = (vobj*)val;
 
                 if (strstr(type_name, "ArrayObj")) {
-                    /* ArrayObj: single field [0] = array (varray*) */
-                    varray** array_field = (varray**)(obj + 1);
+                    /* ArrayObj: single field [0] = array (varray*)
+                     * Use runtime's field index for correct offset */
+                    hl_runtime_obj* rt = val->t->obj->rt;
+                    if (!rt) rt = hl_get_obj_proto(val->t);
+                    int field_offset = rt->fields_indexes[0];
+                    varray** array_field = (varray**)((char*)obj + field_offset);
                     varray* arr = *array_field;
-                    return arr ? arr->size : 0;
+                    int size = arr ? arr->size : 0;
+                    fprintf(stderr, "[DEBUG length] ArrayObj length read:\n");
+                    fprintf(stderr, "  obj=%p, field_offset=%d, array_field=%p\n",
+                            (void*)obj, field_offset, (void*)array_field);
+                    fprintf(stderr, "  varray=%p, size=%d\n", (void*)arr, size);
+                    return size;
                 } else {
                     /* ArrayBytes_*: memory layout is [size(int), bytes(ptr)] */
                     int* size_ptr = (int*)(obj + 1);
@@ -863,8 +881,12 @@ hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index) {
 
                 /* ArrayObj has different structure than ArrayBytes_* */
                 if (strstr(type_name, "ArrayObj")) {
-                    /* ArrayObj: single field [0] = array (varray*) */
-                    varray** array_field = (varray**)(obj + 1);
+                    /* ArrayObj: single field [0] = array (varray*)
+                     * Use runtime's field index for correct offset */
+                    hl_runtime_obj* rt = val->t->obj->rt;
+                    if (!rt) rt = hl_get_obj_proto(val->t);
+                    int field_offset = rt->fields_indexes[0];
+                    varray** array_field = (varray**)((char*)obj + field_offset);
                     array = *array_field;
                     /* Continue to normal varray access below */
                 } else {
@@ -988,8 +1010,12 @@ bool hlffi_array_set(hlffi_vm* vm, hlffi_value* arr, int index, hlffi_value* val
 
                 /* ArrayObj has different structure than ArrayBytes_* */
                 if (strstr(type_name, "ArrayObj")) {
-                    /* ArrayObj: single field [0] = array (varray*) */
-                    varray** array_field = (varray**)(obj + 1);
+                    /* ArrayObj: single field [0] = array (varray*)
+                     * Use runtime's field index for correct offset */
+                    hl_runtime_obj* rt = val->t->obj->rt;
+                    if (!rt) rt = hl_get_obj_proto(val->t);
+                    int field_offset = rt->fields_indexes[0];
+                    varray** array_field = (varray**)((char*)obj + field_offset);
                     array = *array_field;
                     /* Continue to normal varray access below */
                 } else {

@@ -2,7 +2,9 @@
  * String Array Debug Test
  */
 
+#define HLFFI_IMPLEMENTATION
 #include "hlffi.h"
+#include "src/hlffi_internal.h"
 #include <stdio.h>
 #include <string.h>
 #include <hl.h>
@@ -54,6 +56,43 @@ int main(int argc, char** argv) {
         printf("    arr[%d] = \"%s\"\n", i, str ? str : "(null)");
         free(str);
         hlffi_value_free(elem);
+    }
+
+    printf("\n[C] Dumping C-created array memory layout:\n");
+    vdynamic* arr_dyn = arr->hl_value;
+    if (arr_dyn->t->kind == HOBJ) {
+        vobj* obj = (vobj*)arr_dyn;
+        printf("    vobj address: %p\n", (void*)obj);
+        printf("    type: %p\n", (void*)obj->t);
+
+        /* Read the array field */
+        varray** array_field = (varray**)(obj + 1);
+        varray* varr = *array_field;
+        printf("    varray* at field[0]: %p\n", (void*)varr);
+        if (varr) {
+            printf("    varray->size: %d\n", varr->size);
+            printf("    Memory layout: obj=%p, field[0]=%p, varray=%p, varray->size=%d\n",
+                   (void*)obj, (void*)array_field, (void*)varr, varr->size);
+        }
+    }
+
+    printf("\n[C] Now get a Haxe-created array for comparison:\n");
+    hlffi_value* haxe_arr = hlffi_call_static(vm, "Arrays", "getStringArray", 0, NULL);
+    if (haxe_arr) {
+        vdynamic* haxe_dyn = haxe_arr->hl_value;
+        if (haxe_dyn->t->kind == HOBJ) {
+            vobj* hobj = (vobj*)haxe_dyn;
+            printf("    vobj address: %p\n", (void*)hobj);
+            varray** harray_field = (varray**)(hobj + 1);
+            varray* hvarr = *harray_field;
+            printf("    varray* at field[0]: %p\n", (void*)hvarr);
+            if (hvarr) {
+                printf("    varray->size: %d\n", hvarr->size);
+                printf("    Memory layout: obj=%p, field[0]=%p, varray=%p, varray->size=%d\n",
+                       (void*)hobj, (void*)harray_field, (void*)hvarr, hvarr->size);
+            }
+        }
+        hlffi_value_free(haxe_arr);
     }
 
     printf("\n[C→Haxe] Passing array to Haxe printStringArray()...\n");
