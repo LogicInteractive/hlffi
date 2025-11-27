@@ -1169,8 +1169,217 @@ char* hlffi_call_method_string(hlffi_value* obj, const char* method_name, int ar
  */
 bool hlffi_is_instance_of(hlffi_value* obj, const char* class_name);
 
+/* ========== PHASE 6: CALLBACKS & EXCEPTIONS ========== */
+
+/**
+ * Native function signature for callbacks from Haxe.
+ *
+ * @param vm VM instance
+ * @param argc Number of arguments
+ * @param argv Array of argument values
+ * @return Return value for Haxe (use hlffi_value_null for void)
+ *
+ * Example:
+ *   hlffi_value* my_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+ *       const char* msg = hlffi_value_as_string(argv[0]);
+ *       printf("Callback: %s\n", msg);
+ *       return hlffi_value_null(vm);
+ *   }
+ */
+typedef hlffi_value* (*hlffi_native_func)(hlffi_vm* vm, int argc, hlffi_value** argv);
+
+/**
+ * Register a C function as a callback that Haxe can call.
+ *
+ * The callback is stored in the VM and can be retrieved by name.
+ * You must manually set it as a field/variable in Haxe code.
+ *
+ * @param vm VM instance
+ * @param name Callback name for retrieval
+ * @param func C function pointer
+ * @param nargs Number of arguments the callback expects
+ * @return true on success, false on error
+ *
+ * Example:
+ *   // 1. Register C callback
+ *   hlffi_register_callback(vm, "onEvent", my_callback, 1);
+ *
+ *   // 2. Get callback as value
+ *   hlffi_value* cb = hlffi_get_callback(vm, "onEvent");
+ *
+ *   // 3. Set in Haxe static field
+ *   hlffi_set_static_field(vm, "MyClass", "callback", cb);
+ *
+ *   // 4. Haxe can now call: MyClass.callback("hello");
+ */
+bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func func, int nargs);
+
+/**
+ * Get a registered callback as an hlffi_value.
+ *
+ * @param vm VM instance
+ * @param name Callback name (from hlffi_register_callback)
+ * @return Callback as value (can be passed to Haxe), or NULL if not found
+ *
+ * @note The returned value is GC-rooted and lives until VM destruction
+ */
+hlffi_value* hlffi_get_callback(hlffi_vm* vm, const char* name);
+
+/**
+ * Call result for exception-safe calls.
+ */
+typedef enum {
+    HLFFI_CALL_OK = 0,        /**< Call succeeded */
+    HLFFI_CALL_EXCEPTION = 1, /**< Haxe exception thrown */
+    HLFFI_CALL_ERROR = 2      /**< Call failed (wrong args, method not found, etc) */
+} hlffi_call_result;
+
+/**
+ * Call static method with exception handling (try/catch).
+ *
+ * @param vm VM instance
+ * @param class_name Class name
+ * @param method_name Method name
+ * @param argc Number of arguments
+ * @param argv Array of arguments
+ * @param out_result [OUT] Result value on success (NULL on exception/error)
+ * @param out_error [OUT] Error message on exception/error (NULL on success)
+ * @return HLFFI_CALL_OK, HLFFI_CALL_EXCEPTION, or HLFFI_CALL_ERROR
+ *
+ * Example:
+ *   hlffi_value* result = NULL;
+ *   const char* error = NULL;
+ *   hlffi_call_result res = hlffi_try_call_static(
+ *       vm, "Game", "riskyMethod", 0, NULL, &result, &error
+ *   );
+ *
+ *   if (res == HLFFI_CALL_OK) {
+ *       // Success - use result
+ *       hlffi_value_free(result);
+ *   } else if (res == HLFFI_CALL_EXCEPTION) {
+ *       printf("Exception: %s\n", error);
+ *   } else {
+ *       printf("Error: %s\n", error);
+ *   }
+ */
+hlffi_call_result hlffi_try_call_static(
+    hlffi_vm* vm,
+    const char* class_name,
+    const char* method_name,
+    int argc,
+    hlffi_value** argv,
+    hlffi_value** out_result,
+    const char** out_error
+);
+
+/**
+ * Call instance method with exception handling (try/catch).
+ *
+ * @param obj Object instance
+ * @param method_name Method name
+ * @param argc Number of arguments
+ * @param argv Array of arguments
+ * @param out_result [OUT] Result value on success (NULL on exception/error)
+ * @param out_error [OUT] Error message on exception/error (NULL on success)
+ * @return HLFFI_CALL_OK, HLFFI_CALL_EXCEPTION, or HLFFI_CALL_ERROR
+ */
+hlffi_call_result hlffi_try_call_method(
+    hlffi_value* obj,
+    const char* method_name,
+    int argc,
+    hlffi_value** argv,
+    hlffi_value** out_result,
+    const char** out_error
+);
+
+/**
+ * Get the last exception message from the VM.
+ *
+ * @param vm VM instance
+ * @return Exception message string (static buffer, do not free), or NULL
+ *
+ * @note Only valid immediately after a call that threw an exception
+ */
+const char* hlffi_get_exception_message(hlffi_vm* vm);
+
+/**
+ * Get the last exception stack trace from the VM.
+ *
+ * @param vm VM instance
+ * @return Stack trace string (static buffer, do not free), or NULL
+ *
+ * @note Only valid immediately after a call that threw an exception
+ */
+const char* hlffi_get_exception_stack(hlffi_vm* vm);
+
+/**
+ * External blocking operation wrapper - notify GC before blocking I/O.
+ *
+ * CRITICAL: Call this before any external blocking operation (file I/O,
+ * network, sleep, etc.) when called FROM a Haxe callback.
+ *
+ * The GC needs to know when a thread is blocked outside HL control.
+ *
+ * @note Must be balanced with hlffi_blocking_end()!
+ *
+ * Example:
+ *   hlffi_value* save_file_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+ *       const char* path = hlffi_value_as_string(argv[0]);
+ *
+ *       hlffi_blocking_begin();  // Notify GC we're leaving
+ *       FILE* f = fopen(path, "w");
+ *       fwrite(...);  // Potentially long operation
+ *       fclose(f);
+ *       hlffi_blocking_end();    // Back under HL control
+ *
+ *       return hlffi_value_null(vm);
+ *   }
+ */
+void hlffi_blocking_begin(void);
+
+/**
+ * External blocking operation wrapper - notify GC after blocking I/O.
+ *
+ * CRITICAL: Must balance every hlffi_blocking_begin() call!
+ */
+void hlffi_blocking_end(void);
+
 #ifdef __cplusplus
 }
+
+/* ========== C++ RAII GUARDS ========== */
+
+namespace hlffi {
+
+/**
+ * RAII guard for external blocking operations.
+ *
+ * Automatically calls hlffi_blocking_begin() on construction
+ * and hlffi_blocking_end() on destruction.
+ *
+ * Usage:
+ *   hlffi_value* my_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+ *       hlffi::BlockingGuard guard;  // Auto begin
+ *       curl_download(...);  // External I/O
+ *       return hlffi_value_null(vm);
+ *   } // Auto end
+ */
+class BlockingGuard {
+public:
+    BlockingGuard() { hlffi_blocking_begin(); }
+    ~BlockingGuard() { hlffi_blocking_end(); }
+
+    BlockingGuard(const BlockingGuard&) = delete;
+    BlockingGuard& operator=(const BlockingGuard&) = delete;
+};
+
+} // namespace hlffi
+
+#endif /* __cplusplus */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* ========== C++ RAII GUARDS ========== */
 
