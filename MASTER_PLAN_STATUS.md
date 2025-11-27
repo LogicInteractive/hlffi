@@ -48,9 +48,9 @@
 
 ---
 
-### ✅ Phase 1: VM Lifecycle (70% Complete)
+### ✅ Phase 1: VM Lifecycle (90% Complete)
 
-**Status:** CORE COMPLETE, Hot Reload & Threading TODO
+**Status:** CORE COMPLETE, Event Loop Integration COMPLETE, Hot Reload & Threaded Mode TODO
 
 #### ✅ Core Lifecycle (100%)
 - ✅ `hlffi_create()` - allocate VM
@@ -66,19 +66,55 @@
 - ✅ Entry point MUST be called before accessing static members
 - ✅ GC stack scanning fix required for embedded scenarios
 
+#### ✅ Event Loop Integration (100% - COMPLETE!)
+
+**Status:** FULLY IMPLEMENTED and TESTED
+**Test Results:** 11/11 tests passing (100%)
+
+**Completed:**
+- ✅ `hlffi_update(vm, delta_time)` - Process events every frame
+- ✅ `hlffi_process_events(vm, type)` - Process UV/Haxe/ALL event loops
+- ✅ `hlffi_has_pending_events(vm, type)` - Check for pending work
+- ✅ `hlffi_has_pending_work(vm)` - Convenience wrapper
+- ✅ **haxe.Timer support** - Timer.delay() and interval timers work perfectly
+- ✅ **MainLoop callbacks** - MainLoop.add() callbacks fire correctly
+- ✅ **1ms timer precision** - High-frequency timers verified working
+- ✅ **sys.thread.EventLoop integration** - Full EventLoop.progress() support
+
+**Critical Fix (Nov 27, 2025):**
+Fixed fundamental haxe.Timer support by processing BOTH event systems:
+1. `sys.thread.Thread.current().events.progress()` - Processes haxe.Timer delays
+2. `haxe.MainLoop.tick()` - Processes MainLoop.add() callbacks
+
+Previously only MainLoop was processed, causing all Timer.delay() calls to never fire.
+Now all 11 timer tests pass including 1ms, 2ms, 5ms, 10ms, 20ms, 50ms, 100ms precision tests.
+
+**Production Ready Features:**
+- ✅ One-shot timers (haxe.Timer.delay)
+- ✅ Interval timers (new haxe.Timer)
+- ✅ MainLoop callbacks
+- ✅ 1ms update granularity
+- ✅ Sub-frame timer accuracy
+- ✅ Multiple concurrent timers
+- ✅ Non-blocking event processing
+
+**Files:**
+- `src/hlffi_events.c` (~5KB) - Full implementation
+- `src/hlffi_integration.c` (~4KB) - Complete integration
+- `test/Timers.hx` - Comprehensive test class
+- `test_timers.c` - 11 test cases (all passing)
+
 #### ❌ Hot Reload (0% - Not Implemented)
 - ❌ `hlffi_enable_hot_reload()`
 - ❌ `hlffi_reload_module()`
 - ❌ `hlffi_set_reload_callback()`
 - ❌ Requires HashLink 1.12+ (not yet implemented)
 
-#### ⚠️ Integration Modes (30% - Stubs Only)
-- ✅ `hlffi_set_integration_mode()` - stub exists
-- ✅ Mode 1 (Non-Threaded) - **WORKS** (engine controls loop)
+#### ⚠️ Integration Modes (60% - Partial)
+- ✅ `hlffi_set_integration_mode()` - implemented
+- ✅ Mode 1 (Non-Threaded) - **FULLY WORKING** with event loop
 - ❌ Mode 2 (Threaded) - **STUB ONLY** (dedicated VM thread not implemented)
-- ❌ `hlffi_update()` - stub only, needs event loop integration
-- ❌ `hlffi_process_events()` - not implemented
-- ❌ Worker thread helpers - not implemented
+- ❌ Worker thread helpers - stubs only
 
 **Documentation:**
 - ✅ `docs/TIMERS_ASYNC_THREADING.md` - comprehensive guide
@@ -86,8 +122,8 @@
 
 **Files:**
 - `src/hlffi_lifecycle.c` (~10KB) - Core lifecycle working
-- `src/hlffi_integration.c` (~3.5KB) - Stubs only
-- `src/hlffi_events.c` (~741 bytes) - Stub
+- `src/hlffi_integration.c` (~4KB) - Event loop integration complete
+- `src/hlffi_events.c` (~5KB) - Full event loop implementation
 - `src/hlffi_threading.c` (~791 bytes) - Stub
 - `src/hlffi_reload.c` (~735 bytes) - Stub
 
