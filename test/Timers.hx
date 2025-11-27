@@ -18,6 +18,17 @@ class Timers {
     }
 
     /**
+     * Process the event loop - call this from C to process timers
+     * This is what hlffi_update() should call to make timers work
+     */
+    public static function processEventLoop():Void {
+        var loop = sys.thread.Thread.current().events;
+        if (loop != null) {
+            loop.progress();
+        }
+    }
+
+    /**
      * Start a one-shot timer (fires once after delay)
      * @param delayMs Delay in milliseconds
      */

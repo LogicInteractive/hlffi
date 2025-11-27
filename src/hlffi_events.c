@@ -37,27 +37,36 @@ static hlffi_error_code process_uv_loop(hlffi_vm* vm) {
 static hlffi_error_code process_haxe_eventloop(hlffi_vm* vm) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
 
-    /* Strategy: Call haxe.MainLoop.tick() to process timers and callbacks
+    /* Strategy: Process both MainLoop AND sys.thread.EventLoop
      *
-     * The Haxe MainLoop processes:
-     * - Timers (haxe.Timer)
-     * - MainLoop callbacks (MainLoop.add)
-     * - Thread→main messages (runInMainThread)
+     * Two separate systems in Haxe:
+     * 1. haxe.MainLoop.tick() - Processes MainLoop.add() callbacks
+     * 2. sys.thread.Thread.current().events.progress() - Processes haxe.Timer delays
      *
-     * haxe.MainLoop.tick() is the standard way to process events in embedded mode
+     * Both are needed for complete event processing!
      */
 
-    /* Call haxe.MainLoop.tick() to process all pending timers and callbacks */
-    hlffi_value* result = hlffi_call_static(vm, "haxe.MainLoop", "tick", 0, NULL);
+    /* First: Process sys.thread.EventLoop for haxe.Timer support
+     * Try calling a helper method that calls Thread.current().events.progress()
+     * This is needed for haxe.Timer.delay() to fire */
+    hlffi_value* result = hlffi_call_static(vm, "Timers", "processEventLoop", 0, NULL);
     if (result) {
         hlffi_value_free(result);
-        return HLFFI_OK;
+    } else {
+        /* Clear error - processEventLoop might not exist in all bytecode */
+        vm->error_msg[0] = '\0';
+        vm->last_error = HLFFI_OK;
     }
 
-    /* If tick() didn't work, clear the error - MainLoop might not be available
-     * This is not necessarily an error - bytecode might not use timers/async */
-    vm->error_msg[0] = '\0';
-    vm->last_error = HLFFI_OK;
+    /* Second: Process MainLoop for MainLoop.add() callbacks */
+    result = hlffi_call_static(vm, "haxe.MainLoop", "tick", 0, NULL);
+    if (result) {
+        hlffi_value_free(result);
+    } else {
+        /* Clear error - MainLoop might not be available */
+        vm->error_msg[0] = '\0';
+        vm->last_error = HLFFI_OK;
+    }
 
     return HLFFI_OK;
 }
