@@ -82,6 +82,21 @@ class Arrays {
         }
     }
 
+    public static function printBoolArray(arr:Array<Bool>):Void {
+        trace("[Haxe] Received Bool array with " + arr.length + " elements:");
+        for (i in 0...arr.length) {
+            trace("    [Haxe] arr[" + i + "] = " + arr[i]);
+        }
+    }
+
+    public static function countTrue(arr:Array<Bool>):Int {
+        var count = 0;
+        for (val in arr) {
+            if (val) count++;
+        }
+        return count;
+    }
+
     public static function joinStrings(arr:Array<String>):String {
         return arr.join(" ");
     }

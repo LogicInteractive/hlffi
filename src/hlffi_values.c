@@ -659,8 +659,10 @@ static hl_type* find_haxe_array_type(hlffi_vm* vm, hl_type* element_type) {
         array_type_name = "hl.types.ArrayBytes_F32";
     } else if (element_type->kind == HF64) {
         array_type_name = "hl.types.ArrayBytes_F64";
+    } else if (element_type->kind == HBOOL) {
+        array_type_name = "hl.types.ArrayBytes_UI8";
     } else {
-        /* Strings, objects, bools, functions are all pointers - use ArrayObj */
+        /* Strings, objects, functions are all pointers - use ArrayObj */
         /* NOTE: HBYTES (strings) use ArrayObj, not ArrayBytes_String */
         array_type_name = "hl.types.ArrayObj";
     }
@@ -712,14 +714,26 @@ static vdynamic* wrap_varray_as_haxe_array(hlffi_vm* vm, varray* arr) {
         return NULL;
     }
 
-    /* Set the fields: memory layout is [size(int), bytes(ptr)] */
-    /* Field 0: size */
-    int* size_ptr = (int*)(obj + 1);
-    *size_ptr = arr->size;
+    /* ArrayObj vs ArrayBytes_* have different field structures:
+     * - ArrayObj: single "array" field (varray*)
+     * - ArrayBytes_*: "bytes" and "size" fields
+     */
+    char type_name[128];
+    utostr(type_name, sizeof(type_name), array_type->obj->name);
 
-    /* Field 1: bytes pointer - aligned to sizeof(void*) */
-    void** bytes_ptr = (void**)((char*)(obj + 1) + sizeof(void*));
-    *bytes_ptr = hl_aptr(arr, void);  /* Get raw data pointer from varray */
+    if (strstr(type_name, "ArrayObj")) {
+        /* ArrayObj: single field [0] = array (varray*) */
+        varray** array_field = (varray**)(obj + 1);
+        *array_field = arr;
+    } else {
+        /* ArrayBytes_*: fields [0] = bytes, [1] = size
+         * But memory layout is [size(int), bytes(ptr)] due to alignment */
+        int* size_ptr = (int*)(obj + 1);
+        *size_ptr = arr->size;
+
+        void** bytes_ptr = (void**)((char*)(obj + 1) + sizeof(void*));
+        *bytes_ptr = hl_aptr(arr, void);
+    }
 
     return (vdynamic*)obj;
 }
@@ -799,13 +813,18 @@ int hlffi_array_length(hlffi_value* arr) {
 
             /* Check if this is a HashLink Array type (e.g., "hl.types.ArrayBytes_Int") */
             if (strncmp(type_name, "hl.types.Array", 14) == 0) {
-                /* Haxe Array objects - use direct memory access */
-                /* Memory layout: [size(int), bytes(ptr)] */
                 vobj* obj = (vobj*)val;
 
-                /* Read size - first field is int (4 bytes) */
-                int* size_ptr = (int*)(obj + 1);
-                return *size_ptr;
+                if (strstr(type_name, "ArrayObj")) {
+                    /* ArrayObj: single field [0] = array (varray*) */
+                    varray** array_field = (varray**)(obj + 1);
+                    varray* arr = *array_field;
+                    return arr ? arr->size : 0;
+                } else {
+                    /* ArrayBytes_*: memory layout is [size(int), bytes(ptr)] */
+                    int* size_ptr = (int*)(obj + 1);
+                    return *size_ptr;
+                }
             }
         }
         return -1;
@@ -840,21 +859,27 @@ hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index) {
             utostr(type_name, sizeof(type_name), val->t->obj->name);
 
             if (strncmp(type_name, "hl.types.Array", 14) == 0) {
-                /* Haxe Array objects - HashLink optimizes field layout */
-                /* Field names: [0]="bytes", [1]="size" but memory: [0]=size(int), [1]=bytes(ptr) */
                 vobj* obj = (vobj*)val;
 
-                /* Read size - first field is int (4 bytes) */
-                int* size_ptr = (int*)(obj + 1);
-                int size = *size_ptr;
+                /* ArrayObj has different structure than ArrayBytes_* */
+                if (strstr(type_name, "ArrayObj")) {
+                    /* ArrayObj: single field [0] = array (varray*) */
+                    varray** array_field = (varray**)(obj + 1);
+                    array = *array_field;
+                    /* Continue to normal varray access below */
+                } else {
+                    /* ArrayBytes_*: fields with optimized memory layout */
+                    /* Field names: [0]="bytes", [1]="size" but memory: [0]=size(int), [1]=bytes(ptr) */
 
-                /* Read bytes pointer - second field, aligned to pointer size */
-                /* On 64-bit: skip 8 bytes (size + padding), on 32-bit: skip 4 bytes */
-                void** bytes_ptr = (void**)((char*)(obj + 1) + sizeof(void*));
-                void* bytes = *bytes_ptr;
+                    /* Read size - first field is int (4 bytes) */
+                    int* size_ptr = (int*)(obj + 1);
+                    int size = *size_ptr;
 
+                    /* Read bytes pointer - second field, aligned to pointer size */
+                    void** bytes_ptr = (void**)((char*)(obj + 1) + sizeof(void*));
+                    void* bytes = *bytes_ptr;
 
-                if (bytes && index >= 0 && index < size) {
+                    if (bytes && index >= 0 && index < size) {
                     /* Access bytes as raw typed data based on array element type */
                     if (strstr(type_name, "_Int")) {
                         int* data = (int*)bytes;
@@ -865,6 +890,9 @@ hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index) {
                     } else if (strstr(type_name, "_F64")) {
                         double* data = (double*)bytes;
                         return hlffi_value_float(vm, data[index]);
+                    } else if (strstr(type_name, "_UI8")) {
+                        unsigned char* data = (unsigned char*)bytes;
+                        return hlffi_value_bool(vm, data[index] != 0);
                     } else if (strstr(type_name, "Dyn") || strstr(type_name, "Obj")) {
                         /* Dynamic or object arrays store vdynamic* pointers */
                         vdynamic** data = (vdynamic**)bytes;
@@ -880,12 +908,13 @@ hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index) {
                         wrapped->hl_value = elem;
                         wrapped->is_rooted = false;
                         return wrapped;
+                        }
+                        /* TODO: Add support for String, Bool arrays */
                     }
-                    /* TODO: Add support for String, Bool arrays */
-                }
-                set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array index out of bounds or unsupported type");
-                return NULL;
-            }
+                    set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array index out of bounds or unsupported type");
+                    return NULL;
+                }  /* End of else (ArrayBytes_*) */
+            }  /* End of if Array type */
         }
     }
 
@@ -955,46 +984,59 @@ bool hlffi_array_set(hlffi_vm* vm, hlffi_value* arr, int index, hlffi_value* val
             utostr(type_name, sizeof(type_name), val->t->obj->name);
 
             if (strncmp(type_name, "hl.types.Array", 14) == 0) {
-                /* Haxe Array objects - use direct memory access */
-                /* Memory layout: [size(int), bytes(ptr)] */
                 vobj* obj = (vobj*)val;
 
-                /* Read size - first field */
-                int* size_ptr = (int*)(obj + 1);
-                int size = *size_ptr;
+                /* ArrayObj has different structure than ArrayBytes_* */
+                if (strstr(type_name, "ArrayObj")) {
+                    /* ArrayObj: single field [0] = array (varray*) */
+                    varray** array_field = (varray**)(obj + 1);
+                    array = *array_field;
+                    /* Continue to normal varray access below */
+                } else {
+                    /* ArrayBytes_*: use direct memory access */
+                    /* Memory layout: [size(int), bytes(ptr)] */
 
-                /* Read bytes pointer - second field, aligned to pointer size */
-                void** bytes_ptr = (void**)((char*)(obj + 1) + sizeof(void*));
-                void* bytes = *bytes_ptr;
+                    /* Read size - first field */
+                    int* size_ptr = (int*)(obj + 1);
+                    int size = *size_ptr;
 
-                /* Bounds check */
-                if (index < 0 || index >= size) {
-                    set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array index out of bounds");
+                    /* Read bytes pointer - second field, aligned to pointer size */
+                    void** bytes_ptr = (void**)((char*)(obj + 1) + sizeof(void*));
+                    void* bytes = *bytes_ptr;
+
+                    /* Bounds check */
+                    if (index < 0 || index >= size) {
+                        set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array index out of bounds");
+                        return false;
+                    }
+
+                    /* Set element based on array type */
+                    if (strstr(type_name, "_Int")) {
+                        int* data = (int*)bytes;
+                        data[index] = hlffi_value_as_int(value, 0);
+                        return true;
+                    } else if (strstr(type_name, "_F32")) {
+                        float* data = (float*)bytes;
+                        data[index] = hlffi_value_as_f32(value, 0.0f);
+                        return true;
+                    } else if (strstr(type_name, "_F64")) {
+                        double* data = (double*)bytes;
+                        data[index] = hlffi_value_as_float(value, 0.0);
+                        return true;
+                    } else if (strstr(type_name, "_UI8")) {
+                        unsigned char* data = (unsigned char*)bytes;
+                        data[index] = hlffi_value_as_bool(value, false) ? 1 : 0;
+                        return true;
+                    } else if (strstr(type_name, "Dyn") || strstr(type_name, "Obj")) {
+                        vdynamic** data = (vdynamic**)bytes;
+                        data[index] = value ? value->hl_value : NULL;
+                        return true;
+                    }
+
+                    set_error(vm, HLFFI_ERROR_TYPE_MISMATCH, "Unsupported array element type");
                     return false;
-                }
-
-                /* Set element based on array type */
-                if (strstr(type_name, "_Int")) {
-                    int* data = (int*)bytes;
-                    data[index] = hlffi_value_as_int(value, 0);
-                    return true;
-                } else if (strstr(type_name, "_F32")) {
-                    float* data = (float*)bytes;
-                    data[index] = hlffi_value_as_f32(value, 0.0f);
-                    return true;
-                } else if (strstr(type_name, "_F64")) {
-                    double* data = (double*)bytes;
-                    data[index] = hlffi_value_as_float(value, 0.0);
-                    return true;
-                } else if (strstr(type_name, "Dyn") || strstr(type_name, "Obj")) {
-                    vdynamic** data = (vdynamic**)bytes;
-                    data[index] = value ? value->hl_value : NULL;
-                    return true;
-                }
-
-                set_error(vm, HLFFI_ERROR_TYPE_MISMATCH, "Unsupported array element type");
-                return false;
-            }
+                }  /* End of else (ArrayBytes_*) */
+            }  /* End of if Array type */
         }
     }
 
