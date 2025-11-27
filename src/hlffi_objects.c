@@ -314,40 +314,35 @@ hlffi_value* hlffi_call_method(hlffi_value* obj, const char* method_name, int ar
         return NULL;  /* Method not found */
     }
 
-    /* Build arguments array: [this, arg1, arg2, ...] */
+    /* Build arguments array: [arg1, arg2, ...] */
+    /* NOTE: 'this' is already bound in the closure, we only pass method arguments! */
     vdynamic** hl_args = NULL;
-    int total_args = argc + 1;  /* +1 for 'this' */
 
-    if (total_args > 0) {
-        hl_args = (vdynamic**)alloca(total_args * sizeof(vdynamic*));
-        hl_args[0] = vobj_dyn;  /* 'this' pointer */
+    if (argc > 0) {
+        hl_args = (vdynamic**)alloca(argc * sizeof(vdynamic*));
 
         /* Copy user arguments */
         for (int i = 0; i < argc; i++) {
-            hl_args[i + 1] = argv[i] ? argv[i]->hl_value : NULL;
+            hl_args[i] = argv[i] ? argv[i]->hl_value : NULL;
         }
     }
 
     /* Call method with exception handling */
     bool isException = false;
-    vdynamic* result = hl_dyn_call_safe(method, hl_args, total_args, &isException);
+    vdynamic* result = hl_dyn_call_safe(method, hl_args, argc, &isException);
 
     if (isException) {
         return NULL;  /* Exception thrown */
     }
 
-    /* Wrap result */
-    if (result) {
-        hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
-        if (!wrapped) return NULL;
+    /* Wrap result (including NULL for null strings/objects) */
+    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
+    if (!wrapped) return NULL;
 
-        wrapped->hl_value = result;
-        wrapped->is_rooted = false;  /* Assume temporary result */
+    wrapped->hl_value = result;  /* Can be NULL for null strings/objects */
+    wrapped->is_rooted = false;  /* Assume temporary result */
 
-        return wrapped;
-    }
-
-    return NULL;  /* Void return or NULL */
+    return wrapped;
 }
 
 /* ========== TYPE CHECKING ========== */
