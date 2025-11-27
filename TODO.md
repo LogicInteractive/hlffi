@@ -4,17 +4,36 @@ This file tracks known issues, limitations, and planned improvements for the HLF
 
 ## High Priority
 
-### ✅ Complete C→Haxe Array Passing (Phase 5) - COMPLETED!
-**Status:** ✅ **100% Complete (10/10 tests passing)**
+### Phase 5: Advanced Value Types
+**Status:** 🟡 **Partial (25% - Arrays Complete)**
 
-**Implementation Summary:**
-- ✅ C-created arrays (`hlffi_array_new`) automatically wrapped as Haxe Array<T> objects
-- ✅ Bidirectional array passing (C↔Haxe) fully functional
-- ✅ Support for Int, Float, Dynamic, and String array types
-- ✅ Array operations: create, get, set, push, length
-- ✅ Proper bounds checking and error handling
+**Completed Components:**
+- ✅ **Arrays** - Full bidirectional C↔Haxe support (10/10 tests passing)
+  - C-created arrays automatically wrapped as Haxe Array<T> objects
+  - Support for Int, Float, Dynamic, and String array types
+  - Operations: create, get, set, push, length, bounds checking
 
-**Key Technical Achievement:**
+**Remaining Components:**
+- ❌ **Maps** - Hash maps / dictionaries (not started)
+  - API: `hlffi_map_new()`, `hlffi_map_get/set()`, `hlffi_map_exists()`, `hlffi_map_keys()`
+  - Support both Map<String, T> and Map<Int, T>
+  - Handle Haxe's Map implementation (IntMap, StringMap, ObjectMap)
+
+- ❌ **Enums** - Construct, match, extract enum values (not started)
+  - API: `hlffi_enum_construct()`, `hlffi_enum_index()`, `hlffi_enum_name()`, `hlffi_enum_get_param()`
+  - Support enum constructors with parameters
+  - Pattern matching support
+
+- ❌ **Bytes** - Binary data I/O (not started)
+  - API: `hlffi_bytes_new()`, `hlffi_bytes_length()`, `hlffi_bytes_read/write()`
+  - Efficient binary data handling
+  - Compatible with Haxe's Bytes type
+
+- ❌ **Null handling** - Proper null value support (not started)
+  - Distinguish between null and default values
+  - Null-safe APIs
+
+**Array Implementation Details:**
 Discovered and implemented HashLink's optimized field memory layout:
 - Field names: [bytes, size]
 - Memory layout: [size(int), bytes(ptr)] - reordered for alignment
@@ -129,7 +148,7 @@ Use `hlffi_register_callback()` with Dynamic types in Haxe.
 - ✅ Phase 3: Static variable access
 - ✅ Phase 4: Value boxing/unboxing
 - ✅ Phase 4: Object instance methods
-- ✅ Phase 5: Array operations (10/10 tests passing - Full bidirectional C↔Haxe array support!)
+- 🟡 Phase 5: Advanced Value Types (25% - Arrays complete, Maps/Enums/Bytes pending)
 - ✅ Phase 6: Dynamic callbacks (working)
 - ✅ Phase 6: Callback unregistration
 
