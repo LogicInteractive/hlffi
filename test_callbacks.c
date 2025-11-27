@@ -151,46 +151,46 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    /* Test 1: Register callback with 0 args */
+    /* Test 1: Register callback with 0 args (Void->Void) */
     {
         bool ok = hlffi_register_callback(vm, "onNotify", callback_on_notify, 0);
         if (ok) {
-            TEST_PASS("Register 0-arg callback");
+            TEST_PASS("Register 0-arg callback (Void->Void)");
         } else {
-            TEST_FAIL("Register 0-arg callback");
+            TEST_FAIL("Register 0-arg callback (Void->Void)");
             printf("  Error: %s\n", hlffi_get_error(vm));
         }
     }
 
-    /* Test 2: Register callback with 1 arg */
+    /* Test 2: Register callback with 1 arg (String->Void) */
     {
         bool ok = hlffi_register_callback(vm, "onMessage", callback_on_message, 1);
         if (ok) {
-            TEST_PASS("Register 1-arg callback");
+            TEST_PASS("Register 1-arg callback (String->Void)");
         } else {
-            TEST_FAIL("Register 1-arg callback");
+            TEST_FAIL("Register 1-arg callback (String->Void)");
             printf("  Error: %s\n", hlffi_get_error(vm));
         }
     }
 
-    /* Test 3: Register callback with 2 args */
+    /* Test 3: Register callback with 2 args ((Int,Int)->Int) */
     {
         bool ok = hlffi_register_callback(vm, "onAdd", callback_on_add, 2);
         if (ok) {
-            TEST_PASS("Register 2-arg callback");
+            TEST_PASS("Register 2-arg callback ((Int,Int)->Int)");
         } else {
-            TEST_FAIL("Register 2-arg callback");
+            TEST_FAIL("Register 2-arg callback ((Int,Int)->Int)");
             printf("  Error: %s\n", hlffi_get_error(vm));
         }
     }
 
-    /* Test 4: Register callback with 3 args */
+    /* Test 4: Register callback with 3 args ((Int,Int,Int)->Int) */
     {
         bool ok = hlffi_register_callback(vm, "onCompute", callback_on_compute, 3);
         if (ok) {
-            TEST_PASS("Register 3-arg callback");
+            TEST_PASS("Register 3-arg callback ((Int,Int,Int)->Int)");
         } else {
-            TEST_FAIL("Register 3-arg callback");
+            TEST_FAIL("Register 3-arg callback ((Int,Int,Int)->Int)");
             printf("  Error: %s\n", hlffi_get_error(vm));
         }
     }

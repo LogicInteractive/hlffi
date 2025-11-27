@@ -4,8 +4,9 @@
  */
 
 class Callbacks {
-    /* Callback storage - C code will set these via hlffi_register_callback
-     * Using Dynamic type to accept closures with vdynamic signatures */
+    /* Callback storage - C code will set these via hlffi_register_callback()
+     * NOTE: Must use Dynamic type because C wrappers expect vdynamic* args
+     * Typed callbacks with primitives (Int/Float/Bool) don't work due to wrapper signature mismatch */
     public static var onMessage:Dynamic = null;
     public static var onAdd:Dynamic = null;
     public static var onNotify:Dynamic = null;

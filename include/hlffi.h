@@ -1174,11 +1174,24 @@ bool hlffi_is_instance_of(hlffi_value* obj, const char* class_name);
 /**
  * Callback argument/return type descriptors for typed callback registration.
  *
- * These map to HashLink types and enable type-safe callbacks in Haxe.
+ * @warning EXPERIMENTAL - NOT RECOMMENDED FOR PRODUCTION USE
  *
- * @note EXPERIMENTAL: Typed callbacks (hlffi_register_callback_typed) have known
- *       runtime issues. For production use, prefer hlffi_register_callback()
- *       with Dynamic types in Haxe. API is code-complete but needs debugging.
+ * Typed callbacks (hlffi_register_callback_typed) have a fundamental limitation:
+ * The wrapper functions expect vdynamic* pointers for all arguments, but HashLink
+ * passes primitive types (Int/Float/Bool) as raw values when using typed closures.
+ * This causes crashes when invoking callbacks with primitive arguments.
+ *
+ * For production use, always use hlffi_register_callback() with Dynamic types in Haxe:
+ *
+ * Example (WORKING):
+ *   // Haxe:
+ *   public static var onMessage:Dynamic = null;  // Use Dynamic!
+ *
+ *   // C:
+ *   hlffi_register_callback(vm, "onMessage", my_callback, 1);
+ *
+ * The typed API is provided for experimentation but requires significant refactoring
+ * of wrapper functions to support primitive type signatures.
  */
 typedef enum {
     HLFFI_ARG_VOID = 0,     /**< Void (no return value) */
@@ -1235,10 +1248,17 @@ bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func f
 /**
  * Register a typed C callback with specific argument and return types.
  *
- * This allows Haxe to use properly typed callback fields instead of Dynamic.
+ * @warning EXPERIMENTAL - DO NOT USE IN PRODUCTION
  *
- * @warning EXPERIMENTAL: Has known runtime issues. Use hlffi_register_callback()
- *          with Dynamic types for production code until this is debugged.
+ * This function has a critical limitation: wrapper functions expect vdynamic* for all
+ * arguments, but typed closures pass primitives (Int/Float/Bool) as raw values, causing
+ * crashes when callbacks with primitive args are invoked.
+ *
+ * CRASHES WHEN CALLED:
+ *   - Callbacks with Int, Float, or Bool arguments
+ *   - Works only for String arguments (which are vdynamic* pointers)
+ *
+ * USE hlffi_register_callback() with Dynamic types instead!
  *
  * @param vm VM instance
  * @param name Callback name for retrieval
@@ -1248,21 +1268,14 @@ bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func f
  * @param return_type Return type descriptor
  * @return true on success, false on error
  *
- * Example:
- *   // Register: (String) -> Void
- *   hlffi_arg_type args[] = {HLFFI_ARG_STRING};
- *   hlffi_register_callback_typed(vm, "onMessage", my_callback,
- *                                  1, args, HLFFI_ARG_VOID);
+ * Example (DO NOT USE - shown for reference only):
+ *   // This will CRASH when invoked from Haxe:
+ *   hlffi_arg_type args[] = {HLFFI_ARG_INT, HLFFI_ARG_INT};
+ *   hlffi_register_callback_typed(vm, "onAdd", callback, 2, args, HLFFI_ARG_INT);
  *
- *   // Haxe can now use:
- *   // public static var onMessage:String->Void = null; (not Dynamic!)
- *
- *   // Register: (Int, Int) -> Int
- *   hlffi_arg_type args2[] = {HLFFI_ARG_INT, HLFFI_ARG_INT};
- *   hlffi_register_callback_typed(vm, "onAdd", add_callback,
- *                                  2, args2, HLFFI_ARG_INT);
- *
- *   // Haxe: public static var onAdd:(Int,Int)->Int = null;
+ * Use this instead:
+ *   hlffi_register_callback(vm, "onAdd", callback, 2);  // Works!
+ *   // In Haxe: public static var onAdd:Dynamic = null;
  */
 bool hlffi_register_callback_typed(
     hlffi_vm* vm,
