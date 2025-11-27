@@ -624,12 +624,9 @@ static hl_type* find_haxe_array_type(hlffi_vm* vm, hl_type* element_type) {
         array_type_name = "hl.types.ArrayBytes_Int";
     } else if (element_type->kind == HF64) {
         array_type_name = "hl.types.ArrayBytes_F64";
-    } else if (element_type->kind == HBYTES) {
-        array_type_name = "hl.types.ArrayBytes_String";
-    } else if (element_type->kind == HBOOL) {
-        array_type_name = "hl.types.ArrayBytes_UI8";  /* Bool is stored as UI8 */
     } else {
-        /* For objects and other types, use ArrayObj */
+        /* Strings, objects, bools, functions are all pointers - use ArrayObj */
+        /* NOTE: HBYTES (strings) use ArrayObj, not ArrayBytes_String */
         array_type_name = "hl.types.ArrayObj";
     }
 
