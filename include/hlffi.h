@@ -49,8 +49,47 @@ typedef struct hlffi_vm hlffi_vm;
 typedef struct hlffi_type hlffi_type;
 
 /**
- * Opaque value handle.
- * Represents a Haxe value (object, primitive, etc.).
+ * Opaque value handle - TEMPORARY CONVERSION WRAPPER.
+ *
+ * DESIGN INTENT: hlffi_value is for CONVERSION and PASSING data between
+ * C and Haxe, NOT for long-term storage in C data structures.
+ *
+ * ✅ SAFE USAGE PATTERN (Temporary Conversion):
+ *    hlffi_value* temp = hlffi_value_int(vm, 100);
+ *    hlffi_call_method(obj, "setHealth", 1, &temp);
+ *    hlffi_value_free(temp);  // Use immediately, then free
+ *
+ * ✅ SAFE: Extract and store native types:
+ *    hlffi_value* hp = hlffi_get_field(obj, "health");
+ *    int health = hlffi_value_as_int(hp, 0);  // Copy to C int
+ *    hlffi_value_free(hp);
+ *    // Now 'health' is a C-owned value, safe to store anywhere
+ *
+ * ✅ SAFE: Store Haxe objects created with hlffi_new():
+ *    struct Game { hlffi_value* player; };
+ *    game->player = hlffi_new(vm, "Player", 0, NULL);  // GC-rooted
+ *    // This is safe because hlffi_new() adds an explicit GC root
+ *    // Must call hlffi_value_free() when done to remove root
+ *
+ * ❌ UNSAFE: Storing temporary wrappers:
+ *    struct Data { hlffi_value* temp; };  // DON'T DO THIS!
+ *    data->temp = hlffi_value_int(vm, 100);  // NOT GC-rooted!
+ *
+ * ❌ UNSAFE: Global/static storage:
+ *    static hlffi_value* g_value = NULL;  // DON'T DO THIS!
+ *
+ * MEMORY MANAGEMENT:
+ * - ALWAYS call hlffi_value_free() when done (safe for all values)
+ * - Values from hlffi_new() are GC-rooted (safe to store)
+ * - Values from hlffi_value_int/float/bool/string() are NOT rooted (temporary)
+ * - Values from hlffi_get_field/hlffi_call_method() are NOT rooted (temporary)
+ * - Strings from hlffi_value_as_string() must be freed with free()
+ *
+ * GC SAFETY:
+ * Non-rooted values rely on GC stack scanning for protection. They are safe
+ * when stored in local (stack) variables and used immediately within the same
+ * function. They become unsafe when stored in heap-allocated structs, globals,
+ * or passed across async boundaries.
  */
 typedef struct hlffi_value hlffi_value;
 
@@ -848,10 +887,19 @@ bool hlffi_value_as_bool(hlffi_value* value, bool fallback);
  * Returns UTF-8 string converted from HashLink's UTF-16.
  *
  * @param value Value handle
- * @return UTF-8 string (caller must free), or NULL if not a string
+ * @return UTF-8 string, or NULL if not a string
  *
- * @note Caller must free() the returned string
+ * @note MEMORY OWNERSHIP: Caller must free() the returned string with free()
  * @note Returns NULL if value is NULL or not a string
+ * @note The string is a COPY - safe to store and use after freeing hlffi_value
+ *
+ * Example:
+ *   hlffi_value* name = hlffi_get_field(obj, "name");
+ *   char* str = hlffi_value_as_string(name);
+ *   hlffi_value_free(name);  // Can free value immediately
+ *   // str is still valid - it's an independent copy
+ *   printf("Name: %s\n", str);
+ *   free(str);  // Must free the string when done
  */
 char* hlffi_value_as_string(hlffi_value* value);
 
