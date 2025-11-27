@@ -1172,6 +1172,24 @@ bool hlffi_is_instance_of(hlffi_value* obj, const char* class_name);
 /* ========== PHASE 6: CALLBACKS & EXCEPTIONS ========== */
 
 /**
+ * Callback argument/return type descriptors for typed callback registration.
+ *
+ * These map to HashLink types and enable type-safe callbacks in Haxe.
+ *
+ * @note EXPERIMENTAL: Typed callbacks (hlffi_register_callback_typed) have known
+ *       runtime issues. For production use, prefer hlffi_register_callback()
+ *       with Dynamic types in Haxe. API is code-complete but needs debugging.
+ */
+typedef enum {
+    HLFFI_ARG_VOID = 0,     /**< Void (no return value) */
+    HLFFI_ARG_INT,          /**< Int (i32) */
+    HLFFI_ARG_FLOAT,        /**< Float (f64) */
+    HLFFI_ARG_BOOL,         /**< Bool */
+    HLFFI_ARG_STRING,       /**< String (bytes/UTF-16) */
+    HLFFI_ARG_DYNAMIC       /**< Dynamic (any type) */
+} hlffi_arg_type;
+
+/**
  * Native function signature for callbacks from Haxe.
  *
  * @param vm VM instance
@@ -1213,6 +1231,47 @@ typedef hlffi_value* (*hlffi_native_func)(hlffi_vm* vm, int argc, hlffi_value** 
  *   // 4. Haxe can now call: MyClass.callback("hello");
  */
 bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func func, int nargs);
+
+/**
+ * Register a typed C callback with specific argument and return types.
+ *
+ * This allows Haxe to use properly typed callback fields instead of Dynamic.
+ *
+ * @warning EXPERIMENTAL: Has known runtime issues. Use hlffi_register_callback()
+ *          with Dynamic types for production code until this is debugged.
+ *
+ * @param vm VM instance
+ * @param name Callback name for retrieval
+ * @param func C function pointer
+ * @param nargs Number of arguments
+ * @param arg_types Array of argument type descriptors (length = nargs)
+ * @param return_type Return type descriptor
+ * @return true on success, false on error
+ *
+ * Example:
+ *   // Register: (String) -> Void
+ *   hlffi_arg_type args[] = {HLFFI_ARG_STRING};
+ *   hlffi_register_callback_typed(vm, "onMessage", my_callback,
+ *                                  1, args, HLFFI_ARG_VOID);
+ *
+ *   // Haxe can now use:
+ *   // public static var onMessage:String->Void = null; (not Dynamic!)
+ *
+ *   // Register: (Int, Int) -> Int
+ *   hlffi_arg_type args2[] = {HLFFI_ARG_INT, HLFFI_ARG_INT};
+ *   hlffi_register_callback_typed(vm, "onAdd", add_callback,
+ *                                  2, args2, HLFFI_ARG_INT);
+ *
+ *   // Haxe: public static var onAdd:(Int,Int)->Int = null;
+ */
+bool hlffi_register_callback_typed(
+    hlffi_vm* vm,
+    const char* name,
+    hlffi_native_func func,
+    int nargs,
+    const hlffi_arg_type* arg_types,
+    hlffi_arg_type return_type
+);
 
 /**
  * Get a registered callback as an hlffi_value.

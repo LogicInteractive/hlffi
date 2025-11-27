@@ -189,6 +189,72 @@ static hl_type* create_callback_function_type(int nargs) {
     return type;
 }
 
+/* Helper: Map hlffi_arg_type to HashLink hl_type* */
+static hl_type* map_callback_type(hlffi_arg_type type) {
+    switch (type) {
+        case HLFFI_ARG_VOID:    return &hlt_void;
+        case HLFFI_ARG_INT:     return &hlt_i32;
+        case HLFFI_ARG_FLOAT:   return &hlt_f64;
+        case HLFFI_ARG_BOOL:    return &hlt_bool;
+        case HLFFI_ARG_STRING:  return &hlt_bytes;
+        case HLFFI_ARG_DYNAMIC: return &hlt_dyn;
+        default:                 return &hlt_dyn;
+    }
+}
+
+/* Helper: Create a typed function type for callback with specific arg/return types
+ * This creates: (closure_value, arg0:T0, arg1:T1, ...) -> RetType
+ *
+ * Unlike the dynamic version, this creates properly-typed closures that match
+ * Haxe's static type system (e.g., String->Void, (Int,Int)->Int). */
+static hl_type* create_typed_callback_function_type(
+    int nargs,
+    const hlffi_arg_type* arg_types,
+    hlffi_arg_type return_type
+) {
+    /* Allocate hl_type structure */
+    hl_type* type = (hl_type*)malloc(sizeof(hl_type));
+    if (!type) return NULL;
+    memset(type, 0, sizeof(hl_type));
+
+    /* Set kind to HFUN (function) */
+    type->kind = HFUN;
+
+    /* Allocate hl_type_fun structure */
+    hl_type_fun* tfun = (hl_type_fun*)malloc(sizeof(hl_type_fun));
+    if (!tfun) {
+        free(type);
+        return NULL;
+    }
+    memset(tfun, 0, sizeof(hl_type_fun));
+
+    /* Function signature: (closure_value, arg0:T0, ..., argN-1:TN-1) -> RetType
+     * Total args = 1 (closure) + nargs (actual args) */
+    int total_args = 1 + nargs;
+    tfun->nargs = total_args;
+    tfun->ret = map_callback_type(return_type);  /* Specific return type! */
+    tfun->parent = type;
+
+    /* Allocate args array */
+    tfun->args = (hl_type**)malloc(total_args * sizeof(hl_type*));
+    if (!tfun->args) {
+        free(tfun);
+        free(type);
+        return NULL;
+    }
+
+    /* First arg is closure value (always dynamic), rest are specific types */
+    tfun->args[0] = &hlt_dyn;
+    for (int i = 0; i < nargs; i++) {
+        tfun->args[i + 1] = map_callback_type(arg_types[i]);
+    }
+
+    /* Link function descriptor to type */
+    type->fun = tfun;
+
+    return type;
+}
+
 /* Helper: Free function type */
 static void free_function_type(hl_type* type) {
     if (!type) return;
@@ -238,6 +304,90 @@ bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func f
 
     /* Create function type */
     hl_type* func_type = create_callback_function_type(nargs);
+    if (!func_type) {
+        set_error(vm, "Failed to create callback function type");
+        return false;
+    }
+
+    /* Get wrapper function for this arity */
+    void* wrapper_func = get_wrapper_for_arity(nargs);
+    if (!wrapper_func) {
+        free_function_type(func_type);
+        set_error(vm, "Unsupported callback arity (max 4 args)");
+        return false;
+    }
+
+    /* Update GC stack_top before allocation */
+    HLFFI_UPDATE_STACK_TOP();
+
+    /* Create closure using hl_alloc_closure_ptr
+     * This creates a closure that wraps our C function */
+    vclosure* closure = hl_alloc_closure_ptr(func_type, wrapper_func, entry);
+    if (!closure) {
+        free_function_type(func_type);
+        set_error(vm, "Failed to allocate closure");
+        return false;
+    }
+
+    /* Add GC root to prevent collection */
+    hl_add_root(&entry->hl_closure);
+    entry->hl_closure = closure;
+    entry->is_rooted = true;
+
+    /* Increment callback count */
+    vm->callback_count++;
+
+    return true;
+}
+
+bool hlffi_register_callback_typed(
+    hlffi_vm* vm,
+    const char* name,
+    hlffi_native_func func,
+    int nargs,
+    const hlffi_arg_type* arg_types,
+    hlffi_arg_type return_type
+) {
+    if (!vm) return false;
+    if (!name || !func) {
+        set_error(vm, "Invalid callback name or function");
+        return false;
+    }
+    if (nargs < 0 || nargs > 4) {
+        set_error(vm, "Callback arity must be 0-4 arguments");
+        return false;
+    }
+    if (nargs > 0 && !arg_types) {
+        set_error(vm, "Argument types required for callbacks with arguments");
+        return false;
+    }
+    if (vm->callback_count >= HLFFI_MAX_CALLBACKS) {
+        set_error(vm, "Maximum number of callbacks reached");
+        return false;
+    }
+
+    /* Check for duplicate name */
+    for (int i = 0; i < vm->callback_count; i++) {
+        if (strcmp(vm->callbacks[i].name, name) == 0) {
+            set_error(vm, "Callback with this name already registered");
+            return false;
+        }
+    }
+
+    /* Get the callback entry slot */
+    hlffi_callback_entry* entry = &vm->callbacks[vm->callback_count];
+
+    /* Store callback info */
+    strncpy(entry->name, name, sizeof(entry->name) - 1);
+    entry->name[sizeof(entry->name) - 1] = '\0';
+    entry->c_func = func;
+    entry->nargs = nargs;
+    entry->vm = vm;
+    entry->is_rooted = false;
+    entry->hl_closure = NULL;
+
+    /* Create TYPED function type (maps to Haxe static types!) */
+    hl_type* func_type = create_typed_callback_function_type(nargs, arg_types, return_type);
     if (!func_type) {
         set_error(vm, "Failed to create callback function type");
         return false;
