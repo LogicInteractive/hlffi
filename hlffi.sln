@@ -53,6 +53,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_exceptions", "test_exc
 	EndProjectSection
 EndProject
 
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_timers", "test_timers.vcxproj", "{F1234567-8901-2345-6789-ABCDEF012345}"
+	ProjectSection(ProjectDependencies) = postProject
+		{F7A8B1E3-9C4D-4E5F-8A6B-1D2E3F4A5B6C} = {F7A8B1E3-9C4D-4E5F-8A6B-1D2E3F4A5B6C}
+	EndProjectSection
+EndProject
+
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -99,6 +105,11 @@ Global
 		{A7B8C9D0-E1F2-3456-0123-456789ABCDEF}.Debug|x64.Build.0 = Debug|x64
 		{A7B8C9D0-E1F2-3456-0123-456789ABCDEF}.Release|x64.ActiveCfg = Release|x64
 		{A7B8C9D0-E1F2-3456-0123-456789ABCDEF}.Release|x64.Build.0 = Release|x64
+
+		{F1234567-8901-2345-6789-ABCDEF012345}.Debug|x64.ActiveCfg = Debug|x64
+		{F1234567-8901-2345-6789-ABCDEF012345}.Debug|x64.Build.0 = Debug|x64
+		{F1234567-8901-2345-6789-ABCDEF012345}.Release|x64.ActiveCfg = Release|x64
+		{F1234567-8901-2345-6789-ABCDEF012345}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 
 	GlobalSection(SolutionProperties) = preSolution

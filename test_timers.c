@@ -7,11 +7,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>  /* for usleep */
 #include <sys/time.h> /* for gettimeofday */
+#endif
 
-#define TEST_PASS(name) printf("✓ Test %d: %s\n", ++test_count, name)
-#define TEST_FAIL(name) do { printf("✗ Test %d: %s\n", ++test_count, name); failed++; } while(0)
+#define TEST_PASS(name) printf("[PASS] Test %d: %s\n", ++test_count, name)
+#define TEST_FAIL(name) do { printf("[FAIL] Test %d: %s\n", ++test_count, name); failed++; } while(0)
 
 /* Helper: Call void static method */
 static void call_void(hlffi_vm* vm, const char* class_name, const char* method_name, int argc, hlffi_value** argv) {
@@ -30,14 +35,25 @@ static int call_int(hlffi_vm* vm, const char* class_name, const char* method_nam
 
 /* Get current time in milliseconds */
 static double get_time_ms(void) {
+#ifdef _WIN32
+    LARGE_INTEGER freq, counter;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart * 1000.0 / (double)freq.QuadPart;
+#else
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (tv.tv_sec * 1000.0) + (tv.tv_usec / 1000.0);
+#endif
 }
 
 /* Sleep for milliseconds */
 static void sleep_ms(int ms) {
+#ifdef _WIN32
+    Sleep(ms);
+#else
     usleep(ms * 1000);
+#endif
 }
 
 int main(int argc, char** argv) {
