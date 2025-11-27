@@ -904,6 +904,107 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
  */
 hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char* method_name, int argc, hlffi_value** argv);
 
+/* ========== PHASE 4: INSTANCE MEMBERS (OBJECTS) ========== */
+
+/**
+ * Create a new instance of a class (call constructor).
+ *
+ * Creates a new object instance by calling the class constructor.
+ * The object is automatically GC-rooted and must be freed with hlffi_value_free().
+ *
+ * @param vm VM instance
+ * @param class_name Fully qualified class name (e.g., "Player", "com.example.MyClass")
+ * @param argc Number of constructor arguments
+ * @param argv Array of argument values (can be NULL if argc == 0)
+ * @return New object instance, or NULL on error
+ *
+ * @note Entry point must be called before creating instances
+ * @note Object is GC-rooted - call hlffi_value_free() when done
+ * @note Check hlffi_get_error() if NULL is returned
+ *
+ * Example:
+ *   // Player has: new(name:String)
+ *   hlffi_value* name = hlffi_value_string(vm, "Hero");
+ *   hlffi_value* player = hlffi_new(vm, "Player", 1, &name);
+ *   // ... use player ...
+ *   hlffi_value_free(player);
+ */
+hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_value** argv);
+
+/**
+ * Get an instance field value.
+ *
+ * Retrieves the value of an object's instance field by name.
+ * Works for all field types (primitives, objects, strings, etc.).
+ *
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @return Field value, or NULL on error
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Returned value does NOT need to be freed (it's a borrowed reference)
+ *
+ * Example:
+ *   hlffi_value* health = hlffi_get_field(player, "health");
+ *   int hp = hlffi_value_as_int(health);
+ */
+hlffi_value* hlffi_get_field(hlffi_value* obj, const char* field_name);
+
+/**
+ * Set an instance field value.
+ *
+ * Sets the value of an object's instance field by name.
+ * Works for all field types (primitives, objects, strings, etc.).
+ *
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @param value New value to set
+ * @return true on success, false on error
+ *
+ * @note Check hlffi_get_error() if false is returned
+ *
+ * Example:
+ *   hlffi_value* new_health = hlffi_value_int(vm, 50);
+ *   hlffi_set_field(player, "health", new_health);
+ *   hlffi_value_free(new_health);
+ */
+bool hlffi_set_field(hlffi_value* obj, const char* field_name, hlffi_value* value);
+
+/**
+ * Call an instance method.
+ *
+ * Calls a method on an object instance with the given arguments.
+ *
+ * @param obj Object instance
+ * @param method_name Method name (UTF-8)
+ * @param argc Number of arguments
+ * @param argv Array of argument values (can be NULL if argc == 0)
+ * @return Return value, or NULL on error/void return
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Returned value should be freed with hlffi_value_free()
+ *
+ * Example:
+ *   hlffi_value* damage = hlffi_value_int(vm, 25);
+ *   hlffi_call_method(player, "takeDamage", 1, &damage);
+ *   hlffi_value_free(damage);
+ */
+hlffi_value* hlffi_call_method(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
+
+/**
+ * Check if a value is an instance of a given class.
+ *
+ * @param obj Object instance to check
+ * @param class_name Class name to check against
+ * @return true if obj is an instance of class_name, false otherwise
+ *
+ * Example:
+ *   if (hlffi_is_instance_of(value, "Player")) {
+ *       // Safe to use as Player
+ *   }
+ */
+bool hlffi_is_instance_of(hlffi_value* obj, const char* class_name);
+
 #ifdef __cplusplus
 }
 

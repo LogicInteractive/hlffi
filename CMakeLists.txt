@@ -110,6 +110,7 @@ set(HLFFI_SOURCES
     src/hlffi_reload.c
     src/hlffi_types.c
     src/hlffi_values.c
+    src/hlffi_objects.c
 )
 
 # Create library target (will be populated in Phase 1)
