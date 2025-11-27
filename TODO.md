@@ -4,31 +4,37 @@ This file tracks known issues, limitations, and planned improvements for the HLF
 
 ## High Priority
 
-###Complete Haxe Array Support (Phase 5)
-**Status:** Partially Implemented (70% complete)
-**Issue:** Arrays created in C work perfectly, but arrays returned from Haxe methods cannot have their elements accessed.
+### Complete C→Haxe Array Passing (Phase 5)
+**Status:** Nearly Complete (90% - 9/10 tests passing)
+**Issue:** Passing C-created arrays TO Haxe methods fails due to type incompatibility.
 
 **What Works:**
 - ✅ C-created arrays (`hlffi_array_new`) - full CRUD operations
 - ✅ Array length detection for both C and Haxe arrays
-- ✅ Tests 1-8 passing (C array operations)
+- ✅ Element access (`hlffi_array_get`) for Haxe Array objects (FIXED!)
+- ✅ Tests 1-9 passing
 
 **What Doesn't Work:**
-- ❌ Element access (`hlffi_array_get`) for Haxe Array objects
-- ❌ Element modification (`hlffi_array_set`) for Haxe Array objects
-- ❌ Tests 9-10 failing
+- ❌ Passing C-created arrays (varray) to Haxe methods expecting Array<T> objects
+- ❌ Test 10 failing
 
-**Root Cause:**
-- Haxe's `Array<T>` compiles to `hl.types.ArrayBytes_T` objects at the HashLink level
-- These objects have a complex memory layout: `{size: int, bytes: varray*}`
-- The `bytes` field pointer (0x400601c8 range) contains the actual data
-- Current implementation cannot correctly dereference the bytes field to access elements
+**Root Cause (Test 10):**
+- C-created arrays use raw `varray` type (HARRAY)
+- Haxe methods expect `hl.types.ArrayBytes_T` wrapper objects (HOBJ)
+- Would need array type conversion/wrapping to pass C arrays to Haxe
+- The reverse direction (Haxe→C) works perfectly after discovering field layout
+
+**Solution Implemented (Tests 1-9):**
+- ✅ Discovered HashLink optimizes field layout in memory
+- ✅ Field names [bytes, size] but memory layout is [size(int), bytes(ptr)]
+- ✅ Read size from first 4 bytes, bytes pointer from offset sizeof(void*)
+- ✅ Cast bytes pointer directly to typed data (int*, double*, etc.)
+- ✅ Supports Int and Float arrays from Haxe
 
 **Next Steps:**
-1. Study HashLink blog post: https://haxe.org/blog/hashlink-in-depth-p2/
-2. Examine `hl.types.ArrayBytes_*` implementation in HashLink source
-3. Implement proper field dereferencing for Haxe Array objects
-4. Add support for different array types (Float, String, Dynamic)
+1. Implement array wrapper conversion for C→Haxe direction (Test 10)
+2. Add support for String, Bool, and Dynamic arrays
+3. Consider convenience helpers for common array operations
 
 **Files to modify:**
 - `src/hlffi_values.c` - Fix `hlffi_array_get` and `hlffi_array_set`
@@ -111,7 +117,7 @@ Use `hlffi_register_callback()` with Dynamic types in Haxe.
 - ✅ Phase 3: Static variable access
 - ✅ Phase 4: Value boxing/unboxing
 - ✅ Phase 4: Object instance methods
-- 🟡 Phase 5: Array operations (C-created arrays fully working, Haxe arrays partially supported)
+- 🟢 Phase 5: Array operations (9/10 tests passing - C arrays + Haxe→C arrays working)
 - ✅ Phase 6: Dynamic callbacks (working)
 - ✅ Phase 6: Callback unregistration
 

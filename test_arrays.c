@@ -267,7 +267,6 @@ int main(int argc, char** argv) {
     /* Test 9: Get array from Haxe */
     {
         hlffi_value* arr = hlffi_call_static(vm, "Arrays", "getIntArray", 0, NULL);
-        printf("DEBUG: arr = %p\n", (void*)arr);
         fflush(stdout);
 
         if (arr) {

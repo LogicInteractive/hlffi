@@ -656,15 +656,11 @@ int hlffi_array_length(hlffi_value* arr) {
     vdynamic* val = arr->hl_value;
 
     /* Debug: print actual type */
-    printf("DEBUG array_length: type kind = %d (HARRAY=%d, HDYN=%d)\n", val->t->kind, HARRAY, HDYN);
-    fflush(stdout);
 
     /* Arrays can be wrapped in dynamic values */
     if (val->t->kind == HDYN && val->v.ptr) {
         /* Unwrap dynamic */
         val = (vdynamic*)val->v.ptr;
-        printf("DEBUG array_length: after unwrap, type kind = %d\n", val->t->kind);
-        fflush(stdout);
     }
 
     /* Check if this is actually an array */
@@ -674,8 +670,6 @@ int hlffi_array_length(hlffi_value* arr) {
         if (val->t->obj && val->t->obj->name) {
             char type_name[128];
             utostr(type_name, sizeof(type_name), val->t->obj->name);
-            printf("DEBUG array_length: HOBJ type name = '%s'\n", type_name);
-            fflush(stdout);
 
             /* Check if this is a HashLink Array type (e.g., "hl.types.ArrayBytes_Int") */
             if (strncmp(type_name, "hl.types.Array", 14) == 0) {
@@ -683,21 +677,15 @@ int hlffi_array_length(hlffi_value* arr) {
                 /* Access the 'size' field using hl_dyn_geti */
                 int hashed_size = hl_hash_utf8("size");
                 int length = hl_dyn_geti(val, hashed_size, &hlt_i32);
-                printf("DEBUG array_length: got size from field = %d\n", length);
-                fflush(stdout);
                 return length;
             }
         }
-        printf("DEBUG array_length: HOBJ is not an Array\n");
         return -1;
     } else if (val->t->kind == HARRAY) {
         /* Direct varray */
         varray* array = (varray*)val;
-        printf("DEBUG array_length: HARRAY, size = %d\n", array->size);
-        fflush(stdout);
         return array->size;
     } else {
-        printf("DEBUG array_length: rejecting type kind %d\n", val->t->kind);
         return -1;
     }
 }
@@ -724,43 +712,32 @@ hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index) {
             utostr(type_name, sizeof(type_name), val->t->obj->name);
 
             if (strncmp(type_name, "hl.types.Array", 14) == 0) {
-                /* Haxe Array objects: fields are [bytes, size] */
-                /* Access fields directly as object field data */
+                /* Haxe Array objects - HashLink optimizes field layout */
+                /* Field names: [0]="bytes", [1]="size" but memory: [0]=size(int), [1]=bytes(ptr) */
                 vobj* obj = (vobj*)val;
-                void** fields = (void**)(obj + 1);  /* Fields start after type pointer */
 
-                /* Note: Based on field names, field[0] = bytes, field[1] = size */
-                /* But actual memory layout is: field[0] = size (int), field[1] = bytes (varray*) */
-                int size = (int)(size_t)fields[0];  /* size is stored directly as int */
-                varray* bytes_array = (varray*)fields[1];
+                /* Read size - first field is int (4 bytes) */
+                int* size_ptr = (int*)(obj + 1);
+                int size = *size_ptr;
 
-                printf("DEBUG array_get: bytes_array = %p, size from field[0] = %d\n", (void*)bytes_array, size);
-                fflush(stdout);
+                /* Read bytes pointer - second field, aligned to pointer size */
+                /* On 64-bit: skip 8 bytes (size + padding), on 32-bit: skip 4 bytes */
+                void** bytes_ptr = (void**)((char*)(obj + 1) + sizeof(void*));
+                void* bytes = *bytes_ptr;
 
-                if (bytes_array && index >= 0 && index < size) {
-                    /* Infer element type from type name */
+
+                if (bytes && index >= 0 && index < size) {
+                    /* Access bytes as raw typed data based on array element type */
                     if (strstr(type_name, "_Int")) {
-                        /* Array<Int> - bytes_array might be varray* or direct data pointer */
-                        /* Try direct cast first */
-                        int* data = (int*)bytes_array;
-                        printf("DEBUG array_get: direct cast: array[%d] = %d\n", index, data[index]);
-
-                        /* Try as varray */
-                        varray* varr = (varray*)bytes_array;
-                        if (varr->t && varr->t->kind == HARRAY) {
-                            int* vdata = (int*)hl_aptr(varr, int);
-                            printf("DEBUG array_get: as varray: array[%d] = %d\n", index, vdata[index]);
-                            fflush(stdout);
-                            return hlffi_value_int(vm, vdata[index]);
-                        }
-
-                        fflush(stdout);
+                        int* data = (int*)bytes;
                         return hlffi_value_int(vm, data[index]);
+                    } else if (strstr(type_name, "_Float")) {
+                        double* data = (double*)bytes;
+                        return hlffi_value_float(vm, data[index]);
                     }
-                    /* TODO: Add support for other array types (Float, String, etc.) */
+                    /* TODO: Add support for String, Bool, Dynamic arrays */
                 }
-                fflush(stdout);
-                set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Cannot access array element");
+                set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array index out of bounds or unsupported type");
                 return NULL;
             }
         }
