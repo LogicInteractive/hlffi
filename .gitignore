@@ -78,6 +78,7 @@ test_map_demo
 test_native_demo
 test_bytes_demo
 callback_example
+test_cache
 
 # Haxe bytecode
 *.hl
