@@ -1391,7 +1391,7 @@ bool hlffi_array_set_struct(hlffi_vm* vm, hlffi_value* arr, int index, void* str
 
     /* Allocate vdynamic wrapper + struct data
      * We need to allocate space for both the vdynamic header and the struct data */
-    vdynamic* wrapper = (vdynamic*)hl_gc_alloc_raw(&hlt_dyn, sizeof(vdynamic) + struct_size);
+    vdynamic* wrapper = (vdynamic*)hl_gc_alloc_raw(sizeof(vdynamic) + struct_size);
     if (!wrapper) {
         set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate struct wrapper");
         return false;
