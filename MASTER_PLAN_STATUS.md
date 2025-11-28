@@ -271,36 +271,43 @@ int health = hlffi_get_field_int(player, "health", 0);
 
 ---
 
-### ⚠️ Phase 6: Callbacks & Exceptions (60% Complete)
+### ✅ Phase 6: Callbacks & Exceptions (100% Complete)
 
-**Status:** EXCEPTION HANDLING COMPLETE, Callbacks TODO
-**Test Results:** 9/9 tests passing
+**Status:** COMPLETE
+**Test Results:** 14/14 exception tests passing, 14/14 callback tests passing
+**Date Completed:** November 27, 2025
 
-**Completed:**
+**Exception Handling (Complete):**
 - ✅ `hlffi_try_call_static()` - call with exception catching
 - ✅ `hlffi_get_exception_message()` - get exception text
+- ✅ `hlffi_get_exception_stack()` - get stack trace
 - ✅ `hlffi_has_exception()` - check for pending exception
 - ✅ `hlffi_clear_exception()` - clear exception state
-- ✅ `hlffi_blocking_begin/end()` - GC blocking notification
-- ✅ Exception storage in VM struct
-- ✅ All 9 exception tests passing
+- ✅ Full stack trace extraction with line numbers
+- ✅ 14/14 exception tests passing
 
-**Not Implemented:**
-- ❌ Register C function as Haxe callback
-- ❌ Call C from Haxe
-- ❌ Stack trace extraction (message only)
+**C→Haxe Callbacks (Complete):**
+- ✅ `hlffi_register_callback()` - Register C functions callable from Haxe
+- ✅ `hlffi_get_callback()` - Retrieve registered callback
+- ✅ `hlffi_unregister_callback()` - Remove callback
+- ✅ Support for 0-4 argument callbacks
+- ✅ Multiple callback registration
+- ✅ Callback invocation from Haxe
+- ✅ 14/14 callback tests passing
 
 **Files:**
-- `src/hlffi_callbacks.c` (~8KB) - Exception handling + callback stubs
-- `test_exceptions.c` - 9 comprehensive tests
-- `test/Exceptions.hx` - Haxe test class
+- `src/hlffi_callbacks.c` - Full implementation (exceptions + callbacks)
+- `test_exceptions.c` - 14 comprehensive exception tests
+- `test_callbacks.c` - 14 comprehensive callback tests
+- `test/Exceptions.hx` - Exception test class
+- `test/Callbacks.hx` - Callback test class
 
 **Critical Bug Fix (Nov 27):**
 - Fixed heap corruption caused by mismatched `struct hlffi_vm` definitions
 - Created `src/hlffi_internal.h` to unify struct definitions across all source files
 - See `docs/STRUCT_MISMATCH_FIX.md` for details
 
-**Priority:** MEDIUM (exception handling done, callbacks nice-to-have)
+**Priority:** ✅ COMPLETE
 
 ---
 
@@ -449,12 +456,6 @@ hlffi_value* arr = hlffi_array_new(vm, int_type, 10);
 hlffi_value* map = hlffi_map_new(vm);
 ```
 
-**Callbacks (C←Haxe):**
-```c
-// NOT IMPLEMENTED
-hlffi_register_callback(vm, "onEvent", my_c_function, 1);
-```
-
 **Hot Reload:**
 ```c
 // NOT IMPLEMENTED (stubs return HLFFI_ERROR_NOT_IMPLEMENTED)
@@ -492,12 +493,29 @@ hlffi_has_pending_work(vm);
 
 **Exception Handling:**
 ```c
-// ✅ WORKING - 9/9 tests pass
+// ✅ WORKING - 14/14 tests pass
 hlffi_try_call_static(vm, "Class", "method", 0, NULL);
 if (hlffi_has_exception(vm)) {
     const char* msg = hlffi_get_exception_message(vm);
+    const char* stack = hlffi_get_exception_stack(vm);
     hlffi_clear_exception(vm);
 }
+```
+
+**Callbacks (C←Haxe):**
+```c
+// ✅ WORKING - 14/14 tests pass
+hlffi_register_callback(vm, "onEvent", my_c_function, 1);
+vclosure* callback = hlffi_get_callback(vm, "onEvent");
+hlffi_unregister_callback(vm, "onEvent");
+```
+
+**Performance Caching:**
+```c
+// ✅ WORKING - 8-10x speedup
+hlffi_cached_call* cache = hlffi_cache_static_method(vm, "Game", "update");
+hlffi_value* result = hlffi_call_cached(cache, 0, NULL);
+hlffi_cached_call_free(cache);
 ```
 
 ---
