@@ -94,6 +94,7 @@ hashlink-nightly/
 test_enum_demo
 test_cache_minimal
 test_cache_loop
+test_cache_memory
 
 # Benchmark binaries
 benchmark/bench_cache
