@@ -1,6 +1,10 @@
-# HLFFI v3.0 — HashLink FFI Library
 
-> **Embed Haxe/HashLink into any C/C++ application, game engine, or tool**
+<img width="379" height="229" alt="HLFFI — HashLink FFI Library" src="https://github.com/user-attachments/assets/786155ad-73d4-41e3-acfb-a6af593cee07" />
+
+
+---
+
+**Embed Haxe/HashLink into any C/C++ application, game engine, or tool**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![C/C++](https://img.shields.io/badge/language-C%20%7C%20C%2B%2B-00599C)
@@ -8,9 +12,13 @@
 
 ---
 
-**HLFFI v3.0** is a complete redesign of the HashLink FFI library, purpose-built for embedding Haxe/HashLink into native applications like game engines (Unreal, Unity, Godot), mobile apps, and custom C/C++ tools.
 
-## ⚠️ Development Status
+**HLFFI is a HashLink FFI library, purpose-built for embedding Haxe/HashLink into native applications like game engines (Unreal, Unity, Godot), mobile apps, and custom C/C++ tools.
+
+
+## ⚠️ Status : Experimental
+
+
 
 **Phase 0: Foundation & Architecture** ✅ **COMPLETE**
 **Phase 1: Core Lifecycle & Integration Modes** 🔨 **IN PROGRESS**
