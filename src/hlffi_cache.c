@@ -159,12 +159,39 @@ hlffi_value* hlffi_call_cached(
         }
     }
 
-    /* Direct call - minimal overhead! */
-    vdynamic* result = hl_dyn_call(cached->closure, hl_args, argc);
+    /* TYPE CONVERSION: Convert HBYTES to String objects if method expects HOBJ String
+     * This is needed because hlffi_value_string creates HBYTES but Haxe methods expect String objects */
+    if (argc > 0 && cached->closure->t->kind == HFUN) {
+        for (int i = 0; i < argc && i < cached->closure->t->fun->nargs; i++) {
+            hl_type* expected_type = cached->closure->t->fun->args[i];
+            vdynamic* arg = hl_args[i];
+
+            if (arg && expected_type->kind == HOBJ && arg->t->kind == HBYTES) {
+                char type_name_buf[128];
+                if (expected_type->obj && expected_type->obj->name) {
+                    utostr(type_name_buf, sizeof(type_name_buf), expected_type->obj->name);
+                    if (strcmp(type_name_buf, "String") == 0) {
+                        vstring* bytes_str = (vstring*)arg;
+                        bytes_str->t = expected_type;
+                        hl_args[i] = (vdynamic*)bytes_str;
+                    }
+                }
+            }
+        }
+    }
+
+    /* Call with exception handling - use hl_dyn_call_safe like hlffi_call_static */
+    bool isExc = false;
+    vdynamic* result = hl_dyn_call_safe(cached->closure, hl_args, argc, &isExc);
 
     /* Free argument array */
     if (hl_args) {
         free(hl_args);
+    }
+
+    /* Check for exception */
+    if (isExc) {
+        return NULL;
     }
 
     /* Wrap result */
