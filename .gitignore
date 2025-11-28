@@ -86,3 +86,4 @@ test_bytes_demo
 vendor/hashlink/
 hashlink-*.zip
 hashlink-nightly/
+test_enum_demo

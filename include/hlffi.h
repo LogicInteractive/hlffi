@@ -1460,6 +1460,146 @@ bool hlffi_bytes_set(hlffi_value* bytes, int index, int value);
  */
 bool hlffi_bytes_fill(hlffi_value* bytes, int pos, int len, int value);
 
+/* ========== Phase 5: Enum Operations ========== */
+
+/**
+ * Get the number of constructors in an enum type.
+ *
+ * @param vm VM instance
+ * @param type_name Enum type name (e.g., "Option")
+ * @return Number of constructors, or -1 on error
+ *
+ * Example:
+ *   int count = hlffi_enum_get_construct_count(vm, "Option");  // Returns 2 for Some/None
+ */
+int hlffi_enum_get_construct_count(hlffi_vm* vm, const char* type_name);
+
+/**
+ * Get the name of a constructor by index.
+ *
+ * @param vm VM instance
+ * @param type_name Enum type name
+ * @param index Constructor index (0-based)
+ * @return Constructor name (malloc'd, caller must free), or NULL on error
+ *
+ * Example:
+ *   char* name = hlffi_enum_get_construct_name(vm, "Option", 0);  // "Some"
+ *   free(name);
+ */
+char* hlffi_enum_get_construct_name(hlffi_vm* vm, const char* type_name, int index);
+
+/**
+ * Get the constructor index from an enum value.
+ *
+ * @param value Enum value
+ * @return Constructor index (0-based), or -1 if not an enum
+ *
+ * Example:
+ *   hlffi_value* opt = hlffi_call_static(vm, "Test", "getSome", 0, NULL);
+ *   int index = hlffi_enum_get_index(opt);  // 0 for Some, 1 for None
+ */
+int hlffi_enum_get_index(hlffi_value* value);
+
+/**
+ * Get the constructor name from an enum value.
+ *
+ * @param value Enum value
+ * @return Constructor name (malloc'd, caller must free), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* opt = hlffi_call_static(vm, "Test", "getSome", 0, NULL);
+ *   char* name = hlffi_enum_get_name(opt);  // "Some"
+ *   free(name);
+ */
+char* hlffi_enum_get_name(hlffi_value* value);
+
+/**
+ * Get the number of parameters in an enum value.
+ *
+ * @param value Enum value
+ * @return Number of parameters, or -1 if not an enum
+ *
+ * Example:
+ *   hlffi_value* opt = hlffi_call_static(vm, "Test", "getSome", 0, NULL);
+ *   int nparam = hlffi_enum_get_param_count(opt);  // 1 for Some(value)
+ */
+int hlffi_enum_get_param_count(hlffi_value* value);
+
+/**
+ * Get a parameter from an enum value by index.
+ *
+ * @param value Enum value
+ * @param param_index Parameter index (0-based)
+ * @return Parameter value (must be freed with hlffi_value_free), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* opt = hlffi_call_static(vm, "Test", "getSome", 0, NULL);
+ *   hlffi_value* param = hlffi_enum_get_param(opt, 0);
+ *   int val = hlffi_value_as_int(param, 0);
+ *   hlffi_value_free(param);
+ */
+hlffi_value* hlffi_enum_get_param(hlffi_value* value, int param_index);
+
+/**
+ * Create an enum value with no parameters.
+ *
+ * @param vm VM instance
+ * @param type_name Enum type name
+ * @param index Constructor index
+ * @return Enum value (must be freed with hlffi_value_free), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* none = hlffi_enum_alloc_simple(vm, "Option", 1);  // Option.None
+ */
+hlffi_value* hlffi_enum_alloc_simple(hlffi_vm* vm, const char* type_name, int index);
+
+/**
+ * Create an enum value with parameters.
+ *
+ * @param vm VM instance
+ * @param type_name Enum type name
+ * @param index Constructor index
+ * @param nparam Number of parameters
+ * @param params Array of parameter values
+ * @return Enum value (must be freed with hlffi_value_free), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* param = hlffi_value_int(vm, 42);
+ *   hlffi_value* params[] = {param};
+ *   hlffi_value* some = hlffi_enum_alloc(vm, "Option", 0, 1, params);  // Option.Some(42)
+ */
+hlffi_value* hlffi_enum_alloc(hlffi_vm* vm, const char* type_name, int index,
+                               int nparam, hlffi_value** params);
+
+/**
+ * Check if an enum value matches a specific constructor index.
+ *
+ * @param value Enum value
+ * @param index Constructor index to match
+ * @return true if matches, false otherwise
+ *
+ * Example:
+ *   if (hlffi_enum_is(opt, 0)) {
+ *       // It's Some
+ *   }
+ */
+bool hlffi_enum_is(hlffi_value* value, int index);
+
+/**
+ * Check if an enum value matches a constructor by name.
+ *
+ * @param value Enum value
+ * @param name Constructor name to match
+ * @return true if matches, false otherwise
+ *
+ * Example:
+ *   if (hlffi_enum_is_named(opt, "Some")) {
+ *       hlffi_value* val = hlffi_enum_get_param(opt, 0);
+ *       // ...
+ *   }
+ */
+bool hlffi_enum_is_named(hlffi_value* value, const char* name);
+
 /**
  * Get static field value.
  *
