@@ -35,7 +35,8 @@ HLFFI_WRAPPER_SRC = \
 	src/hlffi_objects.c \
 	src/hlffi_callbacks.c \
 	src/hlffi_events.c \
-	src/hlffi_integration.c
+	src/hlffi_integration.c \
+	src/hlffi_cache.c
 
 # Stub files (not yet implemented, excluded from Linux build):
 # src/hlffi_reload.c
