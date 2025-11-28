@@ -1191,3 +1191,243 @@ bool hlffi_array_push(hlffi_vm* vm, hlffi_value* arr, hlffi_value* value) {
 
     return true;
 }
+
+/* ========== NativeArray Support ========== */
+
+hlffi_value* hlffi_native_array_new(hlffi_vm* vm, hl_type* element_type, int length) {
+    if (!vm) return NULL;
+    if (length < 0) {
+        set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array length must be >= 0");
+        return NULL;
+    }
+
+    /* Use default element type if not specified */
+    if (!element_type) {
+        element_type = &hlt_dyn;
+    }
+
+    HLFFI_UPDATE_STACK_TOP();
+
+    /* Allocate varray (raw NativeArray) */
+    varray* arr = hl_alloc_array(element_type, length);
+    if (!arr) {
+        set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate native array");
+        return NULL;
+    }
+
+    /* Initialize all elements to null/zero */
+    if (element_type->kind == HDYN || element_type->kind == HOBJ ||
+        element_type->kind == HBYTES || element_type->kind == HFUN) {
+        /* Pointer types - initialize to NULL */
+        vdynamic** data = (vdynamic**)hl_aptr(arr, vdynamic*);
+        for (int i = 0; i < length; i++) {
+            data[i] = NULL;
+        }
+    } else {
+        /* Value types - zero out */
+        void* data = hl_aptr(arr, void);
+        int elem_size = hl_type_size(element_type);
+        memset(data, 0, length * elem_size);
+    }
+
+    /* Return unwrapped varray (no Haxe Array object wrapper) */
+    /* Wrap in hlffi_value for API consistency */
+    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
+    if (!wrapped) return NULL;
+    wrapped->hl_value = (vdynamic*)arr;
+    wrapped->is_rooted = false;
+
+    return wrapped;
+}
+
+void* hlffi_native_array_get_ptr(hlffi_value* arr) {
+    if (!arr || !arr->hl_value) return NULL;
+
+    vdynamic* val = arr->hl_value;
+
+    /* Unwrap dynamic if needed */
+    if (val->t->kind == HDYN && val->v.ptr) {
+        val = (vdynamic*)val->v.ptr;
+    }
+
+    /* Must be HARRAY (varray) for NativeArray */
+    if (val->t->kind != HARRAY) {
+        return NULL;
+    }
+
+    varray* array = (varray*)val;
+    return hl_aptr(array, void);
+}
+
+/* ========== Struct Array Support ========== */
+
+hlffi_value* hlffi_array_new_struct(hlffi_vm* vm, hlffi_type* struct_type, int length) {
+    if (!vm || !struct_type) return NULL;
+
+    hl_type* hl_struct_type = (hl_type*)struct_type;
+
+    /* Verify it's a struct type */
+    if (hl_struct_type->kind != HSTRUCT && hl_struct_type->kind != HOBJ) {
+        set_error(vm, HLFFI_ERROR_TYPE_MISMATCH, "Type is not a struct");
+        return NULL;
+    }
+
+    /* For Array<Struct>, elements are vdynamic* pointers (wrapped)
+     * So we create an array of type HDYN */
+    return hlffi_array_new(vm, &hlt_dyn, length);
+}
+
+void* hlffi_array_get_struct(hlffi_value* arr, int index) {
+    if (!arr || !arr->hl_value) return NULL;
+
+    vdynamic* val = arr->hl_value;
+
+    /* Unwrap dynamic if needed */
+    if (val->t->kind == HDYN && val->v.ptr) {
+        val = (vdynamic*)val->v.ptr;
+    }
+
+    varray* array = NULL;
+
+    /* Handle both HARRAY and HOBJ */
+    if (val->t->kind == HARRAY) {
+        array = (varray*)val;
+    } else if (val->t->kind == HOBJ) {
+        /* Extract varray from Haxe Array object */
+        if (val->t->obj && val->t->obj->name) {
+            char type_name[128];
+            utostr(type_name, sizeof(type_name), val->t->obj->name);
+
+            if (strncmp(type_name, "hl.types.Array", 14) == 0) {
+                vobj* obj = (vobj*)val;
+
+                if (strstr(type_name, "ArrayObj") || strstr(type_name, "Dyn")) {
+                    /* ArrayObj: single field [0] = array (varray*) */
+                    hl_runtime_obj* rt = val->t->obj->rt;
+                    if (!rt) rt = hl_get_obj_proto(val->t);
+                    int field_offset = rt->fields_indexes[0];
+                    varray** array_field = (varray**)((char*)obj + field_offset);
+                    array = *array_field;
+                }
+            }
+        }
+    }
+
+    if (!array) return NULL;
+
+    /* Bounds check */
+    if (index < 0 || index >= array->size) {
+        return NULL;
+    }
+
+    /* Get vdynamic* wrapper at index */
+    vdynamic** data = (vdynamic**)hl_aptr(array, vdynamic*);
+    vdynamic* wrapper = data[index];
+
+    if (!wrapper) return NULL;
+
+    /* For structs stored in arrays, they're wrapped in vdynamic
+     * The struct data is in wrapper->v.ptr for small structs, or wrapper itself for large ones */
+    if (wrapper->t->kind == HSTRUCT) {
+        /* Struct data follows the vdynamic header */
+        return (void*)((char*)wrapper + sizeof(vdynamic));
+    } else if (wrapper->t->kind == HOBJ) {
+        /* Object-style struct - data follows vobj header */
+        return (void*)((vobj*)wrapper + 1);
+    } else {
+        /* Generic vdynamic - data is in v.ptr */
+        return wrapper->v.ptr;
+    }
+}
+
+bool hlffi_array_set_struct(hlffi_vm* vm, hlffi_value* arr, int index, void* struct_ptr, int struct_size) {
+    if (!vm || !arr || !arr->hl_value || !struct_ptr) return false;
+
+    vdynamic* val = arr->hl_value;
+
+    /* Unwrap dynamic if needed */
+    if (val->t->kind == HDYN && val->v.ptr) {
+        val = (vdynamic*)val->v.ptr;
+    }
+
+    varray* array = NULL;
+
+    /* Handle both HARRAY and HOBJ */
+    if (val->t->kind == HARRAY) {
+        array = (varray*)val;
+    } else if (val->t->kind == HOBJ) {
+        /* Extract varray from Haxe Array object */
+        if (val->t->obj && val->t->obj->name) {
+            char type_name[128];
+            utostr(type_name, sizeof(type_name), val->t->obj->name);
+
+            if (strncmp(type_name, "hl.types.Array", 14) == 0) {
+                vobj* obj = (vobj*)val;
+
+                if (strstr(type_name, "ArrayObj") || strstr(type_name, "Dyn")) {
+                    /* ArrayObj: single field [0] = array (varray*) */
+                    hl_runtime_obj* rt = val->t->obj->rt;
+                    if (!rt) rt = hl_get_obj_proto(val->t);
+                    int field_offset = rt->fields_indexes[0];
+                    varray** array_field = (varray**)((char*)obj + field_offset);
+                    array = *array_field;
+                }
+            }
+        }
+    }
+
+    if (!array) {
+        set_error(vm, HLFFI_ERROR_TYPE_MISMATCH, "Value is not an array");
+        return false;
+    }
+
+    /* Bounds check */
+    if (index < 0 || index >= array->size) {
+        set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Array index out of bounds");
+        return false;
+    }
+
+    HLFFI_UPDATE_STACK_TOP();
+
+    /* Allocate vdynamic wrapper + struct data
+     * We need to allocate space for both the vdynamic header and the struct data */
+    vdynamic* wrapper = (vdynamic*)hl_gc_alloc_raw(&hlt_dyn, sizeof(vdynamic) + struct_size);
+    if (!wrapper) {
+        set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate struct wrapper");
+        return false;
+    }
+
+    /* Copy struct data after vdynamic header */
+    void* dest = (char*)wrapper + sizeof(vdynamic);
+    memcpy(dest, struct_ptr, struct_size);
+
+    /* Store pointer in wrapper */
+    wrapper->v.ptr = dest;
+
+    /* Store wrapper in array */
+    vdynamic** data = (vdynamic**)hl_aptr(array, vdynamic*);
+    data[index] = wrapper;
+
+    return true;
+}
+
+hlffi_value* hlffi_native_array_new_struct(hlffi_vm* vm, hlffi_type* struct_type, int length) {
+    if (!vm || !struct_type) return NULL;
+
+    hl_type* hl_struct_type = (hl_type*)struct_type;
+
+    /* Verify it's a struct type */
+    if (hl_struct_type->kind != HSTRUCT && hl_struct_type->kind != HOBJ) {
+        set_error(vm, HLFFI_ERROR_TYPE_MISMATCH, "Type is not a struct");
+        return NULL;
+    }
+
+    /* For NativeArray<Struct>, elements are stored directly (no wrapping)
+     * Create varray with struct type */
+    return hlffi_native_array_new(vm, hl_struct_type, length);
+}
+
+void* hlffi_native_array_get_struct_ptr(hlffi_value* arr) {
+    /* Same as hlffi_native_array_get_ptr - returns direct pointer to struct array data */
+    return hlffi_native_array_get_ptr(arr);
+}

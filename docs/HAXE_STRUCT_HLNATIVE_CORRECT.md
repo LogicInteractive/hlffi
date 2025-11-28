@@ -59,7 +59,7 @@ typedef struct {
 HL_PRIM float HL_NAME(vec3_length)(vec3* v) {
     return sqrtf(v->x * v->x + v->y * v->y + v->z * v->z);
 }
-DEFINE_PRIM(_F32, vec3_length, _ABSTRACT(vec3));
+DEFINE_PRIM(_F32, vec3_length, _STRUCT);
 
 // Returns DIRECT C struct - HashLink handles it!
 HL_PRIM vec3 HL_NAME(vec3_normalize)(vec3* v) {
@@ -74,7 +74,7 @@ HL_PRIM vec3 HL_NAME(vec3_normalize)(vec3* v) {
     }
     return result;  // Return by value - HashLink copies it!
 }
-DEFINE_PRIM(_ABSTRACT(vec3), vec3_normalize, _ABSTRACT(vec3));
+DEFINE_PRIM(_STRUCT, vec3_normalize, _STRUCT);
 ```
 
 **KEY POINTS:**
@@ -82,7 +82,7 @@ DEFINE_PRIM(_ABSTRACT(vec3), vec3_normalize, _ABSTRACT(vec3));
 2. ✅ NO vdynamic* wrapping needed
 3. ✅ Can return struct by value (`vec3` not `vec3*`)
 4. ✅ HashLink handles all conversion automatically
-5. ✅ Use `_ABSTRACT(vec3)` for struct types in DEFINE_PRIM
+5. ✅ Use `_STRUCT` for struct types in DEFINE_PRIM
 
 ---
 
@@ -110,7 +110,7 @@ HL_PRIM vec3 HL_NAME(vec3_create)(float x, float y, float z) {
     vec3 result = {x, y, z};
     return result;  // HashLink copies the struct
 }
-DEFINE_PRIM(_ABSTRACT(vec3), vec3_create, _F32 _F32 _F32);
+DEFINE_PRIM(_STRUCT, vec3_create, _F32 _F32 _F32);
 ```
 
 ### Mode 2: Modify in Place (void return)
@@ -123,7 +123,7 @@ HL_PRIM void HL_NAME(vec3_scale)(vec3* v, float factor) {
     v->z *= factor;
     // Changes visible to Haxe immediately!
 }
-DEFINE_PRIM(_VOID, vec3_scale, _ABSTRACT(vec3) _F32);
+DEFINE_PRIM(_VOID, vec3_scale, _STRUCT _F32);
 ```
 
 ---
@@ -177,23 +177,26 @@ DEFINE_PRIM(_VOID, update_particles, _ARR _I32 _F32);
 
 ---
 
-## The _ABSTRACT Type
+## The _STRUCT Type
 
-When using `@:struct` with `@:hlNative`, use `_ABSTRACT(type_name)`:
+When using `@:struct` with `@:hlNative`, use `_STRUCT`:
 
 ```c
 // Struct as parameter
-DEFINE_PRIM(_F32, vec3_length, _ABSTRACT(vec3));
+DEFINE_PRIM(_F32, vec3_length, _STRUCT);
 
 // Struct as return value
-DEFINE_PRIM(_ABSTRACT(vec3), vec3_create, _F32 _F32 _F32);
+DEFINE_PRIM(_STRUCT, vec3_create, _F32 _F32 _F32);
+
+// Multiple struct parameters
+DEFINE_PRIM(_STRUCT, vec3_add, _STRUCT _STRUCT);
 
 // Array of structs
 DEFINE_PRIM(_VOID, update_particles, _ARR _I32 _F32);
 // _ARR means the first param is an array pointer
 ```
 
-**DO NOT use `_DYN`** for @:struct types with @:hlNative!
+**DO NOT use `_DYN`** or `_ABSTRACT(...)` for @:struct types with @:hlNative!
 
 ---
 
@@ -242,7 +245,7 @@ typedef struct {
 HL_PRIM float HL_NAME(vec2_length)(vec2* v) {
     return sqrtf(v->x * v->x + v->y * v->y);
 }
-DEFINE_PRIM(_F32, vec2_length, _ABSTRACT(vec2));
+DEFINE_PRIM(_F32, vec2_length, _STRUCT);
 
 HL_PRIM vec2 HL_NAME(vec2_normalize)(vec2* v) {
     float len = sqrtf(v->x * v->x + v->y * v->y);
@@ -255,18 +258,18 @@ HL_PRIM vec2 HL_NAME(vec2_normalize)(vec2* v) {
     }
     return result;
 }
-DEFINE_PRIM(_ABSTRACT(vec2), vec2_normalize, _ABSTRACT(vec2));
+DEFINE_PRIM(_STRUCT, vec2_normalize, _STRUCT);
 
 HL_PRIM float HL_NAME(vec2_dot)(vec2* a, vec2* b) {
     return a->x * b->x + a->y * b->y;
 }
-DEFINE_PRIM(_F32, vec2_dot, _ABSTRACT(vec2) _ABSTRACT(vec2));
+DEFINE_PRIM(_F32, vec2_dot, _STRUCT _STRUCT);
 
 HL_PRIM vec2 HL_NAME(vec2_add)(vec2* a, vec2* b) {
     vec2 result = {a->x + b->x, a->y + b->y};
     return result;
 }
-DEFINE_PRIM(_ABSTRACT(vec2), vec2_add, _ABSTRACT(vec2) _ABSTRACT(vec2));
+DEFINE_PRIM(_STRUCT, vec2_add, _STRUCT _STRUCT);
 ```
 
 ### Usage
@@ -307,7 +310,7 @@ DEFINE_PRIM(_F32, vec3_length, _DYN);  // WRONG!
 HL_PRIM float HL_NAME(vec3_length)(vec3* v) {
     // Direct C struct pointer - perfect!
 }
-DEFINE_PRIM(_F32, vec3_length, _ABSTRACT(vec3));  // CORRECT!
+DEFINE_PRIM(_F32, vec3_length, _STRUCT);  // CORRECT!
 ```
 
 ### ❌ WRONG: Type Mismatch
@@ -363,7 +366,7 @@ typedef struct {
 **For @:hlNative with @:struct:**
 1. ✅ C receives pure struct pointers (`vec3*`)
 2. ✅ NO wrapping, NO boxing, NO conversion overhead
-3. ✅ Use `_ABSTRACT(type)` in DEFINE_PRIM
+3. ✅ Use `_STRUCT` in DEFINE_PRIM for struct parameters and return values
 4. ✅ Can return by value or modify in place
 5. ✅ Arrays use `hl.NativeArray<T>` → `T*` in C
 6. ✅ Zero-cost abstraction - pure C performance!
