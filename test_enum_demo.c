@@ -26,28 +26,47 @@ int main(int argc, char** argv) {
     }
 
     /* Load bytecode */
-    if (hlffi_load_file(vm, "test/enum_test.hl") != HLFFI_OK) {
-        fprintf(stderr, "Failed to load enum_test.hl: %s\n", hlffi_get_error(vm));
-        hlffi_destroy(vm);
-        return 1;
-    }
-
-    /* Call Haxe main() - minimal, no output */
-    if (hlffi_call_entry(vm) != HLFFI_OK) {
-        fprintf(stderr, "Failed to call entry point: %s\n", hlffi_get_error(vm));
+    if (hlffi_load_file(vm, "test/minimal_enum.hl") != HLFFI_OK) {
+        fprintf(stderr, "Failed to load minimal_enum.hl: %s\n", hlffi_get_error(vm));
         hlffi_destroy(vm);
         return 1;
     }
 
     printf("\n=== C Side: Testing Enum Operations ===\n\n");
 
-    /* Test 1: Get Option.Some from Haxe and inspect it */
-    printf("--- Test 1: Option.Some ---\n");
-    hlffi_value* some = hlffi_call_static(vm, "EnumTest", "createSome", 0, NULL);
-    if (some) {
-        int index = hlffi_enum_get_index(some);
-        char* name = hlffi_enum_get_name(some);
-        int nparams = hlffi_enum_get_param_count(some);
+    /* Test 1: Get Color.Red from Haxe and inspect it */
+    printf("--- Test 1: Color.Red (simple enum) ---\n");
+    hlffi_value* red = hlffi_call_static(vm, "MinimalEnumTest", "createRed", 0, NULL);
+    if (red) {
+        int index = hlffi_enum_get_index(red);
+        char* name = hlffi_enum_get_name(red);
+        int nparams = hlffi_enum_get_param_count(red);
+
+        printf("[C] Enum index: %d\n", index);
+        printf("[C] Enum name: %s\n", name ? name : "NULL");
+        printf("[C] Param count: %d\n", nparams);
+
+        /* Test pattern matching by index */
+        if (hlffi_enum_is(red, 0)) {
+            printf("[C] Pattern match by index: is Red (0) ✓\n");
+        }
+
+        /* Test pattern matching by name */
+        if (hlffi_enum_is_named(red, "Red")) {
+            printf("[C] Pattern match by name: is 'Red' ✓\n");
+        }
+
+        free(name);
+        hlffi_value_free(red);
+    }
+
+    /* Test 2: Get Status.Active from Haxe (has parameter) */
+    printf("\n--- Test 2: Status.Active (with parameter) ---\n");
+    hlffi_value* active = hlffi_call_static(vm, "MinimalEnumTest", "createActive", 0, NULL);
+    if (active) {
+        int index = hlffi_enum_get_index(active);
+        char* name = hlffi_enum_get_name(active);
+        int nparams = hlffi_enum_get_param_count(active);
 
         printf("[C] Enum index: %d\n", index);
         printf("[C] Enum name: %s\n", name ? name : "NULL");
@@ -55,7 +74,7 @@ int main(int argc, char** argv) {
 
         /* Get the parameter value */
         if (nparams > 0) {
-            hlffi_value* param = hlffi_enum_get_param(some, 0);
+            hlffi_value* param = hlffi_enum_get_param(active, 0);
             if (param) {
                 int val = hlffi_value_as_int(param, -1);
                 printf("[C] Parameter value: %d\n", val);
@@ -63,95 +82,55 @@ int main(int argc, char** argv) {
             }
         }
 
-        /* Test pattern matching by index */
-        if (hlffi_enum_is(some, 0)) {
-            printf("[C] Pattern match by index: is Some (0) ✓\n");
+        /* Pattern matching */
+        if (hlffi_enum_is(active, 0)) {
+            printf("[C] Pattern match: is Active (0) ✓\n");
         }
-
-        /* Test pattern matching by name */
-        if (hlffi_enum_is_named(some, "Some")) {
-            printf("[C] Pattern match by name: is 'Some' ✓\n");
+        if (hlffi_enum_is_named(active, "Active")) {
+            printf("[C] Pattern match by name: is 'Active' ✓\n");
         }
 
         free(name);
-        hlffi_value_free(some);
+        hlffi_value_free(active);
     }
 
-    /* Test 2: Get Option.None from Haxe */
-    printf("\n--- Test 2: Option.None ---\n");
-    hlffi_value* none = hlffi_call_static(vm, "EnumTest", "createNone", 0, NULL);
-    if (none) {
-        int index = hlffi_enum_get_index(none);
-        char* name = hlffi_enum_get_name(none);
-        int nparams = hlffi_enum_get_param_count(none);
+    /* Test 3: Get Status.Inactive from Haxe */
+    printf("\n--- Test 3: Status.Inactive ---\n");
+    hlffi_value* inactive = hlffi_call_static(vm, "MinimalEnumTest", "createInactive", 0, NULL);
+    if (inactive) {
+        int index = hlffi_enum_get_index(inactive);
+        char* name = hlffi_enum_get_name(inactive);
+        int nparams = hlffi_enum_get_param_count(inactive);
 
         printf("[C] Enum index: %d\n", index);
-        printf("[C] Enum name: %s\n", name ? name : "NULL");
-        printf("[C] Param count: %d\n", nparams);
-
-        /* Pattern matching */
-        if (hlffi_enum_is(none, 1)) {
-            printf("[C] Pattern match: is None (1) ✓\n");
-        }
-        if (hlffi_enum_is_named(none, "None")) {
-            printf("[C] Pattern match by name: is 'None' ✓\n");
-        }
-
-        free(name);
-        hlffi_value_free(none);
-    }
-
-    /* Test 3: Get Result.Ok from Haxe */
-    printf("\n--- Test 3: Result.Ok ---\n");
-    hlffi_value* ok = hlffi_call_static(vm, "EnumTest", "createOk", 0, NULL);
-    if (ok) {
-        char* name = hlffi_enum_get_name(ok);
-        int nparams = hlffi_enum_get_param_count(ok);
-
-        printf("[C] Enum name: %s\n", name ? name : "NULL");
-        printf("[C] Param count: %d\n", nparams);
-
-        /* Get string parameter */
-        if (nparams > 0) {
-            hlffi_value* param = hlffi_enum_get_param(ok, 0);
-            if (param) {
-                char* str = hlffi_value_as_string(param);
-                printf("[C] Parameter value: %s\n", str ? str : "NULL");
-                free(str);
-                hlffi_value_free(param);
-            }
-        }
-
-        free(name);
-        hlffi_value_free(ok);
-    }
-
-    /* Test 4: Get simple enum (Color.Red) */
-    printf("\n--- Test 4: Color.Red (simple enum) ---\n");
-    hlffi_value* red = hlffi_call_static(vm, "EnumTest", "createRed", 0, NULL);
-    if (red) {
-        char* name = hlffi_enum_get_name(red);
-        int nparams = hlffi_enum_get_param_count(red);
-
         printf("[C] Enum name: %s\n", name ? name : "NULL");
         printf("[C] Param count: %d (expected 0)\n", nparams);
 
         /* Pattern matching */
-        if (hlffi_enum_is_named(red, "Red")) {
-            printf("[C] Pattern match: is 'Red' ✓\n");
+        if (hlffi_enum_is_named(inactive, "Inactive")) {
+            printf("[C] Pattern match: is 'Inactive' ✓\n");
         }
 
         free(name);
-        hlffi_value_free(red);
+        hlffi_value_free(inactive);
     }
 
-    /* Test 5: Query enum type info */
-    printf("\n--- Test 5: Enum Type Inspection ---\n");
+    /* Test 4: Query enum type info */
+    printf("\n--- Test 4: Enum Type Inspection ---\n");
     int construct_count = hlffi_enum_get_construct_count(vm, "Color");
     printf("[C] Color enum has %d constructors\n", construct_count);
 
     for (int i = 0; i < construct_count && i < 5; i++) {
         char* cname = hlffi_enum_get_construct_name(vm, "Color", i);
+        printf("[C]   Constructor[%d]: %s\n", i, cname ? cname : "NULL");
+        free(cname);
+    }
+
+    int status_count = hlffi_enum_get_construct_count(vm, "Status");
+    printf("[C] Status enum has %d constructors\n", status_count);
+
+    for (int i = 0; i < status_count && i < 5; i++) {
+        char* cname = hlffi_enum_get_construct_name(vm, "Status", i);
         printf("[C]   Constructor[%d]: %s\n", i, cname ? cname : "NULL");
         free(cname);
     }
