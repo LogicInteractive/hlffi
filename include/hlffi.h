@@ -2163,6 +2163,25 @@ const char* hlffi_get_exception_message(hlffi_vm* vm);
 const char* hlffi_get_exception_stack(hlffi_vm* vm);
 
 /**
+ * Check if there is a pending exception in the VM.
+ *
+ * @param vm VM instance
+ * @return true if there is a pending exception, false otherwise
+ *
+ * @note Use this to check if an exception occurred without calling try_call
+ */
+bool hlffi_has_exception(hlffi_vm* vm);
+
+/**
+ * Clear the pending exception state in the VM.
+ *
+ * @param vm VM instance
+ *
+ * @note Call this after handling an exception to reset the VM state
+ */
+void hlffi_clear_exception(hlffi_vm* vm);
+
+/**
  * External blocking operation wrapper - notify GC before blocking I/O.
  *
  * CRITICAL: Call this before any external blocking operation (file I/O,
