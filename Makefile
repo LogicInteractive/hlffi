@@ -31,6 +31,7 @@ HLFFI_WRAPPER_SRC = \
 	src/hlffi_maps.c \
 	src/hlffi_bytes.c \
 	src/hlffi_enums.c \
+	src/hlffi_abstracts.c \
 	src/hlffi_objects.c \
 	src/hlffi_callbacks.c \
 	src/hlffi_events.c \

@@ -1600,6 +1600,79 @@ bool hlffi_enum_is(hlffi_value* value, int index);
  */
 bool hlffi_enum_is_named(hlffi_value* value, const char* name);
 
+/* ========== Phase 5: Abstract Type Support ========== */
+
+/**
+ * Check if a type is an abstract type.
+ *
+ * @param type The type to check
+ * @return true if abstract, false otherwise
+ *
+ * Example:
+ *   hlffi_type* type = hlffi_find_type(vm, "MyAbstract");
+ *   if (hlffi_is_abstract(type)) {
+ *       printf("It's an abstract!\n");
+ *   }
+ */
+bool hlffi_is_abstract(hlffi_type* type);
+
+/**
+ * Get the name of an abstract type.
+ *
+ * @param type The abstract type
+ * @return Abstract name (malloc'd, caller must free), or NULL if not abstract
+ *
+ * Example:
+ *   char* name = hlffi_abstract_get_name(type);
+ *   printf("Abstract: %s\n", name);
+ *   free(name);
+ */
+char* hlffi_abstract_get_name(hlffi_type* type);
+
+/**
+ * Find an abstract type by name.
+ *
+ * @param vm VM instance
+ * @param name Abstract type name
+ * @return Type handle, or NULL if not found or not abstract
+ *
+ * Example:
+ *   hlffi_type* abs = hlffi_abstract_find(vm, "MyAbstract");
+ */
+hlffi_type* hlffi_abstract_find(hlffi_vm* vm, const char* name);
+
+/**
+ * Check if a value is of an abstract type.
+ *
+ * @param value The value to check
+ * @return true if value is abstract type, false otherwise
+ *
+ * Note: Abstracts are transparent at runtime - they're just their underlying type.
+ * Use normal value accessors (hlffi_value_as_int, etc.) to work with the value.
+ *
+ * Example:
+ *   hlffi_value* val = hlffi_call_static(vm, "Test", "getAbstract", 0, NULL);
+ *   if (hlffi_value_is_abstract(val)) {
+ *       char* name = hlffi_value_get_abstract_name(val);
+ *       int value = hlffi_value_as_int(val, 0);  // Get underlying value
+ *       printf("Abstract %s = %d\n", name, value);
+ *       free(name);
+ *   }
+ */
+bool hlffi_value_is_abstract(hlffi_value* value);
+
+/**
+ * Get the abstract type name from a value.
+ *
+ * @param value Value of abstract type
+ * @return Abstract name (malloc'd, caller must free), or NULL
+ *
+ * Example:
+ *   char* abs_name = hlffi_value_get_abstract_name(val);
+ *   free(abs_name);
+ */
+char* hlffi_value_get_abstract_name(hlffi_value* value);
+
 /**
  * Get static field value.
  *
