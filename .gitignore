@@ -93,3 +93,9 @@ hashlink-*.zip
 hashlink-nightly/
 test_enum_demo
 test_cache_minimal
+test_cache_loop
+
+# Benchmark binaries
+benchmark/bench_cache
+benchmark/bench_cache_simple
+benchmark/bench_cache_debug
