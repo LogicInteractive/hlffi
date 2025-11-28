@@ -63,21 +63,28 @@ void* hlffi_bytes_get_ptr(hlffi_value* bytes) {
 
     vdynamic* val = bytes->hl_value;
 
-    /* Check if this is a Bytes object (HOBJ) with a bytes field */
-    if (val->t && val->t->kind == HOBJ) {
-        /* haxe.io.Bytes has a "b" field containing the raw vbyte* */
+    /* Check type */
+    if (!val->t) return NULL;
+
+    /* For hl.Bytes (HBYTES type), the vbyte* is in val->v.bytes */
+    if (val->t->kind == HBYTES) {
+        return (void*)val->v.bytes;
+    }
+
+    /* For haxe.io.Bytes (HOBJ), get the "b" field containing the raw vbyte* */
+    if (val->t->kind == HOBJ) {
         int b_hash = hl_hash_utf8("b");
         hl_field_lookup* lookup = obj_resolve_field(val->t->obj, b_hash);
 
         if (lookup && lookup->t->kind == HBYTES) {
-            vbyte* bytes_ptr = (vbyte*)hl_dyn_getp(val, b_hash, lookup->t);
-            return (void*)bytes_ptr;
+            vdynamic* bytes_dyn = (vdynamic*)hl_dyn_getp(val, b_hash, lookup->t);
+            if (bytes_dyn && bytes_dyn->v.bytes) {
+                return (void*)bytes_dyn->v.bytes;
+            }
         }
     }
 
-    /* For hl.Bytes (raw vbyte*), val IS the vbyte* pointer directly */
-    /* The user is right - bytes are just pure bytes in memory (char* / vbyte*) */
-    return (void*)val;
+    return NULL;
 }
 
 /**
