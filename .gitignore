@@ -92,3 +92,4 @@ vendor/hashlink/
 hashlink-*.zip
 hashlink-nightly/
 test_enum_demo
+test_cache_minimal

@@ -49,13 +49,26 @@ int main(int argc, char** argv) {
 
     /* Test 1: Cache simple method with no args */
     printf("Test 1: Cache static method with no args\n");
+    fflush(stdout);
     {
+        printf("  Calling hlffi_cache_static_method...\n");
+        fflush(stdout);
         hlffi_cached_call* cached = hlffi_cache_static_method(vm, "CacheTest", "increment");
+        printf("  Returned: %p\n", (void*)cached);
+        fflush(stdout);
         if (cached) {
+            printf("  About to TEST_PASS...\n");
+            fflush(stdout);
             TEST_PASS("Successfully cached CacheTest.increment");
+            printf("  TEST_PASS done\n");
+            fflush(stdout);
 
             /* Call it a few times */
+            printf("  Starting loop...\n");
+            fflush(stdout);
             for (int i = 0; i < 5; i++) {
+                printf("    Loop iteration %d...\n", i);
+                fflush(stdout);
                 hlffi_value* result = hlffi_call_cached(cached, 0, NULL);
                 if (result) {
                     hlffi_value_free(result);
@@ -65,9 +78,17 @@ int main(int argc, char** argv) {
             }
 
             /* Verify counter was incremented */
+            printf("  Getting counter...\n");
+            fflush(stdout);
             hlffi_value* counter_val = hlffi_get_static_field(vm, "CacheTest", "counter");
+            printf("  Got counter_val: %p\n", (void*)counter_val);
+            fflush(stdout);
             int counter = hlffi_value_as_int(counter_val, -1);
+            printf("  Counter value: %d\n", counter);
+            fflush(stdout);
             hlffi_value_free(counter_val);
+            printf("  Freed counter_val\n");
+            fflush(stdout);
             if (counter == 5) {
                 TEST_PASS("Counter incremented correctly (5 calls)");
             } else {
@@ -75,7 +96,11 @@ int main(int argc, char** argv) {
                 printf("    Expected: 5, Got: %d\n", counter);
             }
 
+            printf("  About to free cached=%p\n", (void*)cached);
+            fflush(stdout);
             hlffi_cached_call_free(cached);
+            printf("  Freed cached\n");
+            fflush(stdout);
         } else {
             TEST_FAIL("Failed to cache method");
             printf("    Error: %s\n", hlffi_get_error(vm));
@@ -83,9 +108,16 @@ int main(int argc, char** argv) {
     }
 
     /* Test 2: Cache method with args and return value */
+    printf("\n=== BETWEEN TEST 1 AND TEST 2 ===\n");
+    fflush(stdout);
     printf("\nTest 2: Cache method with args and return value\n");
+    fflush(stdout);
     {
+        printf("  About to cache 'add' method...\n");
+        fflush(stdout);
         hlffi_cached_call* cached = hlffi_cache_static_method(vm, "CacheTest", "add");
+        printf("  Cached 'add': %p\n", (void*)cached);
+        fflush(stdout);
         if (cached) {
             TEST_PASS("Successfully cached CacheTest.add");
 

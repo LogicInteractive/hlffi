@@ -50,6 +50,9 @@ hlffi_cached_call* hlffi_cache_static_method(
         return NULL;
     }
 
+    /* Update GC stack top for safe HashLink API calls */
+    HLFFI_UPDATE_STACK_TOP();
+
     /* 1. Find class type (expensive - but only once) */
     hl_type* class_type = NULL;
     int class_hash = hl_hash_utf8(class_name);
@@ -89,7 +92,7 @@ hlffi_cached_call* hlffi_cache_static_method(
     }
 
     /* 3. Resolve method using obj_resolve_field (same as static call) */
-    hl_field_lookup* lookup = obj_resolve_field(class_type->obj, method_hash);
+    hl_field_lookup* lookup = obj_resolve_field(global->t->obj, method_hash);
     if (!lookup) {
         snprintf(vm->error_msg, sizeof(vm->error_msg),
                  "Method '%s' not found in class '%s'", method_name, class_name);
@@ -111,20 +114,21 @@ hlffi_cached_call* hlffi_cache_static_method(
         return NULL;
     }
 
-    /* 4. Create cache entry */
-    hlffi_cached_call* cache = (hlffi_cached_call*)malloc(sizeof(hlffi_cached_call));
+    /* 4. Create cache entry (use calloc to zero memory) */
+    hlffi_cached_call* cache = (hlffi_cached_call*)calloc(1, sizeof(hlffi_cached_call));
     if (!cache) {
         snprintf(vm->error_msg, sizeof(vm->error_msg),
                  "Failed to allocate cache entry");
         return NULL;
     }
 
+    /* 5. Assign closure FIRST */
     cache->closure = closure;
-    cache->nargs = -1;  /* We don't validate nargs in cached calls for simplicity */
-    cache->is_rooted = true;
+    cache->nargs = -1;
 
-    /* 5. Add GC root to protect closure from collection */
+    /* 6. Add GC root AFTER assignment */
     hl_add_root(&cache->closure);
+    cache->is_rooted = true;
 
     return cache;
 }
@@ -140,18 +144,28 @@ hlffi_value* hlffi_call_cached(
         return NULL;
     }
 
-    /* Unwrap arguments */
-    vdynamic* hl_args[32]; /* Support up to 32 args */
-    for (int i = 0; i < argc; i++) {
-        if (!args[i]) {
-            hl_args[i] = NULL;  /* Allow NULL args */
-        } else {
-            hl_args[i] = args[i]->hl_value;
+    /* Update GC stack top for safe calls */
+    HLFFI_UPDATE_STACK_TOP();
+
+    /* Prepare arguments - unbox hlffi_value** to vdynamic** */
+    vdynamic** hl_args = NULL;
+    if (argc > 0) {
+        hl_args = (vdynamic**)malloc(sizeof(vdynamic*) * argc);
+        if (!hl_args) {
+            return NULL;
+        }
+        for (int i = 0; i < argc; i++) {
+            hl_args[i] = args[i] ? args[i]->hl_value : NULL;
         }
     }
 
     /* Direct call - minimal overhead! */
     vdynamic* result = hl_dyn_call(cached->closure, hl_args, argc);
+
+    /* Free argument array */
+    if (hl_args) {
+        free(hl_args);
+    }
 
     /* Wrap result */
     hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
