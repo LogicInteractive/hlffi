@@ -66,6 +66,15 @@ struct hlffi_vm {
     /* Phase 6: Exception storage */
     char exception_msg[512];
     char exception_stack[2048];
+
+    /* Phase 1: Threading state (for THREADED mode) */
+    void* thread_handle;        /* pthread_t* */
+    void* thread_mutex;         /* pthread_mutex_t* */
+    void* thread_cond_var;      /* pthread_cond_t* */
+    void* thread_response_cond; /* pthread_cond_t* for sync responses */
+    void* message_queue;        /* hlffi_thread_message_queue* */
+    bool thread_running;
+    bool thread_should_stop;
 };
 
 /**
