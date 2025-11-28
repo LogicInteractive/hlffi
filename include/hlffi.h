@@ -1152,6 +1152,164 @@ hlffi_value* hlffi_native_array_new_struct(hlffi_vm* vm, hlffi_type* struct_type
  */
 void* hlffi_native_array_get_struct_ptr(hlffi_value* arr);
 
+/* === Map Support === */
+
+/**
+ * Create a new Map.
+ * Maps are HashLink's implementation of hash tables/dictionaries.
+ *
+ * @param vm VM instance
+ * @param key_type Type of keys (&hlt_i32 for IntMap, &hlt_bytes for StringMap, &hlt_dyn for ObjectMap)
+ * @param value_type Type of values (use &hlt_dyn for mixed types)
+ * @return New empty map, or NULL on error
+ *
+ * @note Maps in Haxe: Map<Int,String>, Map<String,Int>, etc.
+ * @note HashLink uses specialized map types per key type
+ *
+ * Example:
+ *   hlffi_value* map = hlffi_map_new(vm, &hlt_i32, &hlt_bytes); // Map<Int,String>
+ */
+hlffi_value* hlffi_map_new(hlffi_vm* vm, hl_type* key_type, hl_type* value_type);
+
+/**
+ * Set a key-value pair in the map.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @param key Key value
+ * @param value Value to store
+ * @return true on success, false on error
+ *
+ * @note Overwrites existing value if key exists
+ * @note Creates new entry if key doesn't exist
+ *
+ * Example:
+ *   hlffi_value* key = hlffi_value_int(vm, 42);
+ *   hlffi_value* val = hlffi_value_string(vm, "answer");
+ *   hlffi_map_set(vm, map, key, val);
+ */
+bool hlffi_map_set(hlffi_vm* vm, hlffi_value* map, hlffi_value* key, hlffi_value* value);
+
+/**
+ * Get a value from the map by key.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @param key Key to lookup
+ * @return Value associated with key, or NULL if not found
+ *
+ * @note Returns NULL if key doesn't exist (use hlffi_map_exists to distinguish from null values)
+ *
+ * Example:
+ *   hlffi_value* key = hlffi_value_int(vm, 42);
+ *   hlffi_value* val = hlffi_map_get(vm, map, key);
+ *   if (val) {
+ *       char* str = hlffi_value_as_string(val);
+ *       printf("Found: %s\n", str);
+ *       free(str);
+ *   }
+ */
+hlffi_value* hlffi_map_get(hlffi_vm* vm, hlffi_value* map, hlffi_value* key);
+
+/**
+ * Check if a key exists in the map.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @param key Key to check
+ * @return true if key exists, false otherwise
+ *
+ * @note Use this to distinguish between missing keys and null values
+ *
+ * Example:
+ *   hlffi_value* key = hlffi_value_int(vm, 42);
+ *   if (hlffi_map_exists(vm, map, key)) {
+ *       printf("Key exists!\n");
+ *   }
+ */
+bool hlffi_map_exists(hlffi_vm* vm, hlffi_value* map, hlffi_value* key);
+
+/**
+ * Remove a key-value pair from the map.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @param key Key to remove
+ * @return true if key was removed, false if key didn't exist
+ *
+ * Example:
+ *   hlffi_value* key = hlffi_value_int(vm, 42);
+ *   if (hlffi_map_remove(vm, map, key)) {
+ *       printf("Key removed\n");
+ *   }
+ */
+bool hlffi_map_remove(hlffi_vm* vm, hlffi_value* map, hlffi_value* key);
+
+/**
+ * Get all keys from the map as an array.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @return Array of keys (NativeArray), or NULL on error
+ *
+ * @note Returns unwrapped varray for direct iteration
+ * @note Key order is undefined (hash table)
+ *
+ * Example:
+ *   hlffi_value* keys = hlffi_map_keys(vm, map);
+ *   int* key_data = (int*)hlffi_native_array_get_ptr(keys);
+ *   int count = hlffi_array_length(keys);
+ *   for (int i = 0; i < count; i++) {
+ *       printf("Key: %d\n", key_data[i]);
+ *   }
+ */
+hlffi_value* hlffi_map_keys(hlffi_vm* vm, hlffi_value* map);
+
+/**
+ * Get all values from the map as an array.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @return Array of values (NativeArray), or NULL on error
+ *
+ * @note Returns unwrapped varray for direct iteration
+ * @note Value order matches key order from hlffi_map_keys()
+ *
+ * Example:
+ *   hlffi_value* values = hlffi_map_values(vm, map);
+ *   int len = hlffi_array_length(values);
+ *   for (int i = 0; i < len; i++) {
+ *       hlffi_value* val = hlffi_array_get(vm, values, i);
+ *       // Process value...
+ *   }
+ */
+hlffi_value* hlffi_map_values(hlffi_vm* vm, hlffi_value* map);
+
+/**
+ * Get the number of entries in the map.
+ *
+ * @param map Map value
+ * @return Number of key-value pairs, or -1 on error
+ *
+ * Example:
+ *   int size = hlffi_map_size(map);
+ *   printf("Map has %d entries\n", size);
+ */
+int hlffi_map_size(hlffi_value* map);
+
+/**
+ * Clear all entries from the map.
+ *
+ * @param map Map value
+ * @return true on success, false on error
+ *
+ * @note Resets map to empty state
+ *
+ * Example:
+ *   hlffi_map_clear(map);
+ */
+bool hlffi_map_clear(hlffi_value* map);
+
 /**
  * Get static field value.
  *
