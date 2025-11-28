@@ -47,6 +47,7 @@ bool hlffi_map_exists(hlffi_vm* vm, hlffi_value* map, hlffi_value* key) {
 
     if (!result) return false;
 
+    /* Extract boolean result using standard helper */
     bool exists = hlffi_value_as_bool(result, false);
     hlffi_value_free(result);
     return exists;
@@ -61,6 +62,7 @@ bool hlffi_map_remove(hlffi_vm* vm, hlffi_value* map, hlffi_value* key) {
 
     if (!result) return false;
 
+    /* Extract boolean result using standard helper */
     bool removed = hlffi_value_as_bool(result, false);
     hlffi_value_free(result);
     return removed;

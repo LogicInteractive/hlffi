@@ -1,79 +1,57 @@
 /**
- * Map Test for Phase 5
+ * Phase 5 Test: Map Operations
+ * Tests C<->Haxe map passing and manipulation
  */
 
 class MapTest {
-    /* IntMap - most common */
     public static function createIntMap():Map<Int, String> {
         var map = new Map<Int, String>();
         map.set(1, "one");
         map.set(2, "two");
         map.set(3, "three");
-        Sys.println("[HAXE] Created IntMap with 3 entries");
         return map;
     }
 
-    public static function processIntMap(map:Map<Int, String>):String {
-        var result = "";
-        for (key in map.keys()) {
-            var val = map.get(key);
-            Sys.println('[HAXE] map[$key] = $val');
-            result += val + " ";
-        }
-        return result;
-    }
-
-    /* StringMap */
     public static function createStringMap():Map<String, Int> {
         var map = new Map<String, Int>();
         map.set("a", 10);
         map.set("b", 20);
         map.set("c", 30);
-        Sys.println("[HAXE] Created StringMap with 3 entries");
         return map;
     }
 
-    public static function processStringMap(map:Map<String, Int>):Int {
-        var sum = 0;
+    public static function processIntMap(map:Map<Int, String>):String {
+        var result = "Keys: ";
         for (key in map.keys()) {
-            var val = map.get(key);
-            Sys.println('[HAXE] map["$key"] = $val');
-            sum += val;
+            result += key + "=" + map.get(key) + " ";
         }
-        return sum;
+        return result;
     }
 
-    /* Map operations */
-    public static function testMapExists(map:Map<Int, String>, key:Int):Bool {
-        var exists = map.exists(key);
-        Sys.println('[HAXE] map.exists($key) = $exists');
-        return exists;
+    /** Test exists method - needed to ensure it's included in bytecode for C FFI */
+    public static function checkIntMapExists(map:Map<Int, String>, key:Int):Bool {
+        return map.exists(key);
     }
 
-    public static function testMapSize(map:Map<Int, String>):Int {
-        var size = Lambda.count(map);
-        Sys.println('[HAXE] map size = $size');
-        return size;
+    /** Test exists method for StringMap */
+    public static function checkStringMapExists(map:Map<String, Int>, key:String):Bool {
+        return map.exists(key);
+    }
+
+    /** Test get for StringMap */
+    public static function getStringMapValue(map:Map<String, Int>, key:String):Int {
+        return map.get(key);
     }
 
     public static function main() {
-        Sys.println("==========================================");
-        Sys.println("  Phase 5: Map Tests - Haxe Side");
-        Sys.println("==========================================");
-
-        Sys.println("\n--- IntMap ---");
+        trace("MapTest initialized");
+        // Call exists to ensure it's included
         var intMap = createIntMap();
-        processIntMap(intMap);
+        trace("IntMap exists(1): " + intMap.exists(1));
+        trace("IntMap exists(99): " + intMap.exists(99));
 
-        Sys.println("\n--- StringMap ---");
         var strMap = createStringMap();
-        processStringMap(strMap);
-
-        Sys.println("\n--- Map Operations ---");
-        testMapExists(intMap, 2);
-        testMapExists(intMap, 99);
-        testMapSize(intMap);
-
-        Sys.println("\n[HAXE] Map tests complete!");
+        trace("StringMap exists('a'): " + strMap.exists("a"));
+        trace("StringMap get('b'): " + strMap.get("b"));
     }
 }

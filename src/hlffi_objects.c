@@ -440,14 +440,103 @@ hlffi_value* hlffi_call_method(hlffi_value* obj, const char* method_name, int ar
     /* Get object type */
     vdynamic* vobj_dyn = obj->hl_value;
     if (vobj_dyn->t->kind != HOBJ) {
+#ifdef HLFFI_DEBUG
+        printf("[HLFFI] hlffi_call_method(%s): not an object, kind=%d\n", method_name, vobj_dyn->t->kind);
+#endif
         return NULL;  /* Not an object */
     }
 
-    /* Find method by hash */
+#ifdef HLFFI_DEBUG
+    if (vobj_dyn->t->obj && vobj_dyn->t->obj->name) {
+        char type_name[256];
+        utostr(type_name, sizeof(type_name), vobj_dyn->t->obj->name);
+        printf("[HLFFI] hlffi_call_method(%s) on type: %s\n", method_name, type_name);
+    }
+#endif
+
+    /* Find method by hash - first try as a field on the object */
     int method_hash = hl_hash_utf8(method_name);
     vclosure* method = (vclosure*)hl_dyn_getp(vobj_dyn, method_hash, &hlt_dyn);
 
+#ifdef HLFFI_DEBUG
+    printf("[HLFFI] hlffi_call_method(%s): method=%p (hash=%d)\n", method_name, (void*)method, method_hash);
+#endif
+
+    /*
+     * If method not found as an instance field, try to find it in the object's
+     * prototype (runtime object). This is needed for methods like `exists` on
+     * Haxe Maps which are not exposed as dynamic properties.
+     */
     if (!method) {
+        hl_runtime_obj* rt = vobj_dyn->t->obj->rt;
+        if (!rt) rt = hl_get_obj_proto(vobj_dyn->t);
+
+        if (rt && rt->lookup) {
+            /* Search in the runtime lookup table for prototype methods */
+            for (int i = 0; i < rt->nlookup; i++) {
+                if (rt->lookup[i].hashed_name == method_hash && rt->lookup[i].field_index < 0) {
+                    /* Negative field_index indicates a method, get the method index */
+                    int method_idx = -(rt->lookup[i].field_index + 1);
+#ifdef HLFFI_DEBUG
+                    printf("[HLFFI] hlffi_call_method(%s): found in proto at idx %d (method_idx=%d)\n",
+                           method_name, i, method_idx);
+#endif
+                    if (method_idx >= 0 && method_idx < rt->nmethods && rt->methods) {
+                        /* Found the method in the prototype - create a wrapper closure */
+                        void* method_ptr = rt->methods[method_idx];
+#ifdef HLFFI_DEBUG
+                        printf("[HLFFI] hlffi_call_method(%s): method_ptr=%p\n", method_name, method_ptr);
+#endif
+                        if (method_ptr) {
+                            /* We found the method pointer - call it directly with proper arguments
+                             * For prototype methods, we call the function directly with 'this' as first arg */
+
+                            /* Build arguments with 'this' as first argument */
+                            void** full_args = (void**)alloca((argc + 1) * sizeof(void*));
+                            full_args[0] = vobj_dyn;  /* 'this' object */
+                            for (int j = 0; j < argc; j++) {
+                                full_args[j + 1] = argv[j] ? argv[j]->hl_value : NULL;
+                            }
+
+                            /* Call via hl_dyn_call_obj for proper virtual dispatch
+                             * Signature: void *hl_dyn_call_obj(vdynamic *obj, hl_type *ft, int hfield, void **args, vdynamic *ret)
+                             */
+                            vdynamic ret_val;
+                            memset(&ret_val, 0, sizeof(ret_val));
+                            void* result_ptr = hl_dyn_call_obj(vobj_dyn, vobj_dyn->t, method_hash, full_args, &ret_val);
+
+#ifdef HLFFI_DEBUG
+                            printf("[HLFFI] hlffi_call_method(%s): proto call result_ptr=%p, ret_val=%p\n",
+                                   method_name, result_ptr, (void*)ret_val.v.ptr);
+#endif
+
+                            /* Wrap result */
+                            hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
+                            if (!wrapped) return NULL;
+
+                            /* For boolean/int returns, the value is in ret_val
+                             * For object returns, the value is in result_ptr */
+                            if (result_ptr) {
+                                wrapped->hl_value = (vdynamic*)result_ptr;
+                            } else {
+                                /* Copy ret_val for primitive types */
+                                wrapped->hl_value = hl_alloc_dynamic(&hlt_dyn);
+                                if (wrapped->hl_value) {
+                                    wrapped->hl_value->v = ret_val.v;
+                                    wrapped->hl_value->t = ret_val.t ? ret_val.t : &hlt_bool;
+                                }
+                            }
+                            wrapped->is_rooted = false;
+                            return wrapped;
+                        }
+                    }
+                }
+            }
+        }
+
+#ifdef HLFFI_DEBUG
+        printf("[HLFFI] hlffi_call_method(%s): method not found!\n", method_name);
+#endif
         return NULL;  /* Method not found */
     }
 
@@ -461,6 +550,27 @@ hlffi_value* hlffi_call_method(hlffi_value* obj, const char* method_name, int ar
         /* Copy user arguments */
         for (int i = 0; i < argc; i++) {
             hl_args[i] = argv[i] ? argv[i]->hl_value : NULL;
+        }
+    }
+
+    /* TYPE CONVERSION: Convert HBYTES to String objects if method expects HOBJ String */
+    /* This fixes StringMap key lookups where hlffi_value_string creates HBYTES type */
+    if (argc > 0 && method->t->kind == HFUN) {
+        for (int i = 0; i < argc && i < method->t->fun->nargs; i++) {
+            hl_type* expected_type = method->t->fun->args[i];
+            vdynamic* arg = hl_args[i];
+
+            if (arg && expected_type->kind == HOBJ && arg->t->kind == HBYTES) {
+                char type_name_buf[128];
+                if (expected_type->obj && expected_type->obj->name) {
+                    utostr(type_name_buf, sizeof(type_name_buf), expected_type->obj->name);
+                    if (strcmp(type_name_buf, "String") == 0) {
+                        vstring* bytes_str = (vstring*)arg;
+                        bytes_str->t = expected_type;
+                        hl_args[i] = (vdynamic*)bytes_str;
+                    }
+                }
+            }
         }
     }
 
