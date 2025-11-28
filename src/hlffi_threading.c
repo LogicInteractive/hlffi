@@ -22,13 +22,17 @@
  *   hlffi_destroy(vm);
  */
 
+/* Windows headers must be included BEFORE hlffi_internal.h to avoid type conflicts */
+#ifdef _WIN32
+    #include <windows.h>
+    #include <process.h>
+#endif
+
 #include "hlffi_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
-    #include <windows.h>
-    #include <process.h>
     typedef HANDLE pthread_t;
     typedef CRITICAL_SECTION pthread_mutex_t;
     typedef CONDITION_VARIABLE pthread_cond_t;
@@ -62,7 +66,7 @@ typedef struct {
     void* userdata;
     hlffi_thread_async_callback async_callback;
     void* result;
-    bool completed;
+    bool* completion_flag;  /* Pointer to caller's completion flag (for sync calls) */
 } hlffi_thread_message;
 
 typedef struct {
@@ -125,6 +129,10 @@ static void* vm_thread_main(void* param)
     pthread_cond_t* response_cond = (pthread_cond_t*)vm->thread_response_cond;
     hlffi_thread_message_queue* queue = (hlffi_thread_message_queue*)vm->message_queue;
 
+    /* CRITICAL: Register this thread with HashLink GC before any HL calls */
+    int stack_marker;
+    hl_register_thread(&stack_marker);
+
     /* Call entry point (may block if Haxe has while loop) */
     hlffi_call_entry(vm);
 
@@ -158,15 +166,10 @@ static void* vm_thread_main(void* param)
                 if (msg.func) {
                     msg.func(vm, msg.userdata);
                 }
-                /* Signal completion */
+                /* Signal completion via caller's flag pointer */
                 pthread_mutex_lock(mutex);
-                msg.completed = true;
-                /* Store result back in queue message for retrieval */
-                for (int i = 0; i < HLFFI_MSG_QUEUE_SIZE; i++) {
-                    if (&queue->messages[i] == &msg) {
-                        queue->messages[i].completed = true;
-                        break;
-                    }
+                if (msg.completion_flag) {
+                    *msg.completion_flag = true;
                 }
                 pthread_cond_signal(response_cond);
                 pthread_mutex_unlock(mutex);
@@ -183,6 +186,9 @@ static void* vm_thread_main(void* param)
             }
         }
     }
+
+    /* Unregister thread from HashLink GC before exit */
+    hl_unregister_thread();
 
     vm->thread_running = false;
 #ifdef _WIN32
@@ -341,12 +347,15 @@ hlffi_error_code hlffi_thread_call_sync(hlffi_vm* vm, hlffi_thread_func func, vo
     pthread_cond_t* response_cond = (pthread_cond_t*)vm->thread_response_cond;
     hlffi_thread_message_queue* queue = (hlffi_thread_message_queue*)vm->message_queue;
 
-    /* Enqueue message */
+    /* Local completion flag - VM thread will set this via pointer */
+    bool completed = false;
+
+    /* Enqueue message with pointer to our local completion flag */
     hlffi_thread_message msg = {
         .type = HLFFI_MSG_CALL_SYNC,
         .func = func,
         .userdata = userdata,
-        .completed = false
+        .completion_flag = &completed
     };
 
     pthread_mutex_lock(mutex);
@@ -357,18 +366,14 @@ hlffi_error_code hlffi_thread_call_sync(hlffi_vm* vm, hlffi_thread_func func, vo
         return HLFFI_ERROR_OUT_OF_MEMORY;
     }
 
-    /* Store message index for tracking completion */
-    int msg_index = queue->tail;
     queue_enqueue(queue, &msg);
     pthread_cond_signal(cond_var);
 
-    /* Wait for completion */
-    while (!queue->messages[msg_index].completed) {
+    /* Wait for completion - VM thread sets our local flag via pointer */
+    while (!completed) {
         pthread_cond_wait(response_cond, mutex);
     }
 
-    /* Clear completed flag */
-    queue->messages[msg_index].completed = false;
     pthread_mutex_unlock(mutex);
 
     return HLFFI_OK;
@@ -393,13 +398,13 @@ hlffi_error_code hlffi_thread_call_async(
     pthread_cond_t* cond_var = (pthread_cond_t*)vm->thread_cond_var;
     hlffi_thread_message_queue* queue = (hlffi_thread_message_queue*)vm->message_queue;
 
-    /* Enqueue message */
+    /* Enqueue message (no completion flag for async - fire and forget) */
     hlffi_thread_message msg = {
         .type = HLFFI_MSG_CALL_ASYNC,
         .func = func,
         .userdata = userdata,
         .async_callback = callback,
-        .completed = false
+        .completion_flag = NULL
     };
 
     pthread_mutex_lock(mutex);

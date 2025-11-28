@@ -17,14 +17,7 @@ hlffi_error_code hlffi_set_integration_mode(hlffi_vm* vm, hlffi_integration_mode
         return HLFFI_ERROR_INVALID_ARGUMENT;
     }
 
-    /* TODO: In Phase 1, we only support NON_THREADED mode
-     * THREADED mode will be implemented later */
-    if (mode == HLFFI_MODE_THREADED) {
-        return HLFFI_ERROR_NOT_IMPLEMENTED;
-    }
-
-    /* Note: vm->integration_mode = mode would require exposing the struct */
-    /* For now, just validate the mode */
+    vm->integration_mode = mode;
 
     return HLFFI_OK;
 }
@@ -32,8 +25,7 @@ hlffi_error_code hlffi_set_integration_mode(hlffi_vm* vm, hlffi_integration_mode
 hlffi_integration_mode hlffi_get_integration_mode(hlffi_vm* vm) {
     if (!vm) return HLFFI_MODE_NON_THREADED;
 
-    /* TODO: return vm->integration_mode */
-    return HLFFI_MODE_NON_THREADED;
+    return vm->integration_mode;
 }
 
 /* ========== NON-THREADED MODE (Mode 1) ========== */
