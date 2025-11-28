@@ -578,6 +578,15 @@ hlffi_error_code hlffi_reload_module_memory(hlffi_vm* vm, const void* data, size
  */
 void hlffi_set_reload_callback(hlffi_vm* vm, hlffi_reload_callback callback, void* userdata);
 
+/**
+ * Check for file changes and reload if needed.
+ * Call this periodically (e.g., each frame) to enable automatic hot reload.
+ *
+ * @param vm VM instance
+ * @return true if reload occurred, false otherwise
+ */
+bool hlffi_check_reload(hlffi_vm* vm);
+
 /* ========== WORKER THREAD HELPERS ========== */
 
 /**

@@ -58,6 +58,9 @@ struct hlffi_vm {
     /* Hot reload support */
     bool hot_reload_enabled;
     const char* loaded_file;
+    int file_time;  /* Last modification time for auto-reload check */
+    hlffi_reload_callback reload_callback;
+    void* reload_userdata;
 
     /* Phase 6: Callback storage */
     hlffi_callback_entry callbacks[HLFFI_MAX_CALLBACKS];

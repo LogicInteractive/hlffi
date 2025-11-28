@@ -1,13 +1,12 @@
 # HLFFI v3.0 — Master Plan Status Update
-**Last Updated:** November 28, 2025 (Phase 7 Complete)
-**Status:** Phases 0-4, 6, 7 Complete, Phase 1 Event Loop COMPLETE, Production Ready
+**Last Updated:** November 28, 2025 (Phase 1 Hot Reload Complete)
+**Status:** Phases 0-4, 6, 7 Complete, Phase 1 FULLY COMPLETE, Production Ready
 
 ---
 
 ## Executive Summary
 
-**✅ COMPLETE:** Phases 0, 1 (Event Loop), 2, 3, 4, 5 (Advanced Types), 6 (Exceptions & Callbacks), 7 (Performance & Caching) (100%)
-**⚠️ PARTIAL:** Phase 1 (Hot Reload only - Threading COMPLETE)
+**✅ COMPLETE:** Phases 0, 1, 2, 3, 4, 5 (Advanced Types), 6 (Exceptions & Callbacks), 7 (Performance & Caching) (100%)
 **❌ TODO:** Phases 8, 9
 
 **Current Capability:** Full bidirectional C↔Haxe FFI with:
@@ -54,9 +53,9 @@
 
 ---
 
-### ✅ Phase 1: VM Lifecycle (95% Complete)
+### ✅ Phase 1: VM Lifecycle (100% Complete)
 
-**Status:** CORE COMPLETE, Event Loop COMPLETE, Threaded Mode COMPLETE, Hot Reload TODO
+**Status:** FULLY COMPLETE - Core, Event Loop, Threading, AND Hot Reload all working
 
 #### ✅ Core Lifecycle (100%)
 - ✅ `hlffi_create()` - allocate VM
@@ -112,11 +111,32 @@ Now all 11 timer tests pass including 1ms, 2ms, 5ms, 10ms, 20ms, 50ms, 100ms pre
 - `test_timers.c` - 11 test cases (all passing on Linux AND Windows)
 - `test_timers.vcxproj` - Visual Studio project for Windows testing
 
-#### ❌ Hot Reload (0% - Not Implemented)
-- ❌ `hlffi_enable_hot_reload()`
-- ❌ `hlffi_reload_module()`
-- ❌ `hlffi_set_reload_callback()`
-- ❌ Requires HashLink 1.12+ (not yet implemented)
+#### ✅ Hot Reload (100% - COMPLETE!)
+
+**Status:** FULLY IMPLEMENTED and TESTED (Nov 28, 2025)
+**Test Results:** Hot reload test passing - getValue() changes from 100 to 200
+
+- ✅ `hlffi_enable_hot_reload()` - enable before loading module
+- ✅ `hlffi_reload_module()` - reload from file
+- ✅ `hlffi_reload_module_memory()` - reload from memory buffer
+- ✅ `hlffi_set_reload_callback()` - notification on reload
+- ✅ `hlffi_check_reload()` - auto-reload on file change
+- ✅ `hlffi_is_hot_reload_enabled()` - check status
+
+**Key Behavior:**
+- Function code is patched in-place ✅
+- Static variables persist across reloads (NOT reinitialized) ✅
+- Callback notifies when reload completes ✅
+- Uses HashLink's `hl_module_patch()` internally
+
+**Test Files:**
+- `test_hot_reload.c` - C test demonstrating hot reload
+- `test/HotReload.hx` - Haxe test class
+- `test/hot_reload_v1.hl` - Initial bytecode (getValue returns 100)
+- `test/hot_reload_v2.hl` - Updated bytecode (getValue returns 200)
+
+**Documentation:**
+- ✅ `docs/HOT_RELOAD.md` - comprehensive guide
 
 #### ✅ Integration Modes (100% - COMPLETE!)
 
@@ -153,8 +173,9 @@ Now all 11 timer tests pass including 1ms, 2ms, 5ms, 10ms, 20ms, 50ms, 100ms pre
 - `src/hlffi_integration.c` (~4KB) - Event loop integration complete
 - `src/hlffi_events.c` (~5KB) - Full event loop implementation
 - `src/hlffi_threading.c` (~439 lines) - **FULL IMPLEMENTATION** (message queue, sync/async calls)
-- `src/hlffi_reload.c` (~735 bytes) - Stub
+- `src/hlffi_reload.c` (~200 lines) - **FULL IMPLEMENTATION** (hot reload via hl_module_patch)
 - `docs/VM_RESTART.md` - VM restart documentation
+- `docs/HOT_RELOAD.md` - Hot reload documentation
 
 ---
 
