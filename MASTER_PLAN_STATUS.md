@@ -7,7 +7,7 @@
 ## Executive Summary
 
 **✅ COMPLETE:** Phases 0, 1 (Event Loop), 2, 3, 4, 5 (Advanced Types), 6 (Exceptions & Callbacks), 7 (Performance & Caching) (100%)
-**⚠️ PARTIAL:** Phase 1 (Hot Reload & Threading stubs only)
+**⚠️ PARTIAL:** Phase 1 (Hot Reload only - Threading COMPLETE)
 **❌ TODO:** Phases 8, 9
 
 **Current Capability:** Full bidirectional C↔Haxe FFI with:
@@ -54,9 +54,9 @@
 
 ---
 
-### ✅ Phase 1: VM Lifecycle (90% Complete)
+### ✅ Phase 1: VM Lifecycle (95% Complete)
 
-**Status:** CORE COMPLETE, Event Loop Integration COMPLETE, Hot Reload & Threaded Mode TODO
+**Status:** CORE COMPLETE, Event Loop COMPLETE, Threaded Mode COMPLETE, Hot Reload TODO
 
 #### ✅ Core Lifecycle (100%)
 - ✅ `hlffi_create()` - allocate VM
@@ -118,22 +118,43 @@ Now all 11 timer tests pass including 1ms, 2ms, 5ms, 10ms, 20ms, 50ms, 100ms pre
 - ❌ `hlffi_set_reload_callback()`
 - ❌ Requires HashLink 1.12+ (not yet implemented)
 
-#### ⚠️ Integration Modes (60% - Partial)
+#### ✅ Integration Modes (100% - COMPLETE!)
+
+**Status:** FULLY IMPLEMENTED and TESTED (Nov 28, 2025)
+**Test Results:** 7/7 threading tests passing, 3/3 VM restart sessions
+
 - ✅ `hlffi_set_integration_mode()` - implemented
 - ✅ Mode 1 (Non-Threaded) - **FULLY WORKING** with event loop
-- ❌ Mode 2 (Threaded) - **STUB ONLY** (dedicated VM thread not implemented)
-- ❌ Worker thread helpers - stubs only
+- ✅ Mode 2 (Threaded) - **FULLY WORKING** with dedicated VM thread
+- ✅ `hlffi_thread_start()` - spawn VM thread, call entry point
+- ✅ `hlffi_thread_stop()` - graceful shutdown with message queue drain
+- ✅ `hlffi_thread_is_running()` - check thread status
+- ✅ `hlffi_thread_call_sync()` - synchronous call from main thread
+- ✅ `hlffi_thread_call_async()` - async call with completion callback
+- ✅ Worker thread helpers - `hlffi_worker_register()`, `hlffi_worker_unregister()`
+
+**VM Restart (Experimental):**
+- ✅ Create → use → destroy → restart cycle works
+- ✅ Works in both non-threaded and threaded modes
+- ✅ See `docs/VM_RESTART.md` for details and limitations
+
+**Test Files:**
+- `test_threading.c` - 7 comprehensive tests (all passing)
+- `test_vm_restart.c` - Non-threaded restart test (3 sessions)
+- `test_threaded_restart.c` - Threaded restart with C-driven counting
+- `test_threaded_blocking.c` - Threaded restart with Haxe blocking loop
 
 **Documentation:**
 - ✅ `docs/TIMERS_ASYNC_THREADING.md` - comprehensive guide
 - ✅ `docs/GC_STACK_SCANNING.md` - GC fix documentation
 
 **Files:**
-- `src/hlffi_lifecycle.c` (~10KB) - Core lifecycle working
+- `src/hlffi_lifecycle.c` (~10KB) - Core lifecycle + VM restart support
 - `src/hlffi_integration.c` (~4KB) - Event loop integration complete
 - `src/hlffi_events.c` (~5KB) - Full event loop implementation
-- `src/hlffi_threading.c` (~791 bytes) - Stub
+- `src/hlffi_threading.c` (~439 lines) - **FULL IMPLEMENTATION** (message queue, sync/async calls)
 - `src/hlffi_reload.c` (~735 bytes) - Stub
+- `docs/VM_RESTART.md` - VM restart documentation
 
 ---
 
@@ -501,19 +522,28 @@ hlffi_reload_module(vm, "game.hl");
 
 **Threaded Mode (Mode 2):**
 ```c
-// NOT IMPLEMENTED (stubs return HLFFI_ERROR_NOT_IMPLEMENTED)
-hlffi_thread_start(vm);
-hlffi_thread_call_sync(vm, callback, userdata);
-hlffi_thread_call_async(vm, callback, on_complete, userdata);
+// ✅ WORKING - 7/7 tests pass
+hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);
+hlffi_thread_start(vm);  // Spawns VM thread, calls entry point
+hlffi_thread_call_sync(vm, callback, userdata);  // Synchronous call
+hlffi_thread_call_async(vm, callback, on_complete, userdata);  // Async call
+hlffi_thread_stop(vm);  // Graceful shutdown
 ```
 
 **Worker Thread Helpers:**
 ```c
-// NOT IMPLEMENTED (empty stubs)
-hlffi_worker_register();
-hlffi_worker_unregister();
-hlffi_blocking_begin();
-hlffi_blocking_end();
+// ✅ WORKING
+hlffi_worker_register();   // Register worker thread with GC
+hlffi_worker_unregister(); // Unregister worker thread
+```
+
+**VM Restart (Experimental):**
+```c
+// ✅ WORKING - 3 sessions tested
+// See docs/VM_RESTART.md for details
+hlffi_destroy(vm);
+sleep(1);
+vm = hlffi_create();  // Works! HashLink globals persist
 ```
 
 ### ✅ What DOES Work Now (Previously Listed as Not Working)
@@ -812,7 +842,6 @@ int index = hlffi_enum_get_index(state);
 - ✅ Comprehensive benchmarks and profiling
 
 **Remaining Gaps:**
-- ⚠️ Threaded mode (Mode 2) stubbed - Phase 1
 - ⚠️ Hot reload not implemented - Phase 1
 - ⚠️ Additional platforms not tested - Phase 8
 

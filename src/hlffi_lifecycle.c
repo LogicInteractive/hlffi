@@ -2,6 +2,12 @@
  * HLFFI Lifecycle Implementation
  * VM creation, initialization, destruction
  * Phase 1 implementation
+ *
+ * VM RESTART SUPPORT (Experimental):
+ * This file contains static flags (g_hl_globals_initialized, g_main_thread_registered)
+ * that enable VM restart within a single process. HashLink wasn't designed for this,
+ * but we work around it by ensuring global init and thread registration happen only
+ * once per process. See docs/VM_RESTART.md for details and limitations.
  */
 
 #include "hlffi_internal.h"
@@ -75,6 +81,11 @@ hlffi_vm* hlffi_create(void) {
     return vm;
 }
 
+/* Track if HashLink globals have been initialized (process-wide) */
+static bool g_hl_globals_initialized = false;
+/* Track if main thread is registered (process-wide, for restart support) */
+static bool g_main_thread_registered = false;
+
 hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
 
@@ -83,8 +94,11 @@ hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
         return HLFFI_ERROR_ALREADY_INITIALIZED;
     }
 
-    /* Initialize HashLink global state */
-    hl_global_init();
+    /* Initialize HashLink global state (only once per process) */
+    if (!g_hl_globals_initialized) {
+        hl_global_init();
+        g_hl_globals_initialized = true;
+    }
 
     /* NOTE: hl_setup is not accessible from libhl.dll due to export issues
      * Command line arguments can be passed via other mechanisms if needed
@@ -94,11 +108,17 @@ hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
     /* Initialize system (file I/O, etc.) */
     hl_sys_init();
 
-    /* Register this thread with HashLink GC
+    /* Register this thread with HashLink GC (only once per process)
      * CRITICAL: stack_context must persist for VM lifetime!
      * We use the vm pointer itself as the stack marker
+     *
+     * For VM restart support, we only register once since HashLink
+     * doesn't support unregister/re-register cleanly.
      */
-    hl_register_thread(&vm->stack_context);
+    if (!g_main_thread_registered) {
+        hl_register_thread(&vm->stack_context);
+        g_main_thread_registered = true;
+    }
 
     vm->hl_initialized = true;
     vm->thread_registered = true;
