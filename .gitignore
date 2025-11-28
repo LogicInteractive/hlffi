@@ -73,6 +73,9 @@ test_nonblocking
 test_minimal
 test_typed_minimal
 test_arrays
+test_array_values_demo
+test_map_demo
+test_native_demo
 
 # Backup files
 *_old.h
