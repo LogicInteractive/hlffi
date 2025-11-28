@@ -727,13 +727,6 @@ static vdynamic* wrap_varray_as_haxe_array(hlffi_vm* vm, varray* arr) {
         int field_offset = rt->fields_indexes[0];  /* field 0 is "array" */
         varray** array_field = (varray**)((char*)obj + field_offset);
         *array_field = arr;
-
-        /* Debug: verify the storage */
-        fprintf(stderr, "[DEBUG wrap] ArrayObj created:\n");
-        fprintf(stderr, "  obj=%p, type=%s\n", (void*)obj, type_name);
-        fprintf(stderr, "  field_offset=%d, array_field=%p\n", field_offset, (void*)array_field);
-        fprintf(stderr, "  varray=%p, varray->size=%d\n", (void*)arr, arr->size);
-        fprintf(stderr, "  stored value=%p\n", (void*)*array_field);
     } else {
         /* ArrayBytes_*: fields [0] = bytes, [1] = size
          * But memory layout is [size(int), bytes(ptr)] due to alignment */
@@ -832,12 +825,7 @@ int hlffi_array_length(hlffi_value* arr) {
                     int field_offset = rt->fields_indexes[0];
                     varray** array_field = (varray**)((char*)obj + field_offset);
                     varray* arr = *array_field;
-                    int size = arr ? arr->size : 0;
-                    fprintf(stderr, "[DEBUG length] ArrayObj length read:\n");
-                    fprintf(stderr, "  obj=%p, field_offset=%d, array_field=%p\n",
-                            (void*)obj, field_offset, (void*)array_field);
-                    fprintf(stderr, "  varray=%p, size=%d\n", (void*)arr, size);
-                    return size;
+                    return arr ? arr->size : 0;
                 } else {
                     /* ArrayBytes_*: memory layout is [size(int), bytes(ptr)] */
                     int* size_ptr = (int*)(obj + 1);
