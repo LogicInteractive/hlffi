@@ -172,9 +172,8 @@ DEFINE_PRIM(_VOID, update_particles, _ARR _I32 _F32);
 **Performance:** 10,000 particles updated in ~0.02ms (pure C speed!)
 
 **Note on Array Types:**
-- **hl.NativeArray<T>** - Available in all Haxe versions, works with structs
-- **hl.CArray<T>** - Haxe 4.4+ feature, optimized for structs with single GC allocation
-- Both pass as `T*` pointers to C - same interface!
+- **hl.NativeArray<T>** - Use this for arrays of structs (available now)
+- ~~**hl.CArray<T>**~~ - Not yet released (Haxe 4.4+ when available)
 
 ---
 
