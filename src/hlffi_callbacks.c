@@ -607,13 +607,26 @@ const char* hlffi_get_exception_message(hlffi_vm* vm) {
 const char* hlffi_get_exception_stack(hlffi_vm* vm) {
     if (!vm) return NULL;
 
-    /* Get actual stack trace from HashLink */
-    hl_thread_info* t = hl_get_thread();
-    if (!t || t->exc_stack_count == 0) {
-        return vm->exception_stack[0] ? vm->exception_stack : NULL;
+    /* If exception was explicitly cleared (no message), return NULL
+     * This is the key: exception_msg acts as the "exception active" flag */
+    if (!vm->exception_msg[0]) {
+        return NULL;
     }
 
-    /* Build stack trace string from captured addresses */
+    /* Get thread info for stack trace */
+    hl_thread_info* t = hl_get_thread();
+    if (!t || t->exc_stack_count == 0) {
+        /* No stack trace available, but exception message exists
+         * Return a minimal message */
+        if (!vm->exception_stack[0]) {
+            snprintf(vm->exception_stack, sizeof(vm->exception_stack),
+                     "Stack trace not available\n");
+        }
+        return vm->exception_stack;
+    }
+
+    /* Build/rebuild stack trace string from captured addresses
+     * We regenerate each time to ensure it's fresh */
     char* buffer = vm->exception_stack;
     int buffer_size = sizeof(vm->exception_stack);
     int pos = 0;

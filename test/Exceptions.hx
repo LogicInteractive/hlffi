@@ -57,6 +57,28 @@ class Exceptions {
     }
 
     /**
+     * Helper function that throws (for nested stack traces)
+     */
+    static function innerThrow():Void {
+        throw "Exception from nested function";
+    }
+
+    /**
+     * Helper function that calls innerThrow (creates deeper stack)
+     */
+    static function middleThrow():Void {
+        innerThrow();
+    }
+
+    /**
+     * Public method that calls nested functions that throw
+     * Creates a multi-level stack trace
+     */
+    public static function nestedThrow():Void {
+        middleThrow();
+    }
+
+    /**
      * Entry point
      */
     public static function main():Void {
