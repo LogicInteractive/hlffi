@@ -10,16 +10,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* External HashLink enum functions */
-extern venum* hl_alloc_enum(hl_type* t, int index);
-extern varray* hl_enum_parameters(venum* e);
-
-/* External HashLink string functions */
-extern int hl_from_utf8(uchar* out, int out_len, const char* str);
-extern char* hl_to_utf8(const uchar* str);
-
-/* Forward declarations of public API */
-extern hlffi_type* hlffi_find_type(hlffi_vm* vm, const char* name);
+/* HashLink enum/string functions are available via hl.h included by hlffi_internal.h */
 
 /* ========== ENUM TYPE QUERIES ========== */
 
