@@ -7,7 +7,8 @@
 ## Executive Summary
 
 **✅ COMPLETE:** Phases 0, 1, 2, 3, 4, 5 (Advanced Types), 6 (Exceptions & Callbacks), 7 (Performance & Caching) (100%)
-**❌ TODO:** Phases 8, 9
+**⚠️ PARTIAL:** Phase 8 (Documentation & Guides) (~80% complete)
+**❌ TODO:** Phases 9, 10
 
 **Current Capability:** Full bidirectional C↔Haxe FFI with:
 - VM lifecycle management
@@ -453,32 +454,132 @@ hlffi_cached_call_free(update);
 
 ---
 
-### ❌ Phase 8: Cross-Platform (0% Complete)
+### ⚠️ Phase 8: Documentation & Guides (80% Complete)
 
-**Status:** NOT STARTED
+**Status:** MOSTLY COMPLETE - Comprehensive phase docs exist, missing unified API reference
 
-**Platforms:**
-- Linux - ✅ PRIMARY (currently working)
-- Windows (MSVC) - ❌ Not tested
-- macOS - ❌ Not tested
-- WebAssembly - ❌ Not tested
-- Android/iOS - ❌ Not tested
+**Completed Documentation:**
 
-**Priority:** VARIES (depends on deployment needs)
+**Phase-Specific Guides (Excellent):**
+- ✅ `docs/PHASE3_COMPLETE.md` (1079 lines) - Static members comprehensive guide
+- ✅ `docs/PHASE4_INSTANCE_MEMBERS.md` (267 lines) - Instance API documentation
+- ✅ `docs/PHASE5_COMPLETE.md` (202 lines) - Maps, Bytes, Enums, Arrays
+- ✅ `docs/PHASE6_COMPLETE.md` (12KB) - Exceptions & Callbacks
+- ✅ `docs/PHASE7_COMPLETE.md` (15KB) - Performance caching API
+- ✅ `docs/PHASE7_MEMORY_REPORT.md` (4.5KB) - Valgrind analysis
+
+**Feature-Specific Guides:**
+- ✅ `docs/HOT_RELOAD.md` (6KB) - Hot reload guide (Nov 28, 2025)
+- ✅ `docs/VM_RESTART.md` (5KB) - VM restart patterns (Nov 28, 2025)
+- ✅ `docs/TIMERS_ASYNC_THREADING.md` (10KB) - Event loop & threading
+- ✅ `docs/EVENTLOOP_QUICKSTART.md` (5KB) - Quick start guide
+- ✅ `docs/GC_STACK_SCANNING.md` (4.5KB) - GC fix documentation
+- ✅ `docs/STRUCT_MISMATCH_FIX.md` (4KB) - Critical bug fix
+- ✅ `docs/CALLBACK_GUIDE.md` (13KB) - C callbacks guide
+- ✅ `docs/MAPS_GUIDE.md` (5KB) - Map operations
+- ✅ `docs/NATIVE_ARRAYS.md` (12KB) - Array implementation
+- ✅ `docs/WINDOWS_TESTS.md` (5KB) - Windows testing guide
+
+**Technical Resources:**
+- ✅ `docs/HASHLINK_PATCH.md` - HashLink modifications
+- ✅ `docs/hashlink-resources.md` - External resources
+- ✅ `MEMORY_AUDIT.md` - Memory management analysis
+
+**README Files:**
+- ✅ `README.md` - Main project README
+- ✅ `test/README.md` - Test documentation
+- ✅ `CLAUDE.md` - Project guidance for Claude Code
+
+**Missing Documentation (TODO):**
+
+1. **Unified API Reference** ❌
+   - Complete function reference (all ~150+ functions)
+   - Organized by category
+   - Quick lookup format
+   - Code examples for each function
+
+2. **Getting Started Guide** ⚠️
+   - Step-by-step tutorial
+   - "Hello World" walkthrough
+   - Common patterns
+   - Best practices summary
+
+3. **Architecture Overview** ⚠️
+   - System design document
+   - Component interaction diagrams
+   - Memory model explanation
+   - Threading architecture
+
+4. **Migration Guides** ❌
+   - Upgrading from older versions
+   - Breaking changes
+   - Deprecation notices
+
+5. **Cookbook/Recipes** ⚠️
+   - Common use cases
+   - Production patterns
+   - Performance tips
+   - Troubleshooting guide
+
+**Priority:** HIGH (API reference is critical for production use)
+
+**Effort Estimate:** 2-3 days for complete API reference
 
 ---
 
-### ❌ Phase 9: Plugin System (0% Complete)
+### ❌ Phase 9: Cross-Platform Builds (20% Complete)
 
-**Status:** NOT STARTED (Experimental)
+**Status:** PARTIAL - Linux & Windows working, other platforms not tested
 
-**Planned:**
-- Dynamic module loading
-- Plugin management
-- Cross-module calls
-- Type sharing
+**Completed Platforms:**
+- ✅ **Linux** - Primary development platform (all tests passing)
+- ✅ **Windows MSVC** - Visual Studio 2022 solution working (Nov 27, 2025)
 
-**Priority:** LOW (bleeding-edge HL feature, experimental)
+**Platforms Not Tested:**
+- ❌ **macOS** - Should work (uses same Unix APIs as Linux)
+- ❌ **WebAssembly** - Requires HashLink HL/C mode
+- ❌ **Android** - Requires HashLink HL/C mode + JNI bridge
+- ❌ **iOS** - Requires HashLink HL/C mode
+- ❌ **Raspberry Pi** - Should work (Linux ARM)
+
+**Build Systems:**
+- ✅ Makefile (Linux)
+- ✅ Visual Studio Solution (Windows)
+- ❌ CMake (planned, not implemented)
+- ❌ Xcode project (macOS)
+
+**Priority:** VARIES (depends on deployment needs)
+
+**Notes:**
+- Mobile platforms will require significant work (HashLink in HL/C mode)
+- WebAssembly needs investigation (HashLink WASM support)
+- macOS should be straightforward (BSD/Unix)
+
+---
+
+### ❌ Phase 10: Plugin System (0% Complete)
+
+**Status:** NOT STARTED (Experimental, Low Priority)
+
+**Planned Features:**
+- Dynamic module loading at runtime
+- Plugin management system
+- Cross-module function calls
+- Type sharing between modules
+- Hot-swappable plugins
+
+**Technical Challenges:**
+- HashLink plugin support is experimental
+- Requires hl_module_load_ex() (bleeding-edge API)
+- GC coordination across modules
+- Symbol resolution
+
+**Priority:** LOW (experimental HashLink feature)
+
+**Notes:**
+- This is a future/experimental feature
+- Not required for production use
+- Would enable extensibility without recompilation
 
 ---
 
@@ -723,68 +824,96 @@ int index = hlffi_enum_get_index(state);
 
 ### High Priority (Should Do Next)
 
-1. **Phase 8: Additional Cross-Platform Builds** (varies)
-   - macOS builds
-   - Mobile platforms (Android/iOS)
-   - WebAssembly
-   - Only if deployment requires
+1. **Phase 8: Unified API Reference** (2-3 days)
+   - Complete function reference (~150+ functions)
+   - Organized by category (lifecycle, types, values, etc.)
+   - Quick lookup format
+   - Code examples for each function
+   - Critical for production adoption
+
+2. **Phase 8: Getting Started Guide** (1 day)
+   - Step-by-step tutorial
+   - "Hello World" complete walkthrough
+   - Common patterns and idioms
+   - Best practices summary
 
 ### Medium Priority (Nice to Have)
 
-2. **C++ Wrapper API** (4 hours)
-   - Original plan included C++ wrappers
+3. **Phase 8: Architecture Documentation** (1-2 days)
+   - System design overview
+   - Component interaction diagrams
+   - Memory model explanation
+   - Threading architecture details
+
+4. **Phase 8: Cookbook/Recipes** (1 day)
+   - Common use case examples
+   - Production deployment patterns
+   - Performance optimization tips
+   - Troubleshooting guide
+
+5. **C++ Wrapper API** (2-3 days)
    - RAII guards (`BlockingGuard`, `WorkerGuard`)
    - Template type safety
    - Method chaining elegance
+   - Modern C++ patterns
 
 ### Low Priority (Future)
 
-7. **Phase 8: Cross-Platform** (8 hours per platform)
-   - Only if deployment needs it
-   - Mobile likely needs HL/C mode
-   - WebAssembly definitely needs HL/C
+6. **Phase 9: macOS Build** (1 day)
+   - Should work out of box (Unix/BSD APIs)
+   - Create Xcode project
+   - Test suite validation
 
-8. **Phase 1 Extensions: Hot Reload** (6 hours)
-   - Requires HL 1.12+
-   - Nice for development
-   - Not critical for production
+7. **Phase 9: Mobile Platforms** (1-2 weeks per platform)
+   - Android (requires HL/C mode + JNI)
+   - iOS (requires HL/C mode)
+   - Significant effort, only if needed
 
-9. **Phase 9: Plugin System** (6 hours)
-   - Experimental HL feature
-   - Bleeding edge
-   - Limited use cases
+8. **Phase 9: WebAssembly** (1 week)
+   - Investigate HashLink WASM support
+   - Requires HL/C mode
+   - Browser integration
+
+9. **Phase 10: Plugin System** (1-2 weeks)
+   - Experimental HashLink feature
+   - Dynamic module loading
+   - Limited use cases currently
 
 ---
 
 ## Key Technical Debt
 
-### Documentation Gaps
+### Phase 8: Documentation Gaps (High Priority)
 
-- ❌ No complete API reference (only phase-specific docs)
-- ❌ No migration guide from old hlffi
-- ❌ No best practices guide
-- ✅ Phase docs excellent but scattered
+- ❌ **No unified API reference** - Critical for production adoption
+- ❌ **No Getting Started tutorial** - Needed for new users
+- ⚠️ **Architecture overview missing** - Would help advanced users
+- ❌ **No migration guide** - From older versions
+- ⚠️ **No cookbook/recipes** - Common patterns not collected
+- ✅ **Phase-specific docs excellent** - But scattered across 15+ files
 
-### Testing Gaps
+### Phase 9: Platform Coverage (Medium Priority)
 
-- ❌ No memory leak tests (valgrind)
-- ❌ No stress tests
-- ❌ No cross-platform CI
-- ✅ Phase tests comprehensive
+- ✅ **Linux fully tested** - Primary platform working
+- ✅ **Windows MSVC working** - Visual Studio 2022 support (Nov 27, 2025)
+- ❌ **macOS not tested** - Should work (Unix/BSD)
+- ❌ **Mobile platforms** - Android/iOS need HL/C mode
+- ❌ **WebAssembly** - Not investigated
 
-### Build System
+### Build System (Low Priority)
 
-- ❌ CMake not implemented (Makefile only)
-- ❌ Windows build not tested
-- ❌ No pkg-config integration
-- ✅ Linux Makefile works well
+- ✅ **Makefile working** - Linux build system complete
+- ✅ **Visual Studio solution** - Windows build working
+- ❌ **CMake not implemented** - Would enable multi-platform
+- ❌ **Xcode project missing** - For macOS development
+- ❌ **No pkg-config** - For system integration
 
-### Code Quality
+### Code Quality (Nice to Have)
 
-- ❌ No C++ wrappers (C API only)
-- ❌ Some stub files (threading, events, reload)
-- ✅ Core implementation solid
-- ✅ Error handling consistent
+- ❌ **No C++ wrappers** - C API only (RAII would be nice)
+- ✅ **All core features implemented** - Threading, hot reload complete
+- ✅ **Core implementation solid** - Well-tested
+- ✅ **Error handling consistent** - Proper error codes throughout
 
 ---
 
@@ -863,13 +992,15 @@ int index = hlffi_enum_get_index(state);
 - ✅ Comprehensive benchmarks and profiling
 
 **Remaining Gaps:**
-- ⚠️ Hot reload not implemented - Phase 1
-- ⚠️ Additional platforms not tested - Phase 8
+- ⚠️ **Documentation incomplete** - No unified API reference (Phase 8)
+- ⚠️ **Additional platforms not tested** - macOS, mobile, WebAssembly (Phase 9)
+- ⚠️ **No Getting Started guide** - Needs beginner tutorial (Phase 8)
 
 **Recommendation:**
-1. **Ship it** for production - All core features complete (Phases 0-7)
-2. **Optional:** Platform-specific builds (Phase 8) if needed for deployment
-3. **Future:** Plugin system (Phase 9) for advanced use cases
+1. **Complete Phase 8 documentation** - Unified API reference is critical for adoption (2-3 days effort)
+2. **Ship for production** - All core features complete (Phases 0-7), Linux & Windows working
+3. **Optional:** Platform-specific builds (Phase 9) only if deployment requires
+4. **Future:** Plugin system (Phase 10) for advanced extensibility
 
 **Test Summary (All Passing):**
 | Test Suite | Tests | Platform |
@@ -886,9 +1017,17 @@ int index = hlffi_enum_get_index(state);
 | test_cache_memory | 0 leaks | Linux (valgrind) |
 
 **Timeline:**
-- Phases 0-4: Complete ✅
-- Phase 1 Event Loop: Complete ✅
-- Phase 6 Exceptions & Callbacks: Complete ✅
-- Phase 7 Performance & Caching: Complete ✅
-- **Total working functionality: ~90%** of originally planned features
-- Remaining: Arrays/Maps (Phase 5), Threaded Mode (Phase 1), Hot Reload (Phase 1), Cross-platform (Phase 8), Plugin System (Phase 9)
+- **Phases 0-7: Complete ✅** (All core features)
+  - Phase 0: Foundation & Architecture ✅
+  - Phase 1: VM Lifecycle (Core + Event Loop + Threading + Hot Reload) ✅
+  - Phase 2: Type System & Reflection ✅
+  - Phase 3: Static Members ✅
+  - Phase 4: Instance Members ✅
+  - Phase 5: Advanced Value Types (Maps, Bytes, Enums, Arrays) ✅
+  - Phase 6: Callbacks & Exceptions ✅
+  - Phase 7: Performance & Caching ✅
+- **Phase 8: Documentation** ⚠️ 80% complete (API reference TODO)
+- **Phase 9: Cross-Platform** ⚠️ 20% complete (Linux & Windows working)
+- **Phase 10: Plugin System** ❌ Not started
+- **Total implementation: ~95%** of core features complete
+- **Production-ready for:** Game engines, native apps, tools (Linux & Windows)
