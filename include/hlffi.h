@@ -1310,6 +1310,156 @@ int hlffi_map_size(hlffi_value* map);
  */
 bool hlffi_map_clear(hlffi_value* map);
 
+/* ========== Phase 5: Bytes Operations ========== */
+
+/**
+ * Create new bytes buffer.
+ *
+ * @param vm VM instance
+ * @param size Size in bytes
+ * @return New bytes buffer (zero-initialized), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* bytes = hlffi_bytes_new(vm, 1024);
+ */
+hlffi_value* hlffi_bytes_new(hlffi_vm* vm, int size);
+
+/**
+ * Create bytes from C buffer (copies data).
+ *
+ * @param vm VM instance
+ * @param data Pointer to source data
+ * @param size Size in bytes
+ * @return New bytes buffer containing copy of data
+ *
+ * Example:
+ *   unsigned char data[] = {0x01, 0x02, 0x03};
+ *   hlffi_value* bytes = hlffi_bytes_from_data(vm, data, 3);
+ */
+hlffi_value* hlffi_bytes_from_data(hlffi_vm* vm, const void* data, int size);
+
+/**
+ * Create bytes from UTF-8 string.
+ *
+ * @param vm VM instance
+ * @param str UTF-8 string
+ * @return Bytes containing UTF-8 encoded string
+ *
+ * Example:
+ *   hlffi_value* bytes = hlffi_bytes_from_string(vm, "Hello");
+ */
+hlffi_value* hlffi_bytes_from_string(hlffi_vm* vm, const char* str);
+
+/**
+ * Get direct pointer to bytes data (zero-copy).
+ *
+ * @param bytes Bytes buffer
+ * @return Pointer to raw bytes, or NULL on error
+ *
+ * WARNING: Pointer is only valid while bytes are alive!
+ *
+ * Example:
+ *   void* ptr = hlffi_bytes_get_ptr(bytes);
+ *   unsigned char* data = (unsigned char*)ptr;
+ */
+void* hlffi_bytes_get_ptr(hlffi_value* bytes);
+
+/**
+ * Get length of bytes buffer.
+ *
+ * @param bytes Bytes buffer (must be haxe.io.Bytes object)
+ * @return Length in bytes, or -1 if not available
+ *
+ * NOTE: Only works for haxe.io.Bytes objects with length field.
+ * For raw vbyte* created from C, track length separately!
+ */
+int hlffi_bytes_get_length(hlffi_value* bytes);
+
+/**
+ * Copy bytes from src to dst (blit operation).
+ *
+ * @param dst Destination bytes
+ * @param dst_pos Offset in destination
+ * @param src Source bytes
+ * @param src_pos Offset in source
+ * @param len Number of bytes to copy
+ * @return true on success, false on error
+ *
+ * Handles overlapping regions correctly.
+ *
+ * Example:
+ *   hlffi_bytes_blit(dst, 0, src, 10, 20);  // Copy 20 bytes from src[10..] to dst[0..]
+ */
+bool hlffi_bytes_blit(hlffi_value* dst, int dst_pos, hlffi_value* src, int src_pos, int len);
+
+/**
+ * Compare bytes regions.
+ *
+ * @param a First bytes buffer
+ * @param a_pos Offset in first buffer
+ * @param b Second bytes buffer
+ * @param b_pos Offset in second buffer
+ * @param len Number of bytes to compare
+ * @return <0 if a < b, 0 if equal, >0 if a > b
+ *
+ * Example:
+ *   int cmp = hlffi_bytes_compare(a, 0, b, 0, 10);
+ */
+int hlffi_bytes_compare(hlffi_value* a, int a_pos, hlffi_value* b, int b_pos, int len);
+
+/**
+ * Convert bytes to UTF-8 string.
+ *
+ * @param bytes Bytes buffer
+ * @param length Number of bytes to convert
+ * @return malloc'd string (caller must free()), or NULL on error
+ *
+ * Assumes bytes contain UTF-8 text.
+ *
+ * Example:
+ *   char* str = hlffi_bytes_to_string(bytes, 5);
+ *   printf("%s\n", str);
+ *   free(str);
+ */
+char* hlffi_bytes_to_string(hlffi_value* bytes, int length);
+
+/**
+ * Get byte at index.
+ *
+ * @param bytes Bytes buffer
+ * @param index Index (0-based)
+ * @return Byte value (0-255), or -1 on error
+ *
+ * NOTE: No bounds checking! Caller must ensure index is valid.
+ */
+int hlffi_bytes_get(hlffi_value* bytes, int index);
+
+/**
+ * Set byte at index.
+ *
+ * @param bytes Bytes buffer
+ * @param index Index (0-based)
+ * @param value Byte value (0-255)
+ * @return true on success, false on error
+ *
+ * NOTE: No bounds checking! Caller must ensure index is valid.
+ */
+bool hlffi_bytes_set(hlffi_value* bytes, int index, int value);
+
+/**
+ * Fill bytes region with value.
+ *
+ * @param bytes Bytes buffer
+ * @param pos Starting position
+ * @param len Number of bytes to fill
+ * @param value Byte value (0-255)
+ * @return true on success, false on error
+ *
+ * Example:
+ *   hlffi_bytes_fill(bytes, 0, 100, 0xFF);  // Fill first 100 bytes with 0xFF
+ */
+bool hlffi_bytes_fill(hlffi_value* bytes, int pos, int len, int value);
+
 /**
  * Get static field value.
  *
