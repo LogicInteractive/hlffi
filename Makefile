@@ -28,6 +28,7 @@ HLFFI_WRAPPER_SRC = \
 	src/hlffi_lifecycle.c \
 	src/hlffi_types.c \
 	src/hlffi_values.c \
+	src/hlffi_maps.c \
 	src/hlffi_objects.c \
 	src/hlffi_callbacks.c \
 	src/hlffi_events.c \
@@ -98,6 +99,7 @@ TEST_CALLBACKS = test_callbacks
 TEST_EXCEPTIONS = test_exceptions
 TEST_ARRAYS = test_arrays
 TEST_ARRAY_VALUES_DEMO = test_array_values_demo
+TEST_MAP_DEMO = test_map_demo
 
 # Linker flags for tests
 # CRITICAL: Must use --whole-archive for libhl.a to expose all primitives to dlsym()
@@ -143,7 +145,7 @@ $(BIN_DIR):
 
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
-	rm -f $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC) $(TEST_CALLBACKS) $(TEST_EXCEPTIONS) $(TEST_ARRAYS) $(TEST_ARRAY_VALUES_DEMO)
+	rm -f $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC) $(TEST_CALLBACKS) $(TEST_EXCEPTIONS) $(TEST_ARRAYS) $(TEST_ARRAY_VALUES_DEMO) $(TEST_MAP_DEMO)
 	@echo "Cleaned build artifacts"
 
 # Print detailed info
@@ -155,7 +157,7 @@ verbose: info
 	@for src in $(HLFFI_SRC); do echo "  - $$src"; done
 
 # Test targets
-tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC) $(TEST_CALLBACKS) $(TEST_EXCEPTIONS) $(TEST_ARRAYS) $(TEST_ARRAY_VALUES_DEMO)
+tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC) $(TEST_CALLBACKS) $(TEST_EXCEPTIONS) $(TEST_ARRAYS) $(TEST_ARRAY_VALUES_DEMO) $(TEST_MAP_DEMO)
 	@echo ""
 	@echo "✓ All tests built successfully!"
 	@echo ""
@@ -170,6 +172,7 @@ tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STAT
 	@echo "  ./$(TEST_EXCEPTIONS) test/exceptions.hl - Test Phase 6a exception handling"
 	@echo "  ./$(TEST_ARRAYS) test/arrays.hl  - Test Phase 5 array operations (10/10)"
 	@echo "  ./$(TEST_ARRAY_VALUES_DEMO) test/arrays.hl - Detailed array values demo (Int/Float/Single/String/Dynamic)"
+	@echo "  ./$(TEST_MAP_DEMO)           - Test Phase 5 Map operations (get, set, exists)"
 	@echo ""
 
 $(TEST_LIBHL): test_libhl.c $(LIBHL)
@@ -209,5 +212,9 @@ $(TEST_ARRAYS): test_arrays.c $(LIBHL) $(HLFFI)
 	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
 
 $(TEST_ARRAY_VALUES_DEMO): test_array_values_demo.c $(LIBHL) $(HLFFI)
+	@echo "Building $@..."
+	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
+
+$(TEST_MAP_DEMO): test_map_demo.c $(LIBHL) $(HLFFI)
 	@echo "Building $@..."
 	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)

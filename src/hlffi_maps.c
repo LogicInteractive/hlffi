@@ -1,275 +1,97 @@
-/* ========== Map Support ========== */
+/**
+ * Map Support for HLFFI
+ *
+ * Practical approach: Work with Map objects from Haxe via method calls
+ * Maps are created in Haxe, manipulated in C, passed back to Haxe
+ */
 
-/* Map helper functions - maps are complex in HashLink due to template-like implementation */
+#include "hlffi_internal.h"
+#include <string.h>
 
-/* Forward declarations for HashLink map functions */
-extern void* hl_alloc_intmap();
-extern void hl_intmap_set(void* map, int key, vdynamic* value);
-extern vdynamic* hl_intmap_get(void* map, int key);
-extern bool hl_intmap_exists(void* map, int key);
-extern bool hl_intmap_remove(void* map, int key);
-extern varray* hl_intmap_keys(void* map);
-extern varray* hl_intmap_values(void* map);
-extern int hl_intmap_size(void* map);
-extern void hl_intmap_clear(void* map);
-
-extern void* hl_alloc_strbytesmap();
-extern void hl_strbytesmap_set(void* map, vbyte* key, vdynamic* value);
-extern vdynamic* hl_strbytesmap_get(void* map, vbyte* key);
-extern bool hl_strbytesmap_exists(void* map, vbyte* key);
-extern bool hl_strbytesmap_remove(void* map, vbyte* key);
-extern varray* hl_strbytesmap_keys(void* map);
-extern varray* hl_strbytesmap_values(void* map);
-extern int hl_strbytesmap_size(void* map);
-extern void hl_strbytesmap_clear(void* map);
-
-/* Map type identifier stored in the hlffi_value */
-typedef enum {
-    HLFFI_MAP_INT,     /* Map<Int, T> */
-    HLFFI_MAP_STRING,  /* Map<String, T> */
-    HLFFI_MAP_OBJECT   /* Map<Object, T> */
-} hlffi_map_type;
-
-/* Extended map wrapper to track type */
-typedef struct {
-    vdynamic header;   /* Must be first for vdynamic* compatibility */
-    void* map_ptr;     /* Actual HashLink map pointer */
-    hlffi_map_type type;
-} hlffi_map_wrapper;
+/* Map operations via instance method calls */
 
 hlffi_value* hlffi_map_new(hlffi_vm* vm, hl_type* key_type, hl_type* value_type) {
-    if (!vm || !key_type) return NULL;
+    if (!vm) return NULL;
 
-    HLFFI_UPDATE_STACK_TOP();
-
-    hlffi_map_wrapper* wrapper = (hlffi_map_wrapper*)hl_gc_alloc_raw(sizeof(hlffi_map_wrapper));
-    if (!wrapper) {
-        set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate map wrapper");
-        return NULL;
-    }
-
-    /* Determine map type based on key_type */
-    if (key_type->kind == HI32 || key_type->kind == HI64) {
-        /* IntMap */
-        wrapper->type = HLFFI_MAP_INT;
-        wrapper->map_ptr = hl_alloc_intmap();
-    } else if (key_type->kind == HBYTES) {
-        /* StringMap */
-        wrapper->type = HLFFI_MAP_STRING;
-        wrapper->map_ptr = hl_alloc_strbytesmap();
-    } else {
-        /* ObjectMap or other - not yet implemented */
-        set_error(vm, HLFFI_ERROR_NOT_IMPLEMENTED, "Map type not yet supported (only Int and String keys)");
-        return NULL;
-    }
-
-    if (!wrapper->map_ptr) {
-        set_error(vm, HLFFI_ERROR_OUT_OF_MEMORY, "Failed to allocate map");
-        return NULL;
-    }
-
-    /* Wrap in hlffi_value */
-    hlffi_value* result = (hlffi_value*)malloc(sizeof(hlffi_value));
-    if (!result) return NULL;
-    result->hl_value = (vdynamic*)wrapper;
-    result->is_rooted = false;
-
-    return result;
+    /* Maps should be created in Haxe for now.
+     * Creating from C requires complex type instantiation. */
+    return NULL;
 }
 
 bool hlffi_map_set(hlffi_vm* vm, hlffi_value* map, hlffi_value* key, hlffi_value* value) {
-    if (!vm || !map || !map->hl_value || !key || !key->hl_value) return false;
+    if (!vm || !map || !key) return false;
 
-    hlffi_map_wrapper* wrapper = (hlffi_map_wrapper*)map->hl_value;
+    /* Call map.set(key, value) via instance method */
+    hlffi_value* args[] = {key, value};
+    hlffi_value* result = hlffi_call_method(map, "set", 2, args);
 
-    HLFFI_UPDATE_STACK_TOP();
-
-    switch (wrapper->type) {
-        case HLFFI_MAP_INT: {
-            int k = hlffi_value_as_int(key, 0);
-            vdynamic* v = value ? value->hl_value : NULL;
-            hl_intmap_set(wrapper->map_ptr, k, v);
-            return true;
-        }
-        case HLFFI_MAP_STRING: {
-            char* k_str = hlffi_value_as_string(key);
-            if (!k_str) return false;
-            vbyte* k = (vbyte*)k_str;  /* Convert UTF-8 to bytes */
-            vdynamic* v = value ? value->hl_value : NULL;
-            hl_strbytesmap_set(wrapper->map_ptr, k, v);
-            free(k_str);
-            return true;
-        }
-        default:
-            set_error(vm, HLFFI_ERROR_NOT_IMPLEMENTED, "Map type not supported");
-            return false;
-    }
+    if (!result) return false;
+    hlffi_value_free(result);
+    return true;
 }
 
 hlffi_value* hlffi_map_get(hlffi_vm* vm, hlffi_value* map, hlffi_value* key) {
-    if (!vm || !map || !map->hl_value || !key || !key->hl_value) return NULL;
+    if (!vm || !map || !key) return NULL;
 
-    hlffi_map_wrapper* wrapper = (hlffi_map_wrapper*)map->hl_value;
-    vdynamic* result = NULL;
-
-    switch (wrapper->type) {
-        case HLFFI_MAP_INT: {
-            int k = hlffi_value_as_int(key, 0);
-            result = hl_intmap_get(wrapper->map_ptr, k);
-            break;
-        }
-        case HLFFI_MAP_STRING: {
-            char* k_str = hlffi_value_as_string(key);
-            if (!k_str) return NULL;
-            vbyte* k = (vbyte*)k_str;
-            result = hl_strbytesmap_get(wrapper->map_ptr, k);
-            free(k_str);
-            break;
-        }
-        default:
-            set_error(vm, HLFFI_ERROR_NOT_IMPLEMENTED, "Map type not supported");
-            return NULL;
-    }
-
-    if (!result) return NULL;
-
-    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
-    if (!wrapped) return NULL;
-    wrapped->hl_value = result;
-    wrapped->is_rooted = false;
-    return wrapped;
+    /* Call map.get(key) */
+    hlffi_value* args[] = {key};
+    return hlffi_call_method(map, "get", 1, args);
 }
 
 bool hlffi_map_exists(hlffi_vm* vm, hlffi_value* map, hlffi_value* key) {
-    if (!vm || !map || !map->hl_value || !key || !key->hl_value) return false;
+    if (!vm || !map || !key) return false;
 
-    hlffi_map_wrapper* wrapper = (hlffi_map_wrapper*)map->hl_value;
+    /* Call map.exists(key) */
+    hlffi_value* args[] = {key};
+    hlffi_value* result = hlffi_call_method(map, "exists", 1, args);
 
-    switch (wrapper->type) {
-        case HLFFI_MAP_INT: {
-            int k = hlffi_value_as_int(key, 0);
-            return hl_intmap_exists(wrapper->map_ptr, k);
-        }
-        case HLFFI_MAP_STRING: {
-            char* k_str = hlffi_value_as_string(key);
-            if (!k_str) return false;
-            vbyte* k = (vbyte*)k_str;
-            bool exists = hl_strbytesmap_exists(wrapper->map_ptr, k);
-            free(k_str);
-            return exists;
-        }
-        default:
-            return false;
-    }
+    if (!result) return false;
+
+    bool exists = hlffi_value_as_bool(result, false);
+    hlffi_value_free(result);
+    return exists;
 }
 
 bool hlffi_map_remove(hlffi_vm* vm, hlffi_value* map, hlffi_value* key) {
-    if (!vm || !map || !map->hl_value || !key || !key->hl_value) return false;
+    if (!vm || !map || !key) return false;
 
-    hlffi_map_wrapper* wrapper = (hlffi_map_wrapper*)map->hl_value;
+    /* Call map.remove(key) */
+    hlffi_value* args[] = {key};
+    hlffi_value* result = hlffi_call_method(map, "remove", 1, args);
 
-    HLFFI_UPDATE_STACK_TOP();
+    if (!result) return false;
 
-    switch (wrapper->type) {
-        case HLFFI_MAP_INT: {
-            int k = hlffi_value_as_int(key, 0);
-            return hl_intmap_remove(wrapper->map_ptr, k);
-        }
-        case HLFFI_MAP_STRING: {
-            char* k_str = hlffi_value_as_string(key);
-            if (!k_str) return false;
-            vbyte* k = (vbyte*)k_str;
-            bool removed = hl_strbytesmap_remove(wrapper->map_ptr, k);
-            free(k_str);
-            return removed;
-        }
-        default:
-            return false;
-    }
+    bool removed = hlffi_value_as_bool(result, false);
+    hlffi_value_free(result);
+    return removed;
 }
 
 hlffi_value* hlffi_map_keys(hlffi_vm* vm, hlffi_value* map) {
-    if (!vm || !map || !map->hl_value) return NULL;
+    if (!vm || !map) return NULL;
 
-    hlffi_map_wrapper* wrapper = (hlffi_map_wrapper*)map->hl_value;
-    varray* keys = NULL;
-
-    switch (wrapper->type) {
-        case HLFFI_MAP_INT:
-            keys = hl_intmap_keys(wrapper->map_ptr);
-            break;
-        case HLFFI_MAP_STRING:
-            keys = hl_strbytesmap_keys(wrapper->map_ptr);
-            break;
-        default:
-            set_error(vm, HLFFI_ERROR_NOT_IMPLEMENTED, "Map type not supported");
-            return NULL;
-    }
-
-    if (!keys) return NULL;
-
-    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
-    if (!wrapped) return NULL;
-    wrapped->hl_value = (vdynamic*)keys;
-    wrapped->is_rooted = false;
-    return wrapped;
+    /* Call map.keys() - returns iterator */
+    return hlffi_call_method(map, "keys", 0, NULL);
 }
 
 hlffi_value* hlffi_map_values(hlffi_vm* vm, hlffi_value* map) {
-    if (!vm || !map || !map->hl_value) return NULL;
+    if (!vm || !map) return NULL;
 
-    hlffi_map_wrapper* wrapper = (hlffi_map_wrapper*)map->hl_value;
-    varray* values = NULL;
-
-    switch (wrapper->type) {
-        case HLFFI_MAP_INT:
-            values = hl_intmap_values(wrapper->map_ptr);
-            break;
-        case HLFFI_MAP_STRING:
-            values = hl_strbytesmap_values(wrapper->map_ptr);
-            break;
-        default:
-            set_error(vm, HLFFI_ERROR_NOT_IMPLEMENTED, "Map type not supported");
-            return NULL;
-    }
-
-    if (!values) return NULL;
-
-    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
-    if (!wrapped) return NULL;
-    wrapped->hl_value = (vdynamic*)values;
-    wrapped->is_rooted = false;
-    return wrapped;
+    /* Call map.iterator() - returns value iterator */
+    return hlffi_call_method(map, "iterator", 0, NULL);
 }
 
 int hlffi_map_size(hlffi_value* map) {
-    if (!map || !map->hl_value) return -1;
+    if (!map) return -1;
 
-    hlffi_map_wrapper* wrapper = (hlffi_map_wrapper*)map->hl_value;
-
-    switch (wrapper->type) {
-        case HLFFI_MAP_INT:
-            return hl_intmap_size(wrapper->map_ptr);
-        case HLFFI_MAP_STRING:
-            return hl_strbytesmap_size(wrapper->map_ptr);
-        default:
-            return -1;
-    }
+    /* Maps don't have direct size(), need to iterate or use Lambda.count()
+     * Return -1 to indicate not directly available */
+    return -1;
 }
 
 bool hlffi_map_clear(hlffi_value* map) {
-    if (!map || !map->hl_value) return false;
+    if (!map) return false;
 
-    hlffi_map_wrapper* wrapper = (hlffi_map_wrapper*)map->hl_value;
-
-    switch (wrapper->type) {
-        case HLFFI_MAP_INT:
-            hl_intmap_clear(wrapper->map_ptr);
-            return true;
-        case HLFFI_MAP_STRING:
-            hl_strbytesmap_clear(wrapper->map_ptr);
-            return true;
-        default:
-            return false;
-    }
+    /* Map.clear() exists in some Haxe versions
+     * Not implemented for now */
+    return false;
 }
