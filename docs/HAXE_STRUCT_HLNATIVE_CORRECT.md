@@ -1,12 +1,23 @@
-# Haxe @:struct with @:hlNative - The CORRECT Way
+# Haxe @:struct - Complete Guide for Native Extensions
 
-**CORRECTION:** My previous documentation was WRONG for native extensions!
+**Key Fact:** HashLink @:struct types are passed as **pure C struct pointers** to native functions - NO vdynamic* wrapping, NO overhead.
 
-When using `@:hlNative` with `@:struct`, HashLink passes **pure C struct pointers** directly, with **zero wrapping overhead**.
+**Based on:** [HashLink Advanced Features](https://github.com/HaxeFoundation/hashlink/wiki/Advanced-features)
 
 ---
 
-## The Truth About @:struct with @:hlNative
+## Critical Facts from HashLink Documentation
+
+1. **Structs have NO type header** - unlike regular classes, @:struct omits the `hl_type*` header
+2. **Always passed as pointers** - "structs are always passed as reference and not as value to function calls"
+3. **Dynamic storage wraps them** - when stored in Array/Dynamic, a "small vdynamic* wrapper will be allocated" for type info
+4. **Direct calls = no wrapper** - when calling native functions, just the struct pointer is passed
+
+**This means:** Your C function receives a pure struct pointer, exactly like you'd expect in pure C code.
+
+---
+
+## How to Use @:struct with @:hlNative
 
 ### Haxe Side
 
@@ -159,6 +170,11 @@ DEFINE_PRIM(_VOID, update_particles, _ARR _I32 _F32);
 ```
 
 **Performance:** 10,000 particles updated in ~0.02ms (pure C speed!)
+
+**Note on Array Types:**
+- **hl.NativeArray<T>** - Available in all Haxe versions, works with structs
+- **hl.CArray<T>** - Haxe 4.4+ feature, optimized for structs with single GC allocation
+- Both pass as `T*` pointers to C - same interface!
 
 ---
 
