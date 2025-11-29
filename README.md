@@ -58,6 +58,7 @@ HashLink provides a high-performance runtime for Haxe, but embedding it in C/C++
 - **VM Restart Support**: Experimental support for restarting the VM within a single process
 - **Clean C API**: Explicit error codes, no hidden state, C++17 RAII wrappers
 - **Automatic GC Root Management**: No manual dispose needed
+- **Full Object Control**: Create, destroy, call methods, and access members on Haxe objects from C
 - **Complete Type System**: Arrays, Maps, Bytes, Enums, Abstracts, and Callbacks
 - **Performance Caching**: Cache method lookups for 60x speedup in hot paths
 - **Cross-Platform**: Windows (Visual Studio) first, Linux/macOS/Android/WASM planned
