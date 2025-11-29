@@ -1,0 +1,2418 @@
+/**
+ * HLFFI v3.0 - HashLink Foreign Function Interface
+ *
+ * Production-ready C/C++ library for embedding HashLink/Haxe into applications.
+ *
+ * Features:
+ * - Clean C API with optional C++ wrappers
+ * - Automatic GC root management (no manual dispose!)
+ * - Two integration modes: Non-threaded (engine tick) and Threaded (dedicated thread)
+ * - UV + haxe.EventLoop integration with weak symbols
+ * - Hot reload support (HL 1.12+)
+ * - Type-safe wrappers for common operations
+ *
+ * Platform: Windows (Visual Studio), cross-platform support planned
+ * License: MIT (same as HashLink)
+ */
+
+#ifndef HLFFI_H
+#define HLFFI_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* ========== VERSION ========== */
+
+#define HLFFI_VERSION_MAJOR 3
+#define HLFFI_VERSION_MINOR 0
+#define HLFFI_VERSION_PATCH 0
+#define HLFFI_VERSION_STRING "3.0.0"
+
+/* ========== CORE TYPES ========== */
+
+/**
+ * Opaque VM handle.
+ * Represents a HashLink virtual machine instance.
+ * Only one VM per process is supported (HashLink limitation).
+ */
+typedef struct hlffi_vm hlffi_vm;
+
+/**
+ * Opaque type handle.
+ * Represents a Haxe type for reflection.
+ */
+typedef struct hlffi_type hlffi_type;
+
+/**
+ * Forward declaration of HashLink's hl_type.
+ * Used for advanced operations like array creation with specific element types.
+ */
+typedef struct hl_type hl_type;
+
+/**
+ * Opaque value handle - TEMPORARY CONVERSION WRAPPER.
+ *
+ * DESIGN INTENT: hlffi_value is for CONVERSION and PASSING data between
+ * C and Haxe, NOT for long-term storage in C data structures.
+ *
+ * ✅ SAFE USAGE PATTERN (Temporary Conversion):
+ *    hlffi_value* temp = hlffi_value_int(vm, 100);
+ *    hlffi_call_method(obj, "setHealth", 1, &temp);
+ *    hlffi_value_free(temp);  // Use immediately, then free
+ *
+ * ✅ SAFE: Extract and store native types:
+ *    hlffi_value* hp = hlffi_get_field(obj, "health");
+ *    int health = hlffi_value_as_int(hp, 0);  // Copy to C int
+ *    hlffi_value_free(hp);
+ *    // Now 'health' is a C-owned value, safe to store anywhere
+ *
+ * ✅ SAFE: Store Haxe objects created with hlffi_new():
+ *    struct Game { hlffi_value* player; };
+ *    game->player = hlffi_new(vm, "Player", 0, NULL);  // GC-rooted
+ *    // This is safe because hlffi_new() adds an explicit GC root
+ *    // Must call hlffi_value_free() when done to remove root
+ *
+ * ❌ UNSAFE: Storing temporary wrappers:
+ *    struct Data { hlffi_value* temp; };  // DON'T DO THIS!
+ *    data->temp = hlffi_value_int(vm, 100);  // NOT GC-rooted!
+ *
+ * ❌ UNSAFE: Global/static storage:
+ *    static hlffi_value* g_value = NULL;  // DON'T DO THIS!
+ *
+ * MEMORY MANAGEMENT:
+ * - ALWAYS call hlffi_value_free() when done (safe for all values)
+ * - Values from hlffi_new() are GC-rooted (safe to store)
+ * - Values from hlffi_value_int/float/bool/string() are NOT rooted (temporary)
+ * - Values from hlffi_get_field/hlffi_call_method() are NOT rooted (temporary)
+ * - Strings from hlffi_value_as_string() must be freed with free()
+ *
+ * GC SAFETY:
+ * Non-rooted values rely on GC stack scanning for protection. They are safe
+ * when stored in local (stack) variables and used immediately within the same
+ * function. They become unsafe when stored in heap-allocated structs, globals,
+ * or passed across async boundaries.
+ */
+typedef struct hlffi_value hlffi_value;
+
+/* ========== ERROR CODES ========== */
+
+typedef enum {
+    HLFFI_OK = 0,
+
+    /* VM lifecycle errors */
+    HLFFI_ERROR_NULL_VM,
+    HLFFI_ERROR_ALREADY_INITIALIZED,
+    HLFFI_ERROR_NOT_INITIALIZED,
+    HLFFI_ERROR_INIT_FAILED,
+    HLFFI_ERROR_DESTROY_FAILED,
+
+    /* Loading errors */
+    HLFFI_ERROR_FILE_NOT_FOUND,
+    HLFFI_ERROR_INVALID_BYTECODE,
+    HLFFI_ERROR_MODULE_LOAD_FAILED,
+    HLFFI_ERROR_MODULE_INIT_FAILED,
+
+    /* Call errors */
+    HLFFI_ERROR_ENTRY_POINT_NOT_FOUND,
+    HLFFI_ERROR_TYPE_NOT_FOUND,
+    HLFFI_ERROR_METHOD_NOT_FOUND,
+    HLFFI_ERROR_FIELD_NOT_FOUND,
+    HLFFI_ERROR_CALL_FAILED,
+    HLFFI_ERROR_EXCEPTION_THROWN,
+
+    /* Type errors */
+    HLFFI_ERROR_INVALID_TYPE,
+    HLFFI_ERROR_TYPE_MISMATCH,
+    HLFFI_ERROR_NULL_VALUE,
+
+    /* Hot reload errors */
+    HLFFI_ERROR_RELOAD_NOT_SUPPORTED,
+    HLFFI_ERROR_RELOAD_NOT_ENABLED,
+    HLFFI_ERROR_RELOAD_FAILED,
+
+    /* Threading errors */
+    HLFFI_ERROR_THREAD_NOT_STARTED,
+    HLFFI_ERROR_THREAD_ALREADY_RUNNING,
+    HLFFI_ERROR_THREAD_START_FAILED,
+    HLFFI_ERROR_THREAD_STOP_FAILED,
+    HLFFI_ERROR_WRONG_THREAD,
+
+    /* Event loop errors */
+    HLFFI_ERROR_EVENTLOOP_NOT_FOUND,
+    HLFFI_ERROR_EVENTLOOP_FAILED,
+
+    /* Generic errors */
+    HLFFI_ERROR_OUT_OF_MEMORY,
+    HLFFI_ERROR_INVALID_ARGUMENT,
+    HLFFI_ERROR_NOT_IMPLEMENTED,
+    HLFFI_ERROR_UNKNOWN
+} hlffi_error_code;
+
+/* ========== INTEGRATION MODES ========== */
+
+/**
+ * Integration mode determines how HLFFI manages the VM lifecycle.
+ *
+ * NON_THREADED (recommended): Engine/host controls main loop
+ *   - Call hlffi_update() every frame from host thread
+ *   - Direct function calls, no synchronization overhead
+ *   - Use for: Unreal, Unity, game engines, tools
+ *
+ * THREADED (advanced): Dedicated VM thread
+ *   - Call hlffi_thread_start() to spawn thread
+ *   - Thread-safe calls via hlffi_thread_call_sync()
+ *   - Use for: Haxe code with blocking while loop (Android pattern)
+ */
+typedef enum {
+    HLFFI_MODE_NON_THREADED = 0,  /* Engine controls loop (default) */
+    HLFFI_MODE_THREADED = 1        /* Dedicated VM thread */
+} hlffi_integration_mode;
+
+/* ========== EVENT LOOP TYPES ========== */
+
+/**
+ * Event loop type for hlffi_process_events().
+ *
+ * UV: libuv event loop (async I/O, HTTP, file watch, timers)
+ * HAXE: haxe.EventLoop (haxe.Timer, haxe.MainLoop callbacks)
+ * ALL: Both UV + Haxe (default for hlffi_update)
+ */
+typedef enum {
+    HLFFI_EVENTLOOP_UV = 0,
+    HLFFI_EVENTLOOP_HAXE = 1,
+    HLFFI_EVENTLOOP_ALL = 2
+} hlffi_eventloop_type;
+
+/* ========== CALLBACKS ========== */
+
+/**
+ * Hot reload callback.
+ * Called after a reload attempt (success or failure).
+ *
+ * @param vm VM instance
+ * @param success true if reload succeeded, false if failed
+ * @param userdata User-provided data (passed to hlffi_set_reload_callback)
+ */
+typedef void (*hlffi_reload_callback)(hlffi_vm* vm, bool success, void* userdata);
+
+/**
+ * Thread function callback.
+ * Used with hlffi_thread_call_sync() and hlffi_thread_call_async().
+ *
+ * @param vm VM instance (safe to call hlffi_* functions)
+ * @param userdata User-provided data
+ */
+typedef void (*hlffi_thread_func)(hlffi_vm* vm, void* userdata);
+
+/**
+ * Thread async callback.
+ * Called when async thread operation completes.
+ *
+ * @param vm VM instance
+ * @param result Result from thread function (or NULL)
+ * @param userdata User-provided data
+ */
+typedef void (*hlffi_thread_async_callback)(hlffi_vm* vm, void* result, void* userdata);
+
+/* ========== CORE VM LIFECYCLE ========== */
+
+/**
+ * Create a new VM instance.
+ * Allocates VM structure but does not initialize HashLink runtime.
+ *
+ * @return VM instance, or NULL on allocation failure
+ *
+ * @note Only ONE VM per process is supported (HashLink limitation)
+ * @note Call hlffi_init() to initialize the VM
+ */
+hlffi_vm* hlffi_create(void);
+
+/**
+ * Initialize HashLink runtime.
+ * Sets up GC, registers main thread, prepares for module loading.
+ *
+ * @param vm VM instance
+ * @param argc Argument count (pass 0 if no args)
+ * @param argv Argument vector (pass NULL if no args)
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note This can only be called ONCE per process
+ * @note Cannot be called again after hlffi_destroy()
+ */
+hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv);
+
+/**
+ * Load bytecode from file.
+ * Loads .hl bytecode file from disk into memory.
+ *
+ * @param vm VM instance
+ * @param path Path to .hl file
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note File must be valid HashLink bytecode
+ * @note Call hlffi_call_entry() after loading to run main()
+ */
+hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path);
+
+/**
+ * Load bytecode from memory buffer.
+ * Loads .hl bytecode from a memory buffer.
+ *
+ * @param vm VM instance
+ * @param data Pointer to bytecode data
+ * @param size Size of bytecode in bytes
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Buffer must contain valid HashLink bytecode
+ * @note Buffer can be freed after this function returns
+ */
+hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size);
+
+/**
+ * Call the entry point (main() function).
+ * Runs the Haxe main() function and sets up global state.
+ *
+ * @param vm VM instance
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note This MUST be called even if main() is empty (sets up globals)
+ * @note In NON_THREADED mode: Returns immediately (if Haxe has no while loop)
+ * @note In THREADED mode: Called automatically by hlffi_thread_start()
+ *
+ * @warning If Haxe code has a while loop, this will block!
+ *          Use THREADED mode or ensure Haxe main() returns
+ */
+hlffi_error_code hlffi_call_entry(hlffi_vm* vm);
+
+/**
+ * Destroy VM instance.
+ * Frees VM resources and shuts down HashLink runtime.
+ *
+ * @param vm VM instance
+ *
+ * @warning Only call this at process exit!
+ * @warning Cannot create a new VM after calling this (HashLink limitation)
+ * @warning Use hot reload instead of destroy/create for code changes
+ */
+void hlffi_destroy(hlffi_vm* vm);
+
+/**
+ * Get last error message.
+ * Returns a human-readable error message for the last error.
+ *
+ * @param vm VM instance
+ * @return Error message string (valid until next error)
+ */
+const char* hlffi_get_error(hlffi_vm* vm);
+
+/**
+ * Get error string from error code.
+ *
+ * @param code Error code
+ * @return Human-readable error message
+ */
+const char* hlffi_get_error_string(hlffi_error_code code);
+
+/* ========== GC STACK SCANNING FIX ========== */
+
+/**
+ * Update the GC stack top to current stack position.
+ *
+ * BACKGROUND:
+ * HashLink's GC scans the C call stack to find object references. When embedding
+ * HashLink, the initial stack_top pointer may point to heap memory instead of
+ * the actual stack, causing incorrect GC behavior (crashes in Debug, corruption
+ * in Release). See docs/GC_STACK_SCANNING.md for full details.
+ *
+ * CURRENT STATUS:
+ * HLFFI now handles this internally - all HLFFI functions that allocate GC memory
+ * automatically update stack_top. You typically don't need to call this manually.
+ *
+ * WHEN TO USE THIS:
+ * Only if you encounter GC-related crashes and the internal fix is insufficient
+ * (e.g., complex threading scenarios, or calling HashLink directly without HLFFI).
+ *
+ * @param stack_marker Address of a local variable on the call stack
+ *
+ * Usage:
+ *   void my_update_loop(hlffi_vm* vm) {
+ *       int stack_marker;
+ *       hlffi_update_stack_top(&stack_marker);
+ *       // ... now safe to call hlffi functions in loop ...
+ *   }
+ *
+ * @note The stack_marker MUST be a local variable (on the stack), not heap-allocated
+ * @note See: https://github.com/HaxeFoundation/hashlink/issues/752
+ */
+void hlffi_update_stack_top(void* stack_marker);
+
+/**
+ * Macro to update stack top using current stack frame.
+ * Automatically creates a local variable and updates stack_top.
+ *
+ * CURRENT STATUS:
+ * Not normally needed - HLFFI handles this internally. Provided as a fallback
+ * if you encounter GC issues in edge cases.
+ *
+ * Usage:
+ *   void my_update_loop(hlffi_vm* vm) {
+ *       HLFFI_ENTER_SCOPE();  // Must be early in the function
+ *       // ... now safe to call hlffi functions in loop ...
+ *   }
+ */
+#define HLFFI_ENTER_SCOPE() \
+    do { \
+        int _hlffi_stack_marker; \
+        hlffi_update_stack_top(&_hlffi_stack_marker); \
+    } while(0)
+
+/* ========== INTEGRATION MODE SETUP ========== */
+
+/**
+ * Set integration mode.
+ * Must be called BEFORE hlffi_call_entry().
+ *
+ * @param vm VM instance
+ * @param mode Integration mode (NON_THREADED or THREADED)
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Default is NON_THREADED
+ * @note Cannot be changed after hlffi_call_entry()
+ */
+hlffi_error_code hlffi_set_integration_mode(hlffi_vm* vm, hlffi_integration_mode mode);
+
+/**
+ * Get current integration mode.
+ *
+ * @param vm VM instance
+ * @return Current integration mode
+ */
+hlffi_integration_mode hlffi_get_integration_mode(hlffi_vm* vm);
+
+/* ========== MODE 1: NON-THREADED (Engine controls loop) ========== */
+
+/**
+ * Update VM (process events).
+ * Call this EVERY FRAME from engine tick in NON_THREADED mode.
+ *
+ * Processes:
+ * - libuv events (async I/O, HTTP, timers) - if UV loop exists
+ * - haxe.EventLoop events (haxe.Timer callbacks) - if EventLoop exists
+ *
+ * @param vm VM instance
+ * @param delta_time Frame delta time in seconds (optional, can be 0)
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Non-blocking - returns immediately after processing pending events
+ * @note Uses weak symbols - only processes event loops that exist
+ * @note Call from engine tick: Tick() { hlffi_update(vm, dt); }
+ */
+hlffi_error_code hlffi_update(hlffi_vm* vm, float delta_time);
+
+/**
+ * Check if VM has pending work.
+ * Returns true if there are pending events to process.
+ *
+ * @param vm VM instance
+ * @return true if pending work exists
+ */
+bool hlffi_has_pending_work(hlffi_vm* vm);
+
+/* ========== MODE 2: THREADED (Dedicated VM thread) ========== */
+
+/**
+ * Start dedicated VM thread.
+ * Spawns a thread and calls hlffi_call_entry() in the thread.
+ * Use in THREADED mode when Haxe code has blocking while loop.
+ *
+ * @param vm VM instance
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Only use in THREADED mode
+ * @note Entry point may block in the thread (not in host app)
+ * @note All function calls must use hlffi_thread_call_*()
+ */
+hlffi_error_code hlffi_thread_start(hlffi_vm* vm);
+
+/**
+ * Stop dedicated VM thread.
+ * Waits for thread to finish and cleans up.
+ *
+ * @param vm VM instance
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Thread-safe
+ * @note Blocks until thread exits
+ */
+hlffi_error_code hlffi_thread_stop(hlffi_vm* vm);
+
+/**
+ * Check if VM thread is running.
+ *
+ * @param vm VM instance
+ * @return true if thread is running
+ */
+bool hlffi_thread_is_running(hlffi_vm* vm);
+
+/**
+ * Call function in VM thread (synchronous).
+ * Queues a function call to the VM thread and blocks until complete.
+ *
+ * @param vm VM instance
+ * @param func Function to call in VM thread
+ * @param userdata User data passed to function
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Only use in THREADED mode
+ * @note Blocks until function completes
+ * @note Thread-safe
+ */
+hlffi_error_code hlffi_thread_call_sync(hlffi_vm* vm, hlffi_thread_func func, void* userdata);
+
+/**
+ * Call function in VM thread (asynchronous).
+ * Queues a function call to the VM thread and returns immediately.
+ *
+ * @param vm VM instance
+ * @param func Function to call in VM thread
+ * @param callback Callback when function completes (optional)
+ * @param userdata User data passed to function
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Only use in THREADED mode
+ * @note Returns immediately
+ * @note Thread-safe
+ */
+hlffi_error_code hlffi_thread_call_async(
+    hlffi_vm* vm,
+    hlffi_thread_func func,
+    hlffi_thread_async_callback callback,
+    void* userdata
+);
+
+/* ========== EVENT LOOP INTEGRATION (Advanced) ========== */
+
+/**
+ * Process specific event loop.
+ * Low-level control over event processing.
+ * Most users should use hlffi_update() instead.
+ *
+ * @param vm VM instance
+ * @param type Event loop type (UV, HAXE, or ALL)
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Non-blocking - returns immediately
+ * @note Uses weak symbols - no-op if event loop doesn't exist
+ */
+hlffi_error_code hlffi_process_events(hlffi_vm* vm, hlffi_eventloop_type type);
+
+/**
+ * Check if event loop has pending events.
+ *
+ * @param vm VM instance
+ * @param type Event loop type (UV or HAXE)
+ * @return true if pending events exist
+ */
+bool hlffi_has_pending_events(hlffi_vm* vm, hlffi_eventloop_type type);
+
+/* ========== HOT RELOAD ========== */
+
+/**
+ * Enable/disable hot reload.
+ * Allows reloading changed bytecode without restart.
+ *
+ * @param vm VM instance
+ * @param enable true to enable, false to disable
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Requires HashLink 1.12+
+ * @note Only works in JIT mode (not HL/C)
+ * @note Must call before hlffi_call_entry()
+ */
+hlffi_error_code hlffi_enable_hot_reload(hlffi_vm* vm, bool enable);
+
+/**
+ * Check if hot reload is enabled.
+ *
+ * @param vm VM instance
+ * @return true if hot reload is enabled
+ */
+bool hlffi_is_hot_reload_enabled(hlffi_vm* vm);
+
+/**
+ * Reload module from file.
+ * Reloads changed bytecode without restarting VM.
+ *
+ * @param vm VM instance
+ * @param path Path to new .hl file
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Hot reload must be enabled
+ * @note Preserves runtime state
+ * @note Triggers reload callback if set
+ */
+hlffi_error_code hlffi_reload_module(hlffi_vm* vm, const char* path);
+
+/**
+ * Reload module from memory.
+ *
+ * @param vm VM instance
+ * @param data Pointer to new bytecode
+ * @param size Size of bytecode in bytes
+ * @return HLFFI_OK on success, error code on failure
+ */
+hlffi_error_code hlffi_reload_module_memory(hlffi_vm* vm, const void* data, size_t size);
+
+/**
+ * Set reload callback.
+ * Called after each reload attempt (success or failure).
+ *
+ * @param vm VM instance
+ * @param callback Callback function (or NULL to clear)
+ * @param userdata User data passed to callback
+ */
+void hlffi_set_reload_callback(hlffi_vm* vm, hlffi_reload_callback callback, void* userdata);
+
+/**
+ * Check for file changes and reload if needed.
+ * Call this periodically (e.g., each frame) to enable automatic hot reload.
+ *
+ * @param vm VM instance
+ * @return true if reload occurred, false otherwise
+ */
+bool hlffi_check_reload(hlffi_vm* vm);
+
+/* ========== WORKER THREAD HELPERS ========== */
+
+/**
+ * Register worker thread.
+ * Call from worker thread BEFORE using any HLFFI functions.
+ * Use for background work FROM Haxe (e.g., sys.thread.Thread).
+ *
+ * @note Must call hlffi_worker_unregister() when done
+ * @note Each thread must register separately
+ */
+void hlffi_worker_register(void);
+
+/**
+ * Unregister worker thread.
+ * Call when worker thread is done using HLFFI.
+ */
+void hlffi_worker_unregister(void);
+
+/**
+ * Begin external blocking operation.
+ * Call before blocking I/O from Haxe code.
+ * Balances hl_blocking() to prevent GC issues.
+ *
+ * @note Must call hlffi_blocking_end() after operation!
+ * @note Calls must be balanced (begin/end pairs)
+ */
+void hlffi_blocking_begin(void);
+
+/**
+ * End external blocking operation.
+ * Call after blocking I/O completes.
+ */
+void hlffi_blocking_end(void);
+
+/* ========== UTILITIES ========== */
+
+/**
+ * Get HLFFI version string.
+ *
+ * @return Version string (e.g., "3.0.0")
+ */
+const char* hlffi_get_version(void);
+
+/**
+ * Get HashLink version string.
+ *
+ * @return HashLink version string
+ */
+const char* hlffi_get_hl_version(void);
+
+/**
+ * Check if running in JIT mode.
+ *
+ * @return true if JIT mode, false if HL/C mode
+ */
+bool hlffi_is_jit_mode(void);
+
+/* ========== PHASE 2: TYPE SYSTEM & REFLECTION ========== */
+
+/**
+ * Type kind enumeration.
+ * Matches HashLink's hl_type_kind values.
+ */
+typedef enum {
+    HLFFI_TYPE_VOID = 0,
+    HLFFI_TYPE_UI8,
+    HLFFI_TYPE_UI16,
+    HLFFI_TYPE_I32,
+    HLFFI_TYPE_I64,
+    HLFFI_TYPE_F32,
+    HLFFI_TYPE_F64,
+    HLFFI_TYPE_BOOL,
+    HLFFI_TYPE_BYTES,
+    HLFFI_TYPE_DYN,
+    HLFFI_TYPE_FUN,
+    HLFFI_TYPE_OBJ,        // Class/object type
+    HLFFI_TYPE_ARRAY,
+    HLFFI_TYPE_TYPE,
+    HLFFI_TYPE_REF,
+    HLFFI_TYPE_VIRTUAL,
+    HLFFI_TYPE_DYNOBJ,
+    HLFFI_TYPE_ABSTRACT,
+    HLFFI_TYPE_ENUM,
+    HLFFI_TYPE_NULL,
+    HLFFI_TYPE_METHOD,
+    HLFFI_TYPE_STRUCT,
+    HLFFI_TYPE_PACKED
+} hlffi_type_kind;
+
+/**
+ * Type iterator callback.
+ * Called for each type during hlffi_list_types().
+ *
+ * @param type Type being visited
+ * @param userdata User-provided data
+ */
+typedef void (*hlffi_type_callback)(hlffi_type* type, void* userdata);
+
+/**
+ * Find type by name.
+ * Searches loaded module for a type with the given name.
+ *
+ * @param vm VM instance
+ * @param name Type name (e.g., "Player", "com.example.MyClass")
+ * @return Type handle, or NULL if not found
+ *
+ * @note For packaged types, use full name: "com.example.Player"
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Type handle valid until module unloaded
+ */
+hlffi_type* hlffi_find_type(hlffi_vm* vm, const char* name);
+
+/**
+ * Get type kind.
+ * Returns the kind of type (class, enum, primitive, etc.).
+ *
+ * @param type Type handle
+ * @return Type kind enum value
+ *
+ * @note Returns HLFFI_TYPE_VOID if type is NULL
+ */
+hlffi_type_kind hlffi_type_get_kind(hlffi_type* type);
+
+/**
+ * Get type name.
+ * Returns the fully-qualified name of the type.
+ *
+ * @param type Type handle
+ * @return Type name string (UTF-8), or NULL if type is NULL
+ *
+ * @note String valid until type is unloaded
+ * @note For objects: returns class name (e.g., "Player")
+ * @note For primitives: returns kind name (e.g., "i32", "f64")
+ */
+const char* hlffi_type_get_name(hlffi_type* type);
+
+/**
+ * Enumerate all types in module.
+ * Calls callback for each type in the loaded module.
+ *
+ * @param vm VM instance
+ * @param callback Function to call for each type
+ * @param userdata User data passed to callback
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Callback called for ALL types (primitives, classes, enums, etc.)
+ * @note Use hlffi_type_get_kind() to filter types in callback
+ */
+hlffi_error_code hlffi_list_types(hlffi_vm* vm, hlffi_type_callback callback, void* userdata);
+
+/* ========== CLASS INSPECTION ========== */
+
+/**
+ * Get superclass of a class type.
+ * Returns the parent class, or NULL if no parent.
+ *
+ * @param type Class type handle
+ * @return Parent class type, or NULL if none or not a class
+ *
+ * @note Only works for HLFFI_TYPE_OBJ types
+ * @note Returns NULL for root classes (no parent)
+ */
+hlffi_type* hlffi_class_get_super(hlffi_type* type);
+
+/**
+ * Get number of fields in a class.
+ * Returns count of instance fields (not including inherited fields).
+ *
+ * @param type Class type handle
+ * @return Field count, or -1 if not a class type
+ *
+ * @note Only counts direct fields, not inherited ones
+ * @note Use hlffi_class_get_super() to traverse hierarchy
+ */
+int hlffi_class_get_field_count(hlffi_type* type);
+
+/**
+ * Get field name by index.
+ * Returns the name of the field at the given index.
+ *
+ * @param type Class type handle
+ * @param index Field index (0 to field_count-1)
+ * @return Field name (UTF-8), or NULL if invalid
+ *
+ * @note Index must be < hlffi_class_get_field_count()
+ * @note String valid until type is unloaded
+ */
+const char* hlffi_class_get_field_name(hlffi_type* type, int index);
+
+/**
+ * Get field type by index.
+ * Returns the type of the field at the given index.
+ *
+ * @param type Class type handle
+ * @param index Field index (0 to field_count-1)
+ * @return Field type handle, or NULL if invalid
+ *
+ * @note Index must be < hlffi_class_get_field_count()
+ */
+hlffi_type* hlffi_class_get_field_type(hlffi_type* type, int index);
+
+/**
+ * Get number of methods in a class.
+ * Returns count of methods (not including inherited methods).
+ *
+ * @param type Class type handle
+ * @return Method count, or -1 if not a class type
+ *
+ * @note Only counts direct methods, not inherited ones
+ */
+int hlffi_class_get_method_count(hlffi_type* type);
+
+/**
+ * Get method name by index.
+ * Returns the name of the method at the given index.
+ *
+ * @param type Class type handle
+ * @param index Method index (0 to method_count-1)
+ * @return Method name (UTF-8), or NULL if invalid
+ *
+ * @note Index must be < hlffi_class_get_method_count()
+ * @note String valid until type is unloaded
+ */
+const char* hlffi_class_get_method_name(hlffi_type* type, int index);
+
+/* ========== PHASE 3: STATIC MEMBERS & VALUES ========== */
+
+/**
+ * Create integer value.
+ *
+ * @param vm VM instance
+ * @param value Integer value
+ * @return Boxed value handle
+ *
+ * @note Value is GC-managed, valid until unreachable
+ */
+hlffi_value* hlffi_value_int(hlffi_vm* vm, int value);
+
+/**
+ * Create float value (F64).
+ *
+ * @param vm VM instance
+ * @param value Float value (64-bit double)
+ * @return Boxed value handle
+ */
+hlffi_value* hlffi_value_float(hlffi_vm* vm, double value);
+
+/**
+ * Create f32 value (F32).
+ *
+ * @param vm VM instance
+ * @param value Float value (32-bit float)
+ * @return Boxed value handle
+ */
+hlffi_value* hlffi_value_f32(hlffi_vm* vm, float value);
+
+/**
+ * Create boolean value.
+ *
+ * @param vm VM instance
+ * @param value Boolean value
+ * @return Boxed value handle
+ */
+hlffi_value* hlffi_value_bool(hlffi_vm* vm, bool value);
+
+/**
+ * Create string value.
+ *
+ * @param vm VM instance
+ * @param str UTF-8 string (will be converted to UTF-16)
+ * @return Boxed value handle, or NULL if string is NULL
+ */
+hlffi_value* hlffi_value_string(hlffi_vm* vm, const char* str);
+
+/**
+ * Create null value.
+ *
+ * @param vm VM instance
+ * @return Boxed null value
+ */
+hlffi_value* hlffi_value_null(hlffi_vm* vm);
+
+/**
+ * Free a value handle.
+ *
+ * This removes the GC root and frees the wrapper struct.
+ * IMPORTANT: Always use this function instead of free() on hlffi_value pointers.
+ *
+ * @param value Value handle to free (can be NULL)
+ */
+void hlffi_value_free(hlffi_value* value);
+
+/**
+ * Extract integer from value.
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Integer value, or fallback if not an integer
+ */
+int hlffi_value_as_int(hlffi_value* value, int fallback);
+
+/**
+ * Extract float from value (F64).
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Float value (64-bit double), or fallback if not a float
+ */
+double hlffi_value_as_float(hlffi_value* value, double fallback);
+
+/**
+ * Extract f32 from value (F32).
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Float value (32-bit float), or fallback if not an f32
+ */
+float hlffi_value_as_f32(hlffi_value* value, float fallback);
+
+/**
+ * Extract boolean from value.
+ *
+ * @param value Value handle
+ * @param fallback Fallback value if conversion fails
+ * @return Boolean value, or fallback if not a boolean
+ */
+bool hlffi_value_as_bool(hlffi_value* value, bool fallback);
+
+/**
+ * Extract string from value.
+ * Returns UTF-8 string converted from HashLink's UTF-16.
+ *
+ * @param value Value handle
+ * @return UTF-8 string, or NULL if not a string
+ *
+ * @note MEMORY OWNERSHIP: Caller must free() the returned string with free()
+ * @note Returns NULL if value is NULL or not a string
+ * @note The string is a COPY - safe to store and use after freeing hlffi_value
+ *
+ * Example:
+ *   hlffi_value* name = hlffi_get_field(obj, "name");
+ *   char* str = hlffi_value_as_string(name);
+ *   hlffi_value_free(name);  // Can free value immediately
+ *   // str is still valid - it's an independent copy
+ *   printf("Name: %s\n", str);
+ *   free(str);  // Must free the string when done
+ */
+char* hlffi_value_as_string(hlffi_value* value);
+
+/**
+ * Check if value is null.
+ *
+ * @param value Value handle
+ * @return true if value is null or NULL pointer
+ */
+bool hlffi_value_is_null(hlffi_value* value);
+
+/* ========== PHASE 5: ARRAY OPERATIONS ========== */
+
+/**
+ * Create a new array.
+ *
+ * @param vm VM instance
+ * @param element_type Type of array elements (use &hlt_i32, &hlt_f64, &hlt_dyn, etc.)
+ *                     Pass NULL for dynamic arrays
+ * @param length Initial array length
+ * @return New array value, or NULL on error
+ *
+ * Example:
+ *   // Create int array of length 10
+ *   hlffi_value* arr = hlffi_array_new(vm, &hlt_i32, 10);
+ *
+ *   // Create dynamic array of length 5
+ *   hlffi_value* arr = hlffi_array_new(vm, NULL, 5);
+ */
+hlffi_value* hlffi_array_new(hlffi_vm* vm, hl_type* element_type, int length);
+
+/**
+ * Get array length.
+ *
+ * @param arr Array value
+ * @return Array length, or -1 if not an array
+ */
+int hlffi_array_length(hlffi_value* arr);
+
+/**
+ * Get array element at index.
+ *
+ * @param vm VM instance
+ * @param arr Array value
+ * @param index Element index (0-based)
+ * @return Element value, or NULL on error/out of bounds
+ *
+ * @note Returned value must be freed with hlffi_value_free()
+ *
+ * Example:
+ *   hlffi_value* elem = hlffi_array_get(vm, arr, 0);
+ *   int value = hlffi_value_as_int(elem, 0);
+ *   hlffi_value_free(elem);
+ */
+hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index);
+
+/**
+ * Set array element at index.
+ *
+ * @param vm VM instance
+ * @param arr Array value
+ * @param index Element index (0-based)
+ * @param value New value for element
+ * @return true on success, false on error/out of bounds
+ *
+ * Example:
+ *   hlffi_value* val = hlffi_value_int(vm, 42);
+ *   hlffi_array_set(vm, arr, 0, val);
+ *   hlffi_value_free(val);
+ */
+bool hlffi_array_set(hlffi_vm* vm, hlffi_value* arr, int index, hlffi_value* value);
+
+/**
+ * Append element to end of array.
+ *
+ * @param vm VM instance
+ * @param arr Array value (will be modified to point to new larger array)
+ * @param value Value to append
+ * @return true on success, false on error
+ *
+ * @warning This creates a new array and copies all elements! O(n) operation.
+ *          For building large arrays, preallocate with hlffi_array_new() and use hlffi_array_set()
+ *
+ * Example:
+ *   hlffi_value* val = hlffi_value_int(vm, 99);
+ *   hlffi_array_push(vm, arr, val);
+ *   hlffi_value_free(val);
+ */
+bool hlffi_array_push(hlffi_vm* vm, hlffi_value* arr, hlffi_value* value);
+
+/* === NativeArray Support === */
+
+/**
+ * Create a NativeArray (unwrapped varray for direct memory access).
+ * NativeArray<T> provides zero-copy access to contiguous memory.
+ *
+ * @param vm VM instance
+ * @param element_type Element type (e.g., &hlt_i32, &hlt_f64)
+ * @param length Array length
+ * @return NativeArray wrapped in hlffi_value, or NULL on error
+ *
+ * @note NativeArray is 10-40x faster than Array<T> for bulk operations
+ * @note Use hlffi_native_array_get_ptr() for direct pointer access
+ * @note For structs, use hlffi_native_array_new_struct()
+ *
+ * Example:
+ *   hlffi_value* arr = hlffi_native_array_new(vm, &hlt_f32, 10000);
+ *   float* data = hlffi_native_array_get_ptr(arr);
+ *   for (int i = 0; i < 10000; i++) data[i] = i * 0.1f;
+ */
+hlffi_value* hlffi_native_array_new(hlffi_vm* vm, hl_type* element_type, int length);
+
+/**
+ * Get direct pointer to NativeArray data (zero-copy access).
+ *
+ * @param arr NativeArray value
+ * @return Pointer to array data, or NULL on error
+ *
+ * @warning Pointer is valid only while array is alive (GC rooted)
+ * @warning Do not write past array bounds
+ *
+ * Example:
+ *   int* data = (int*)hlffi_native_array_get_ptr(arr);
+ *   int len = hlffi_array_length(arr);
+ *   for (int i = 0; i < len; i++) data[i] = i * i;
+ */
+void* hlffi_native_array_get_ptr(hlffi_value* arr);
+
+/* === Struct Array Support === */
+
+/**
+ * Create Array<Struct> where each element is wrapped in vdynamic*.
+ * Use this when you need Haxe Array compatibility.
+ *
+ * @param vm VM instance
+ * @param struct_type Struct type (from hlffi_find_type())
+ * @param length Array length
+ * @return Array<Struct> wrapped in hlffi_value, or NULL on error
+ *
+ * @note Each element occupies 8-16 bytes (vdynamic* wrapper overhead)
+ * @note For performance, prefer hlffi_native_array_new_struct()
+ *
+ * Example:
+ *   hlffi_type* vec3_type = hlffi_find_type(vm, "Vec3");
+ *   hlffi_value* arr = hlffi_array_new_struct(vm, vec3_type, 100);
+ */
+hlffi_value* hlffi_array_new_struct(hlffi_vm* vm, hlffi_type* struct_type, int length);
+
+/**
+ * Get struct element from Array<Struct>.
+ * Unwraps vdynamic* wrapper to access raw struct pointer.
+ *
+ * @param arr Array<Struct> value
+ * @param index Element index
+ * @return Pointer to struct data, or NULL on error
+ *
+ * @note Returned pointer is to wrapped struct (vdynamic.v.ptr)
+ * @note Pointer valid while array element exists
+ *
+ * Example:
+ *   Vec3* v = (Vec3*)hlffi_array_get_struct(arr, 0);
+ *   if (v) printf("x=%f, y=%f, z=%f\n", v->x, v->y, v->z);
+ */
+void* hlffi_array_get_struct(hlffi_value* arr, int index);
+
+/**
+ * Set struct element in Array<Struct>.
+ * Wraps struct pointer in vdynamic* before storing.
+ *
+ * @param vm VM instance
+ * @param arr Array<Struct> value
+ * @param index Element index
+ * @param struct_ptr Pointer to struct data to copy
+ * @param struct_size Size of struct in bytes
+ * @return true on success, false on error
+ *
+ * @note Creates vdynamic* wrapper and copies struct data
+ * @note Bounds checked
+ *
+ * Example:
+ *   Vec3 v = {1.0f, 2.0f, 3.0f};
+ *   hlffi_array_set_struct(vm, arr, 0, &v, sizeof(Vec3));
+ */
+bool hlffi_array_set_struct(hlffi_vm* vm, hlffi_value* arr, int index, void* struct_ptr, int struct_size);
+
+/**
+ * Create NativeArray<Struct> with contiguous memory layout.
+ * Each struct stored directly in array (no wrapping overhead).
+ *
+ * @param vm VM instance
+ * @param struct_type Struct type (from hlffi_find_type())
+ * @param length Array length
+ * @return NativeArray<Struct> wrapped in hlffi_value, or NULL on error
+ *
+ * @note 10-40x faster than Array<Struct> for bulk operations
+ * @note Use hlffi_native_array_get_struct_ptr() for direct access
+ *
+ * Example:
+ *   hlffi_type* particle_type = hlffi_find_type(vm, "Particle");
+ *   hlffi_value* particles = hlffi_native_array_new_struct(vm, particle_type, 10000);
+ *   Particle* data = hlffi_native_array_get_struct_ptr(particles);
+ *   for (int i = 0; i < 10000; i++) {
+ *       data[i].x = rand_float();
+ *       data[i].y = rand_float();
+ *   }
+ */
+hlffi_value* hlffi_native_array_new_struct(hlffi_vm* vm, hlffi_type* struct_type, int length);
+
+/**
+ * Get direct pointer to NativeArray<Struct> data.
+ *
+ * @param arr NativeArray<Struct> value
+ * @return Pointer to first struct element, or NULL on error
+ *
+ * @warning Pointer valid only while array is alive (GC rooted)
+ * @warning Do not write past array bounds
+ *
+ * Example:
+ *   Vec3* vecs = (Vec3*)hlffi_native_array_get_struct_ptr(arr);
+ *   int len = hlffi_array_length(arr);
+ *   for (int i = 0; i < len; i++) {
+ *       vecs[i].x *= 2.0f;
+ *       vecs[i].y *= 2.0f;
+ *       vecs[i].z *= 2.0f;
+ *   }
+ */
+void* hlffi_native_array_get_struct_ptr(hlffi_value* arr);
+
+/* === Map Support === */
+
+/**
+ * Create a new Map.
+ * Maps are HashLink's implementation of hash tables/dictionaries.
+ *
+ * @param vm VM instance
+ * @param key_type Type of keys (&hlt_i32 for IntMap, &hlt_bytes for StringMap, &hlt_dyn for ObjectMap)
+ * @param value_type Type of values (use &hlt_dyn for mixed types)
+ * @return New empty map, or NULL on error
+ *
+ * @note Maps in Haxe: Map<Int,String>, Map<String,Int>, etc.
+ * @note HashLink uses specialized map types per key type
+ *
+ * Example:
+ *   hlffi_value* map = hlffi_map_new(vm, &hlt_i32, &hlt_bytes); // Map<Int,String>
+ */
+hlffi_value* hlffi_map_new(hlffi_vm* vm, hl_type* key_type, hl_type* value_type);
+
+/**
+ * Set a key-value pair in the map.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @param key Key value
+ * @param value Value to store
+ * @return true on success, false on error
+ *
+ * @note Overwrites existing value if key exists
+ * @note Creates new entry if key doesn't exist
+ *
+ * Example:
+ *   hlffi_value* key = hlffi_value_int(vm, 42);
+ *   hlffi_value* val = hlffi_value_string(vm, "answer");
+ *   hlffi_map_set(vm, map, key, val);
+ */
+bool hlffi_map_set(hlffi_vm* vm, hlffi_value* map, hlffi_value* key, hlffi_value* value);
+
+/**
+ * Get a value from the map by key.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @param key Key to lookup
+ * @return Value associated with key, or NULL if not found
+ *
+ * @note Returns NULL if key doesn't exist (use hlffi_map_exists to distinguish from null values)
+ *
+ * Example:
+ *   hlffi_value* key = hlffi_value_int(vm, 42);
+ *   hlffi_value* val = hlffi_map_get(vm, map, key);
+ *   if (val) {
+ *       char* str = hlffi_value_as_string(val);
+ *       printf("Found: %s\n", str);
+ *       free(str);
+ *   }
+ */
+hlffi_value* hlffi_map_get(hlffi_vm* vm, hlffi_value* map, hlffi_value* key);
+
+/**
+ * Check if a key exists in the map.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @param key Key to check
+ * @return true if key exists, false otherwise
+ *
+ * @note Use this to distinguish between missing keys and null values
+ *
+ * Example:
+ *   hlffi_value* key = hlffi_value_int(vm, 42);
+ *   if (hlffi_map_exists(vm, map, key)) {
+ *       printf("Key exists!\n");
+ *   }
+ */
+bool hlffi_map_exists(hlffi_vm* vm, hlffi_value* map, hlffi_value* key);
+
+/**
+ * Remove a key-value pair from the map.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @param key Key to remove
+ * @return true if key was removed, false if key didn't exist
+ *
+ * Example:
+ *   hlffi_value* key = hlffi_value_int(vm, 42);
+ *   if (hlffi_map_remove(vm, map, key)) {
+ *       printf("Key removed\n");
+ *   }
+ */
+bool hlffi_map_remove(hlffi_vm* vm, hlffi_value* map, hlffi_value* key);
+
+/**
+ * Get all keys from the map as an array.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @return Array of keys (NativeArray), or NULL on error
+ *
+ * @note Returns unwrapped varray for direct iteration
+ * @note Key order is undefined (hash table)
+ *
+ * Example:
+ *   hlffi_value* keys = hlffi_map_keys(vm, map);
+ *   int* key_data = (int*)hlffi_native_array_get_ptr(keys);
+ *   int count = hlffi_array_length(keys);
+ *   for (int i = 0; i < count; i++) {
+ *       printf("Key: %d\n", key_data[i]);
+ *   }
+ */
+hlffi_value* hlffi_map_keys(hlffi_vm* vm, hlffi_value* map);
+
+/**
+ * Get all values from the map as an array.
+ *
+ * @param vm VM instance
+ * @param map Map value
+ * @return Array of values (NativeArray), or NULL on error
+ *
+ * @note Returns unwrapped varray for direct iteration
+ * @note Value order matches key order from hlffi_map_keys()
+ *
+ * Example:
+ *   hlffi_value* values = hlffi_map_values(vm, map);
+ *   int len = hlffi_array_length(values);
+ *   for (int i = 0; i < len; i++) {
+ *       hlffi_value* val = hlffi_array_get(vm, values, i);
+ *       // Process value...
+ *   }
+ */
+hlffi_value* hlffi_map_values(hlffi_vm* vm, hlffi_value* map);
+
+/**
+ * Get the number of entries in the map.
+ *
+ * @param map Map value
+ * @return Number of key-value pairs, or -1 on error
+ *
+ * Example:
+ *   int size = hlffi_map_size(map);
+ *   printf("Map has %d entries\n", size);
+ */
+int hlffi_map_size(hlffi_value* map);
+
+/**
+ * Clear all entries from the map.
+ *
+ * @param map Map value
+ * @return true on success, false on error
+ *
+ * @note Resets map to empty state
+ *
+ * Example:
+ *   hlffi_map_clear(map);
+ */
+bool hlffi_map_clear(hlffi_value* map);
+
+/* ========== Phase 5: Bytes Operations ========== */
+
+/**
+ * Create new bytes buffer.
+ *
+ * @param vm VM instance
+ * @param size Size in bytes
+ * @return New bytes buffer (zero-initialized), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* bytes = hlffi_bytes_new(vm, 1024);
+ */
+hlffi_value* hlffi_bytes_new(hlffi_vm* vm, int size);
+
+/**
+ * Create bytes from C buffer (copies data).
+ *
+ * @param vm VM instance
+ * @param data Pointer to source data
+ * @param size Size in bytes
+ * @return New bytes buffer containing copy of data
+ *
+ * Example:
+ *   unsigned char data[] = {0x01, 0x02, 0x03};
+ *   hlffi_value* bytes = hlffi_bytes_from_data(vm, data, 3);
+ */
+hlffi_value* hlffi_bytes_from_data(hlffi_vm* vm, const void* data, int size);
+
+/**
+ * Create bytes from UTF-8 string.
+ *
+ * @param vm VM instance
+ * @param str UTF-8 string
+ * @return Bytes containing UTF-8 encoded string
+ *
+ * Example:
+ *   hlffi_value* bytes = hlffi_bytes_from_string(vm, "Hello");
+ */
+hlffi_value* hlffi_bytes_from_string(hlffi_vm* vm, const char* str);
+
+/**
+ * Get direct pointer to bytes data (zero-copy).
+ *
+ * @param bytes Bytes buffer
+ * @return Pointer to raw bytes, or NULL on error
+ *
+ * WARNING: Pointer is only valid while bytes are alive!
+ *
+ * Example:
+ *   void* ptr = hlffi_bytes_get_ptr(bytes);
+ *   unsigned char* data = (unsigned char*)ptr;
+ */
+void* hlffi_bytes_get_ptr(hlffi_value* bytes);
+
+/**
+ * Get length of bytes buffer.
+ *
+ * @param bytes Bytes buffer (must be haxe.io.Bytes object)
+ * @return Length in bytes, or -1 if not available
+ *
+ * NOTE: Only works for haxe.io.Bytes objects with length field.
+ * For raw vbyte* created from C, track length separately!
+ */
+int hlffi_bytes_get_length(hlffi_value* bytes);
+
+/**
+ * Copy bytes from src to dst (blit operation).
+ *
+ * @param dst Destination bytes
+ * @param dst_pos Offset in destination
+ * @param src Source bytes
+ * @param src_pos Offset in source
+ * @param len Number of bytes to copy
+ * @return true on success, false on error
+ *
+ * Handles overlapping regions correctly.
+ *
+ * Example:
+ *   hlffi_bytes_blit(dst, 0, src, 10, 20);  // Copy 20 bytes from src[10..] to dst[0..]
+ */
+bool hlffi_bytes_blit(hlffi_value* dst, int dst_pos, hlffi_value* src, int src_pos, int len);
+
+/**
+ * Compare bytes regions.
+ *
+ * @param a First bytes buffer
+ * @param a_pos Offset in first buffer
+ * @param b Second bytes buffer
+ * @param b_pos Offset in second buffer
+ * @param len Number of bytes to compare
+ * @return <0 if a < b, 0 if equal, >0 if a > b
+ *
+ * Example:
+ *   int cmp = hlffi_bytes_compare(a, 0, b, 0, 10);
+ */
+int hlffi_bytes_compare(hlffi_value* a, int a_pos, hlffi_value* b, int b_pos, int len);
+
+/**
+ * Convert bytes to UTF-8 string.
+ *
+ * @param bytes Bytes buffer
+ * @param length Number of bytes to convert
+ * @return malloc'd string (caller must free()), or NULL on error
+ *
+ * Assumes bytes contain UTF-8 text.
+ *
+ * Example:
+ *   char* str = hlffi_bytes_to_string(bytes, 5);
+ *   printf("%s\n", str);
+ *   free(str);
+ */
+char* hlffi_bytes_to_string(hlffi_value* bytes, int length);
+
+/**
+ * Get byte at index.
+ *
+ * @param bytes Bytes buffer
+ * @param index Index (0-based)
+ * @return Byte value (0-255), or -1 on error
+ *
+ * NOTE: No bounds checking! Caller must ensure index is valid.
+ */
+int hlffi_bytes_get(hlffi_value* bytes, int index);
+
+/**
+ * Set byte at index.
+ *
+ * @param bytes Bytes buffer
+ * @param index Index (0-based)
+ * @param value Byte value (0-255)
+ * @return true on success, false on error
+ *
+ * NOTE: No bounds checking! Caller must ensure index is valid.
+ */
+bool hlffi_bytes_set(hlffi_value* bytes, int index, int value);
+
+/**
+ * Fill bytes region with value.
+ *
+ * @param bytes Bytes buffer
+ * @param pos Starting position
+ * @param len Number of bytes to fill
+ * @param value Byte value (0-255)
+ * @return true on success, false on error
+ *
+ * Example:
+ *   hlffi_bytes_fill(bytes, 0, 100, 0xFF);  // Fill first 100 bytes with 0xFF
+ */
+bool hlffi_bytes_fill(hlffi_value* bytes, int pos, int len, int value);
+
+/* ========== Phase 5: Enum Operations ========== */
+
+/**
+ * Get the number of constructors in an enum type.
+ *
+ * @param vm VM instance
+ * @param type_name Enum type name (e.g., "Option")
+ * @return Number of constructors, or -1 on error
+ *
+ * Example:
+ *   int count = hlffi_enum_get_construct_count(vm, "Option");  // Returns 2 for Some/None
+ */
+int hlffi_enum_get_construct_count(hlffi_vm* vm, const char* type_name);
+
+/**
+ * Get the name of a constructor by index.
+ *
+ * @param vm VM instance
+ * @param type_name Enum type name
+ * @param index Constructor index (0-based)
+ * @return Constructor name (malloc'd, caller must free), or NULL on error
+ *
+ * Example:
+ *   char* name = hlffi_enum_get_construct_name(vm, "Option", 0);  // "Some"
+ *   free(name);
+ */
+char* hlffi_enum_get_construct_name(hlffi_vm* vm, const char* type_name, int index);
+
+/**
+ * Get the constructor index from an enum value.
+ *
+ * @param value Enum value
+ * @return Constructor index (0-based), or -1 if not an enum
+ *
+ * Example:
+ *   hlffi_value* opt = hlffi_call_static(vm, "Test", "getSome", 0, NULL);
+ *   int index = hlffi_enum_get_index(opt);  // 0 for Some, 1 for None
+ */
+int hlffi_enum_get_index(hlffi_value* value);
+
+/**
+ * Get the constructor name from an enum value.
+ *
+ * @param value Enum value
+ * @return Constructor name (malloc'd, caller must free), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* opt = hlffi_call_static(vm, "Test", "getSome", 0, NULL);
+ *   char* name = hlffi_enum_get_name(opt);  // "Some"
+ *   free(name);
+ */
+char* hlffi_enum_get_name(hlffi_value* value);
+
+/**
+ * Get the number of parameters in an enum value.
+ *
+ * @param value Enum value
+ * @return Number of parameters, or -1 if not an enum
+ *
+ * Example:
+ *   hlffi_value* opt = hlffi_call_static(vm, "Test", "getSome", 0, NULL);
+ *   int nparam = hlffi_enum_get_param_count(opt);  // 1 for Some(value)
+ */
+int hlffi_enum_get_param_count(hlffi_value* value);
+
+/**
+ * Get a parameter from an enum value by index.
+ *
+ * @param value Enum value
+ * @param param_index Parameter index (0-based)
+ * @return Parameter value (must be freed with hlffi_value_free), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* opt = hlffi_call_static(vm, "Test", "getSome", 0, NULL);
+ *   hlffi_value* param = hlffi_enum_get_param(opt, 0);
+ *   int val = hlffi_value_as_int(param, 0);
+ *   hlffi_value_free(param);
+ */
+hlffi_value* hlffi_enum_get_param(hlffi_value* value, int param_index);
+
+/**
+ * Create an enum value with no parameters.
+ *
+ * @param vm VM instance
+ * @param type_name Enum type name
+ * @param index Constructor index
+ * @return Enum value (must be freed with hlffi_value_free), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* none = hlffi_enum_alloc_simple(vm, "Option", 1);  // Option.None
+ */
+hlffi_value* hlffi_enum_alloc_simple(hlffi_vm* vm, const char* type_name, int index);
+
+/**
+ * Create an enum value with parameters.
+ *
+ * @param vm VM instance
+ * @param type_name Enum type name
+ * @param index Constructor index
+ * @param nparam Number of parameters
+ * @param params Array of parameter values
+ * @return Enum value (must be freed with hlffi_value_free), or NULL on error
+ *
+ * Example:
+ *   hlffi_value* param = hlffi_value_int(vm, 42);
+ *   hlffi_value* params[] = {param};
+ *   hlffi_value* some = hlffi_enum_alloc(vm, "Option", 0, 1, params);  // Option.Some(42)
+ */
+hlffi_value* hlffi_enum_alloc(hlffi_vm* vm, const char* type_name, int index,
+                               int nparam, hlffi_value** params);
+
+/**
+ * Check if an enum value matches a specific constructor index.
+ *
+ * @param value Enum value
+ * @param index Constructor index to match
+ * @return true if matches, false otherwise
+ *
+ * Example:
+ *   if (hlffi_enum_is(opt, 0)) {
+ *       // It's Some
+ *   }
+ */
+bool hlffi_enum_is(hlffi_value* value, int index);
+
+/**
+ * Check if an enum value matches a constructor by name.
+ *
+ * @param value Enum value
+ * @param name Constructor name to match
+ * @return true if matches, false otherwise
+ *
+ * Example:
+ *   if (hlffi_enum_is_named(opt, "Some")) {
+ *       hlffi_value* val = hlffi_enum_get_param(opt, 0);
+ *       // ...
+ *   }
+ */
+bool hlffi_enum_is_named(hlffi_value* value, const char* name);
+
+/* ========== Phase 5: Abstract Type Support ========== */
+
+/**
+ * Check if a type is an abstract type.
+ *
+ * @param type The type to check
+ * @return true if abstract, false otherwise
+ *
+ * Example:
+ *   hlffi_type* type = hlffi_find_type(vm, "MyAbstract");
+ *   if (hlffi_is_abstract(type)) {
+ *       printf("It's an abstract!\n");
+ *   }
+ */
+bool hlffi_is_abstract(hlffi_type* type);
+
+/**
+ * Get the name of an abstract type.
+ *
+ * @param type The abstract type
+ * @return Abstract name (malloc'd, caller must free), or NULL if not abstract
+ *
+ * Example:
+ *   char* name = hlffi_abstract_get_name(type);
+ *   printf("Abstract: %s\n", name);
+ *   free(name);
+ */
+char* hlffi_abstract_get_name(hlffi_type* type);
+
+/**
+ * Find an abstract type by name.
+ *
+ * @param vm VM instance
+ * @param name Abstract type name
+ * @return Type handle, or NULL if not found or not abstract
+ *
+ * Example:
+ *   hlffi_type* abs = hlffi_abstract_find(vm, "MyAbstract");
+ */
+hlffi_type* hlffi_abstract_find(hlffi_vm* vm, const char* name);
+
+/**
+ * Check if a value is of an abstract type.
+ *
+ * @param value The value to check
+ * @return true if value is abstract type, false otherwise
+ *
+ * Note: Abstracts are transparent at runtime - they're just their underlying type.
+ * Use normal value accessors (hlffi_value_as_int, etc.) to work with the value.
+ *
+ * Example:
+ *   hlffi_value* val = hlffi_call_static(vm, "Test", "getAbstract", 0, NULL);
+ *   if (hlffi_value_is_abstract(val)) {
+ *       char* name = hlffi_value_get_abstract_name(val);
+ *       int value = hlffi_value_as_int(val, 0);  // Get underlying value
+ *       printf("Abstract %s = %d\n", name, value);
+ *       free(name);
+ *   }
+ */
+bool hlffi_value_is_abstract(hlffi_value* value);
+
+/**
+ * Get the abstract type name from a value.
+ *
+ * @param value Value of abstract type
+ * @return Abstract name (malloc'd, caller must free), or NULL
+ *
+ * Example:
+ *   char* abs_name = hlffi_value_get_abstract_name(val);
+ *   free(abs_name);
+ */
+char* hlffi_value_get_abstract_name(hlffi_value* value);
+
+/**
+ * Get static field value.
+ *
+ * @param vm VM instance
+ * @param class_name Class name (e.g., "Game")
+ * @param field_name Field name (e.g., "score")
+ * @return Field value, or NULL on error
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Entry point must be called before accessing static fields
+ */
+hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const char* field_name);
+
+/**
+ * Set static field value.
+ *
+ * @param vm VM instance
+ * @param class_name Class name
+ * @param field_name Field name
+ * @param value New value
+ * @return HLFFI_OK on success, error code on failure
+ *
+ * @note Entry point must be called before accessing static fields
+ */
+hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, const char* field_name, hlffi_value* value);
+
+/**
+ * Call static method.
+ *
+ * @param vm VM instance
+ * @param class_name Class name (e.g., "Game")
+ * @param method_name Method name (e.g., "start")
+ * @param argc Number of arguments
+ * @param argv Argument array (can be NULL if argc=0)
+ * @return Return value, or NULL on error/void return
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Entry point must be called before calling static methods
+ */
+hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char* method_name, int argc, hlffi_value** argv);
+
+/* ========== PHASE 4: INSTANCE MEMBERS (OBJECTS) ========== */
+
+/**
+ * Create a new instance of a class (call constructor).
+ *
+ * Creates a new object instance by calling the class constructor.
+ * The object is automatically GC-rooted and must be freed with hlffi_value_free().
+ *
+ * @param vm VM instance
+ * @param class_name Fully qualified class name (e.g., "Player", "com.example.MyClass")
+ * @param argc Number of constructor arguments
+ * @param argv Array of argument values (can be NULL if argc == 0)
+ * @return New object instance, or NULL on error
+ *
+ * @note Entry point must be called before creating instances
+ * @note Object is GC-rooted - call hlffi_value_free() when done
+ * @note Check hlffi_get_error() if NULL is returned
+ *
+ * Example:
+ *   // Player has: new(name:String)
+ *   hlffi_value* name = hlffi_value_string(vm, "Hero");
+ *   hlffi_value* player = hlffi_new(vm, "Player", 1, &name);
+ *   // ... use player ...
+ *   hlffi_value_free(player);
+ */
+hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_value** argv);
+
+/**
+ * Get an instance field value.
+ *
+ * Retrieves the value of an object's instance field by name.
+ * Works for all field types (primitives, objects, strings, etc.).
+ *
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @return Field value, or NULL on error
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Returned value does NOT need to be freed (it's a borrowed reference)
+ *
+ * Example:
+ *   hlffi_value* health = hlffi_get_field(player, "health");
+ *   int hp = hlffi_value_as_int(health);
+ */
+hlffi_value* hlffi_get_field(hlffi_value* obj, const char* field_name);
+
+/**
+ * Set an instance field value.
+ *
+ * Sets the value of an object's instance field by name.
+ * Works for all field types (primitives, objects, strings, etc.).
+ *
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @param value New value to set
+ * @return true on success, false on error
+ *
+ * @note Check hlffi_get_error() if false is returned
+ *
+ * Example:
+ *   hlffi_value* new_health = hlffi_value_int(vm, 50);
+ *   hlffi_set_field(player, "health", new_health);
+ *   hlffi_value_free(new_health);
+ */
+bool hlffi_set_field(hlffi_value* obj, const char* field_name, hlffi_value* value);
+
+/* ========== CONVENIENCE API: Direct Field Access ========== */
+
+/**
+ * Get integer field directly (convenience function).
+ *
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @param fallback Fallback value if field not found or wrong type
+ * @return Field value as int, or fallback on error
+ *
+ * Example:
+ *   int health = hlffi_get_field_int(player, "health", 0);
+ */
+int hlffi_get_field_int(hlffi_value* obj, const char* field_name, int fallback);
+
+/**
+ * Get float field directly (convenience function).
+ */
+float hlffi_get_field_float(hlffi_value* obj, const char* field_name, float fallback);
+
+/**
+ * Get boolean field directly (convenience function).
+ */
+bool hlffi_get_field_bool(hlffi_value* obj, const char* field_name, bool fallback);
+
+/**
+ * Get string field directly (convenience function).
+ *
+ * @return String (caller must free), or NULL on error
+ * @note Caller must free() the returned string
+ */
+char* hlffi_get_field_string(hlffi_value* obj, const char* field_name);
+
+/**
+ * Set integer field directly (convenience function).
+ *
+ * @param vm VM instance (needed to create temporary value)
+ * @param obj Object instance
+ * @param field_name Field name (UTF-8)
+ * @param value Value to set
+ * @return true on success, false on error
+ *
+ * Example:
+ *   hlffi_set_field_int(vm, player, "health", 100);
+ */
+bool hlffi_set_field_int(hlffi_vm* vm, hlffi_value* obj, const char* field_name, int value);
+
+/**
+ * Set float field directly (convenience function).
+ */
+bool hlffi_set_field_float(hlffi_vm* vm, hlffi_value* obj, const char* field_name, float value);
+
+/**
+ * Set boolean field directly (convenience function).
+ */
+bool hlffi_set_field_bool(hlffi_vm* vm, hlffi_value* obj, const char* field_name, bool value);
+
+/**
+ * Set string field directly (convenience function).
+ */
+bool hlffi_set_field_string(hlffi_vm* vm, hlffi_value* obj, const char* field_name, const char* value);
+
+/**
+ * Call an instance method.
+ *
+ * Calls a method on an object instance with the given arguments.
+ *
+ * @param obj Object instance
+ * @param method_name Method name (UTF-8)
+ * @param argc Number of arguments
+ * @param argv Array of argument values (can be NULL if argc == 0)
+ * @return Return value, or NULL on error/void return
+ *
+ * @note Check hlffi_get_error() if NULL is returned
+ * @note Returned value should be freed with hlffi_value_free()
+ *
+ * Example:
+ *   hlffi_value* damage = hlffi_value_int(vm, 25);
+ *   hlffi_call_method(player, "takeDamage", 1, &damage);
+ *   hlffi_value_free(damage);
+ */
+hlffi_value* hlffi_call_method(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
+
+/* ========== CONVENIENCE API: Direct Method Calls ========== */
+
+/**
+ * Call void method directly (convenience function).
+ *
+ * Calls a method that returns no value. No need to manage return value.
+ *
+ * @param obj Object instance
+ * @param method_name Method name (UTF-8)
+ * @param argc Number of arguments
+ * @param argv Array of argument values (can be NULL if argc == 0)
+ * @return true on success, false on error
+ *
+ * Example:
+ *   hlffi_value* damage = hlffi_value_int(vm, 25);
+ *   hlffi_call_method_void(player, "takeDamage", 1, &damage);
+ *   hlffi_value_free(damage);
+ */
+bool hlffi_call_method_void(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
+
+/**
+ * Call method and get int return directly (convenience function).
+ *
+ * @param fallback Fallback value if method fails or returns wrong type
+ * @return Method return value as int, or fallback on error
+ *
+ * Example:
+ *   int health = hlffi_call_method_int(player, "getHealth", 0, NULL, 0);
+ */
+int hlffi_call_method_int(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, int fallback);
+
+/**
+ * Call method and get float return directly (convenience function).
+ */
+float hlffi_call_method_float(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, float fallback);
+
+/**
+ * Call method and get bool return directly (convenience function).
+ */
+bool hlffi_call_method_bool(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv, bool fallback);
+
+/**
+ * Call method and get string return directly (convenience function).
+ *
+ * @return String (caller must free), or NULL on error
+ * @note Caller must free() the returned string
+ *
+ * Example:
+ *   char* name = hlffi_call_method_string(player, "getName", 0, NULL);
+ *   printf("Name: %s\n", name);
+ *   free(name);
+ */
+char* hlffi_call_method_string(hlffi_value* obj, const char* method_name, int argc, hlffi_value** argv);
+
+/**
+ * Check if a value is an instance of a given class.
+ *
+ * @param obj Object instance to check
+ * @param class_name Class name to check against
+ * @return true if obj is an instance of class_name, false otherwise
+ *
+ * Example:
+ *   if (hlffi_is_instance_of(value, "Player")) {
+ *       // Safe to use as Player
+ *   }
+ */
+bool hlffi_is_instance_of(hlffi_value* obj, const char* class_name);
+
+/* ========== PHASE 6: CALLBACKS & EXCEPTIONS ========== */
+
+/**
+ * Callback argument/return type descriptors for typed callback registration.
+ *
+ * @warning EXPERIMENTAL - NOT RECOMMENDED FOR PRODUCTION USE
+ *
+ * Typed callbacks (hlffi_register_callback_typed) have a fundamental limitation:
+ * The wrapper functions expect vdynamic* pointers for all arguments, but HashLink
+ * passes primitive types (Int/Float/Bool) as raw values when using typed closures.
+ * This causes crashes when invoking callbacks with primitive arguments.
+ *
+ * For production use, always use hlffi_register_callback() with Dynamic types in Haxe:
+ *
+ * Example (WORKING):
+ *   // Haxe:
+ *   public static var onMessage:Dynamic = null;  // Use Dynamic!
+ *
+ *   // C:
+ *   hlffi_register_callback(vm, "onMessage", my_callback, 1);
+ *
+ * The typed API is provided for experimentation but requires significant refactoring
+ * of wrapper functions to support primitive type signatures.
+ */
+typedef enum {
+    HLFFI_ARG_VOID = 0,     /**< Void (no return value) */
+    HLFFI_ARG_INT,          /**< Int (i32) */
+    HLFFI_ARG_FLOAT,        /**< Float (f64) */
+    HLFFI_ARG_BOOL,         /**< Bool */
+    HLFFI_ARG_STRING,       /**< String (bytes/UTF-16) */
+    HLFFI_ARG_DYNAMIC       /**< Dynamic (any type) */
+} hlffi_arg_type;
+
+/**
+ * Native function signature for callbacks from Haxe.
+ *
+ * @param vm VM instance
+ * @param argc Number of arguments
+ * @param argv Array of argument values
+ * @return Return value for Haxe (use hlffi_value_null for void)
+ *
+ * Example:
+ *   hlffi_value* my_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+ *       const char* msg = hlffi_value_as_string(argv[0]);
+ *       printf("Callback: %s\n", msg);
+ *       return hlffi_value_null(vm);
+ *   }
+ */
+typedef hlffi_value* (*hlffi_native_func)(hlffi_vm* vm, int argc, hlffi_value** argv);
+
+/**
+ * Register a C function as a callback that Haxe can call.
+ *
+ * The callback is stored in the VM and can be retrieved by name.
+ * You must manually set it as a field/variable in Haxe code.
+ *
+ * @param vm VM instance
+ * @param name Callback name for retrieval
+ * @param func C function pointer
+ * @param nargs Number of arguments the callback expects
+ * @return true on success, false on error
+ *
+ * Example:
+ *   // 1. Register C callback
+ *   hlffi_register_callback(vm, "onEvent", my_callback, 1);
+ *
+ *   // 2. Get callback as value
+ *   hlffi_value* cb = hlffi_get_callback(vm, "onEvent");
+ *
+ *   // 3. Set in Haxe static field
+ *   hlffi_set_static_field(vm, "MyClass", "callback", cb);
+ *
+ *   // 4. Haxe can now call: MyClass.callback("hello");
+ */
+bool hlffi_register_callback(hlffi_vm* vm, const char* name, hlffi_native_func func, int nargs);
+
+/**
+ * Register a typed C callback with specific argument and return types.
+ *
+ * @warning EXPERIMENTAL - DO NOT USE IN PRODUCTION
+ *
+ * This function has a critical limitation: wrapper functions expect vdynamic* for all
+ * arguments, but typed closures pass primitives (Int/Float/Bool) as raw values, causing
+ * crashes when callbacks with primitive args are invoked.
+ *
+ * CRASHES WHEN CALLED:
+ *   - Callbacks with Int, Float, or Bool arguments
+ *   - Works only for String arguments (which are vdynamic* pointers)
+ *
+ * USE hlffi_register_callback() with Dynamic types instead!
+ *
+ * @param vm VM instance
+ * @param name Callback name for retrieval
+ * @param func C function pointer
+ * @param nargs Number of arguments
+ * @param arg_types Array of argument type descriptors (length = nargs)
+ * @param return_type Return type descriptor
+ * @return true on success, false on error
+ *
+ * Example (DO NOT USE - shown for reference only):
+ *   // This will CRASH when invoked from Haxe:
+ *   hlffi_arg_type args[] = {HLFFI_ARG_INT, HLFFI_ARG_INT};
+ *   hlffi_register_callback_typed(vm, "onAdd", callback, 2, args, HLFFI_ARG_INT);
+ *
+ * Use this instead:
+ *   hlffi_register_callback(vm, "onAdd", callback, 2);  // Works!
+ *   // In Haxe: public static var onAdd:Dynamic = null;
+ *
+ * @note NEEDS IMPROVEMENT: To fix this, typed wrapper functions must be created
+ *       for all type combinations, or a dynamic wrapper generation system using
+ *       libffi or similar must be implemented. See TODO in src/hlffi_callbacks.c
+ */
+bool hlffi_register_callback_typed(
+    hlffi_vm* vm,
+    const char* name,
+    hlffi_native_func func,
+    int nargs,
+    const hlffi_arg_type* arg_types,
+    hlffi_arg_type return_type
+);
+
+/**
+ * Get a registered callback as an hlffi_value.
+ *
+ * @param vm VM instance
+ * @param name Callback name (from hlffi_register_callback)
+ * @return Callback as value (can be passed to Haxe), or NULL if not found
+ *
+ * @note The returned value is GC-rooted and lives until VM destruction
+ */
+hlffi_value* hlffi_get_callback(hlffi_vm* vm, const char* name);
+
+/**
+ * Unregister a callback and remove its GC root.
+ *
+ * @param vm VM instance
+ * @param name Callback name (from hlffi_register_callback)
+ * @return true if callback was found and removed, false otherwise
+ *
+ * @note After unregistering, the closure becomes eligible for GC.
+ *       Any Haxe references to this callback will become invalid.
+ */
+bool hlffi_unregister_callback(hlffi_vm* vm, const char* name);
+
+/**
+ * Call result for exception-safe calls.
+ */
+typedef enum {
+    HLFFI_CALL_OK = 0,        /**< Call succeeded */
+    HLFFI_CALL_EXCEPTION = 1, /**< Haxe exception thrown */
+    HLFFI_CALL_ERROR = 2      /**< Call failed (wrong args, method not found, etc) */
+} hlffi_call_result;
+
+/**
+ * Call static method with exception handling (try/catch).
+ *
+ * @param vm VM instance
+ * @param class_name Class name
+ * @param method_name Method name
+ * @param argc Number of arguments
+ * @param argv Array of arguments
+ * @param out_result [OUT] Result value on success (NULL on exception/error)
+ * @param out_error [OUT] Error message on exception/error (NULL on success)
+ * @return HLFFI_CALL_OK, HLFFI_CALL_EXCEPTION, or HLFFI_CALL_ERROR
+ *
+ * Example:
+ *   hlffi_value* result = NULL;
+ *   const char* error = NULL;
+ *   hlffi_call_result res = hlffi_try_call_static(
+ *       vm, "Game", "riskyMethod", 0, NULL, &result, &error
+ *   );
+ *
+ *   if (res == HLFFI_CALL_OK) {
+ *       // Success - use result
+ *       hlffi_value_free(result);
+ *   } else if (res == HLFFI_CALL_EXCEPTION) {
+ *       printf("Exception: %s\n", error);
+ *   } else {
+ *       printf("Error: %s\n", error);
+ *   }
+ */
+hlffi_call_result hlffi_try_call_static(
+    hlffi_vm* vm,
+    const char* class_name,
+    const char* method_name,
+    int argc,
+    hlffi_value** argv,
+    hlffi_value** out_result,
+    const char** out_error
+);
+
+/**
+ * Call instance method with exception handling (try/catch).
+ *
+ * @param obj Object instance
+ * @param method_name Method name
+ * @param argc Number of arguments
+ * @param argv Array of arguments
+ * @param out_result [OUT] Result value on success (NULL on exception/error)
+ * @param out_error [OUT] Error message on exception/error (NULL on success)
+ * @return HLFFI_CALL_OK, HLFFI_CALL_EXCEPTION, or HLFFI_CALL_ERROR
+ */
+hlffi_call_result hlffi_try_call_method(
+    hlffi_value* obj,
+    const char* method_name,
+    int argc,
+    hlffi_value** argv,
+    hlffi_value** out_result,
+    const char** out_error
+);
+
+/**
+ * Get the last exception message from the VM.
+ *
+ * @param vm VM instance
+ * @return Exception message string (static buffer, do not free), or NULL
+ *
+ * @note Only valid immediately after a call that threw an exception
+ */
+const char* hlffi_get_exception_message(hlffi_vm* vm);
+
+/**
+ * Get the last exception stack trace from the VM.
+ *
+ * @param vm VM instance
+ * @return Stack trace string (static buffer, do not free), or NULL
+ *
+ * @note Only valid immediately after a call that threw an exception
+ */
+const char* hlffi_get_exception_stack(hlffi_vm* vm);
+
+/**
+ * Check if there is a pending exception in the VM.
+ *
+ * @param vm VM instance
+ * @return true if there is a pending exception, false otherwise
+ *
+ * @note Use this to check if an exception occurred without calling try_call
+ */
+bool hlffi_has_exception(hlffi_vm* vm);
+
+/**
+ * Clear the pending exception state in the VM.
+ *
+ * @param vm VM instance
+ *
+ * @note Call this after handling an exception to reset the VM state
+ */
+void hlffi_clear_exception(hlffi_vm* vm);
+
+/**
+ * External blocking operation wrapper - notify GC before blocking I/O.
+ *
+ * CRITICAL: Call this before any external blocking operation (file I/O,
+ * network, sleep, etc.) when called FROM a Haxe callback.
+ *
+ * The GC needs to know when a thread is blocked outside HL control.
+ *
+ * @note Must be balanced with hlffi_blocking_end()!
+ *
+ * Example:
+ *   hlffi_value* save_file_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+ *       const char* path = hlffi_value_as_string(argv[0]);
+ *
+ *       hlffi_blocking_begin();  // Notify GC we're leaving
+ *       FILE* f = fopen(path, "w");
+ *       fwrite(...);  // Potentially long operation
+ *       fclose(f);
+ *       hlffi_blocking_end();    // Back under HL control
+ *
+ *       return hlffi_value_null(vm);
+ *   }
+ */
+void hlffi_blocking_begin(void);
+
+/**
+ * External blocking operation wrapper - notify GC after blocking I/O.
+ *
+ * CRITICAL: Must balance every hlffi_blocking_begin() call!
+ */
+void hlffi_blocking_end(void);
+
+/* ========== PHASE 7: PERFORMANCE CACHING API ========== */
+
+/**
+ * Opaque cached call handle.
+ *
+ * Caches type/method lookups for hot-path operations to eliminate
+ * repeated hash lookups. Reduces overhead from ~300ns to ~5ns per call.
+ *
+ * USAGE PATTERN:
+ *   // One-time setup (expensive ~300ns):
+ *   hlffi_cached_call* update = hlffi_cache_static_method(vm, "Game", "update");
+ *
+ *   // Game loop (cheap ~5ns per call):
+ *   while (running) {
+ *       hlffi_call_cached(update, 0, NULL);  // 60x faster than uncached!
+ *   }
+ *
+ *   // Cleanup:
+ *   hlffi_cached_call_free(update);
+ *
+ * MEMORY: Cached calls are GC-rooted and must be freed with hlffi_cached_call_free()
+ * THREAD SAFETY: Caches are NOT thread-safe - create per-thread or synchronize access
+ */
+typedef struct hlffi_cached_call hlffi_cached_call;
+
+/**
+ * Cache a static method lookup for fast repeated calls.
+ *
+ * This performs the expensive type/method hash lookup ONCE and caches
+ * the result for subsequent calls. Use for hot-path operations like
+ * game loops, frequent callbacks, or tight loops.
+ *
+ * PERFORMANCE:
+ *   - Uncached: hlffi_call_static() ~300ns overhead per call
+ *   - Cached: hlffi_call_cached() ~5ns overhead per call
+ *   - Speedup: ~60x faster for repeated calls
+ *
+ * @param vm          The VM instance (must not be NULL)
+ * @param class_name  Class name, e.g., "Game" (must not be NULL)
+ * @param method_name Method name, e.g., "update" (must not be NULL)
+ * @return Cache handle or NULL on error (check hlffi_get_error)
+ *
+ * @note Caller must free with hlffi_cached_call_free()
+ * @note VM must be initialized and bytecode loaded before caching
+ * @note Cache remains valid for VM lifetime (no hot reload support yet)
+ *
+ * @see hlffi_call_cached(), hlffi_cached_call_free()
+ *
+ * @example
+ * // Setup (once):
+ * hlffi_cached_call* update = hlffi_cache_static_method(vm, "Game", "update");
+ * if (!update) {
+ *     fprintf(stderr, "Cache error: %s\n", hlffi_get_error(vm));
+ *     return -1;
+ * }
+ *
+ * // Game loop (60 FPS):
+ * while (running) {
+ *     hlffi_value* args[] = { hlffi_value_float(vm, delta_time) };
+ *     hlffi_call_cached(update, 1, args);
+ *     hlffi_value_free(args[0]);
+ * }
+ *
+ * // Cleanup:
+ * hlffi_cached_call_free(update);
+ */
+hlffi_cached_call* hlffi_cache_static_method(
+    hlffi_vm* vm,
+    const char* class_name,
+    const char* method_name
+);
+
+/**
+ * Call a cached static method.
+ *
+ * Executes a previously cached method with minimal overhead (~5ns).
+ * No type lookup, no hash computation - just direct function call.
+ *
+ * @param cached Cached method handle from hlffi_cache_static_method()
+ * @param argc   Argument count (must match cached method signature)
+ * @param args   Array of hlffi_value* arguments (can be NULL if argc == 0)
+ * @return Return value or NULL on error
+ *
+ * @note Caller must free return value with hlffi_value_free()
+ * @note Argument count is validated against cached method signature
+ * @note Arguments are NOT validated for type correctness (caller responsibility)
+ *
+ * @warning If argc doesn't match cached method signature, returns NULL
+ *
+ * @see hlffi_cache_static_method(), hlffi_value_free()
+ */
+hlffi_value* hlffi_call_cached(
+    hlffi_cached_call* cached,
+    int argc,
+    hlffi_value** args
+);
+
+/**
+ * Free a cached call handle.
+ *
+ * Removes GC root and frees memory. Safe to call with NULL.
+ *
+ * @param cached Cached call handle (can be NULL)
+ *
+ * @note After calling this, the cached handle is invalid and must not be used
+ */
+void hlffi_cached_call_free(hlffi_cached_call* cached);
+
+/**
+ * Cache an instance method lookup (NOT YET IMPLEMENTED).
+ *
+ * Instance methods require a different caching strategy since the closure
+ * is instance-specific. This function currently returns NULL.
+ *
+ * @param vm          The VM instance
+ * @param class_name  Class name
+ * @param method_name Method name
+ * @return NULL (not yet implemented)
+ */
+hlffi_cached_call* hlffi_cache_instance_method(
+    hlffi_vm* vm,
+    const char* class_name,
+    const char* method_name
+);
+
+/**
+ * Call a cached instance method (NOT YET IMPLEMENTED).
+ *
+ * @param cached   Cached method handle
+ * @param instance Instance to call method on
+ * @param argc     Argument count
+ * @param args     Arguments
+ * @return NULL (not yet implemented)
+ */
+hlffi_value* hlffi_call_cached_method(
+    hlffi_cached_call* cached,
+    hlffi_value* instance,
+    int argc,
+    hlffi_value** args
+);
+
+#ifdef __cplusplus
+}
+
+/* ========== C++ RAII GUARDS ========== */
+
+namespace hlffi {
+
+/**
+ * RAII guard for external blocking operations.
+ *
+ * Automatically calls hlffi_blocking_begin() on construction
+ * and hlffi_blocking_end() on destruction.
+ *
+ * Usage:
+ *   hlffi_value* my_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+ *       hlffi::BlockingGuard guard;  // Auto begin
+ *       curl_download(...);  // External I/O
+ *       return hlffi_value_null(vm);
+ *   } // Auto end
+ */
+class BlockingGuard {
+public:
+    BlockingGuard() { hlffi_blocking_begin(); }
+    ~BlockingGuard() { hlffi_blocking_end(); }
+
+    BlockingGuard(const BlockingGuard&) = delete;
+    BlockingGuard& operator=(const BlockingGuard&) = delete;
+};
+
+/**
+ * RAII guard for worker threads.
+ * Automatically calls hlffi_worker_register/unregister.
+ *
+ * Usage:
+ *   void worker_thread() {
+ *       hlffi::WorkerGuard guard;
+ *       // ... use HLFFI ...
+ *   } // Automatically unregisters
+ */
+class WorkerGuard {
+public:
+    WorkerGuard() { hlffi_worker_register(); }
+    ~WorkerGuard() { hlffi_worker_unregister(); }
+
+    WorkerGuard(const WorkerGuard&) = delete;
+    WorkerGuard& operator=(const WorkerGuard&) = delete;
+};
+
+} // namespace hlffi
+
+#endif /* __cplusplus */
+
+#endif /* HLFFI_H */

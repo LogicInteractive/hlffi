@@ -1,0 +1,27 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "HLFFI Plugin",
+	"Description": "Integrates HashLink FFI into Unreal Engine - Embed Haxe/HashLink VM with automatic lifecycle management",
+	"Category": "Scripting",
+	"CreatedBy": "LogicInteractive",
+	"CreatedByURL": "https://github.com/LogicInteractive/hlffi",
+	"DocsURL": "https://github.com/LogicInteractive/hlffi",
+	"MarketplaceURL": "",
+	"SupportURL": "https://github.com/LogicInteractive/hlffi/issues",
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "HLFFIPlugin",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64"
+			]
+		}
+	]
+}
