@@ -1,4 +1,4 @@
-# HLFFI API Reference - Integration Modes
+﻿# HLFFI API Reference - Integration Modes
 
 **[← Back to API Index](API_REFERENCE.md)** | **[VM Lifecycle](API_01_VM_LIFECYCLE.md)** | **[Event Loop →](API_03_EVENT_LOOP.md)**
 
@@ -44,7 +44,8 @@ hlffi_set_integration_mode(vm, HLFFI_MODE_NON_THREADED);
 hlffi_call_entry(vm);  // Returns immediately
 
 // Game loop:
-while (running) {
+while (running)
+{
     hlffi_update(vm, delta_time);  // Process Haxe events
     render();
 }
@@ -152,9 +153,12 @@ Returns the current integration mode.
 
 **Example:**
 ```c
-if (hlffi_get_integration_mode(vm) == HLFFI_MODE_THREADED) {
+if (hlffi_get_integration_mode(vm) == HLFFI_MODE_THREADED)
+{
     printf("Using threaded mode\n");
-} else {
+}
+else
+{
     printf("Using non-threaded mode\n");
 }
 ```
@@ -169,38 +173,43 @@ if (hlffi_get_integration_mode(vm) == HLFFI_MODE_THREADED) {
 #include "hlffi.h"
 
 // Unreal Engine Tick:
-void AMyActor::Tick(float DeltaTime) {
+void AMyActor::Tick(float DeltaTime)
+{
     Super::Tick(DeltaTime);
     hlffi_update(vm, DeltaTime);
 }
 
 // Unity Update:
-void Update() {
+void Update()
+{
     hlffi_update(vm, Time.deltaTime);
 }
 
 // Custom Game Loop:
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
-    
+
     // Set NON_THREADED mode:
     hlffi_set_integration_mode(vm, HLFFI_MODE_NON_THREADED);
     hlffi_call_entry(vm);  // Initializes, returns immediately
-    
+
     // Game loop:
-    while (!should_quit()) {
+    while (!should_quit())
+    {
         float dt = get_delta_time();
-        
+
         // Process Haxe timers/events:
         hlffi_update(vm, dt);
-        
+
         // Your game logic:
         update_game(dt);
         render();
     }
-    
+
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -208,8 +217,10 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class Main {
-    public static function main() {
+class Main
+{
+    public static function main()
+    {
         trace("Game initialized");
         // Setup, but don't block
         haxe.Timer.delay(() -> trace("Timer fired!"), 1000);
@@ -224,32 +235,36 @@ class Main {
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
-    
+
     // Set THREADED mode:
     hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);
     hlffi_thread_start(vm);  // Spawns thread, Haxe runs there
-    
+
     // Main thread continues, can do other work:
-    while (!should_quit()) {
+    while (!should_quit())
+    {
         // Communicate with Haxe via message queue:
         int score = 100;
         hlffi_thread_call_sync(vm, update_score_callback, &score);
-        
+
         // Other native work:
         handle_events();
         sleep_ms(16);
     }
-    
+
     hlffi_thread_stop(vm);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
 
-void update_score_callback(hlffi_vm* vm, void* userdata) {
+void update_score_callback(hlffi_vm* vm, void* userdata)
+{
     int score = *(int*)userdata;
     hlffi_value* arg = hlffi_value_int(vm, score);
     hlffi_call_static(vm, "Game", "setScore", 1, &arg);
@@ -259,10 +274,13 @@ void update_score_callback(hlffi_vm* vm, void* userdata) {
 
 **Haxe Side:**
 ```haxe
-class Main {
-    public static function main() {
+class Main
+{
+    public static function main()
+    {
         // Blocking game loop - runs in VM thread
-        while (true) {
+        while (true)
+        {
             update();
             render();
             Sys.sleep(0.016);  // 60 FPS
@@ -307,9 +325,12 @@ hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);  // Too late!
 
 ```c
 // ✅ GOOD - Prefer NON_THREADED if possible
-if (haxe_main_is_simple) {
+if (haxe_main_is_simple)
+{
     hlffi_set_integration_mode(vm, HLFFI_MODE_NON_THREADED);
-} else {
+}
+else
+{
     hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);
 }
 

@@ -1,4 +1,4 @@
-# HLFFI API Reference - Error Handling
+﻿# HLFFI API Reference - Error Handling
 
 **[← Utilities](API_18_UTILITIES.md)** | **[Back to Index](API_REFERENCE.md)**
 
@@ -16,13 +16,15 @@ HLFFI uses two error handling patterns:
 ```c
 // Pattern 1: Error codes
 hlffi_error_code result = hlffi_load_file(vm, "game.hl");
-if (result != HLFFI_OK) {
+if (result != HLFFI_OK)
+{
     fprintf(stderr, "Load failed: %s\n", hlffi_get_error_string(result));
 }
 
 // Pattern 2: Error messages
 hlffi_value* val = hlffi_get_field(obj, "health");
-if (!val) {
+if (!val)
+{
     fprintf(stderr, "Field access failed: %s\n", hlffi_get_error(vm));
 }
 ```
@@ -97,7 +99,8 @@ const char* hlffi_get_error(hlffi_vm* vm)
 **Example:**
 ```c
 hlffi_value* field = hlffi_get_field(obj, "nonexistent");
-if (!field) {
+if (!field)
+{
     fprintf(stderr, "Error: %s\n", hlffi_get_error(vm));
     // Output: "Error: Field 'nonexistent' not found in class 'Player'"
 }
@@ -117,7 +120,8 @@ const char* hlffi_get_error_string(hlffi_error_code code)
 **Example:**
 ```c
 hlffi_error_code result = hlffi_load_file(vm, "missing.hl");
-if (result != HLFFI_OK) {
+if (result != HLFFI_OK)
+{
     fprintf(stderr, "Load failed: %s\n", hlffi_get_error_string(result));
     // Output: "Load failed: Failed to load bytecode"
 }
@@ -133,20 +137,23 @@ For lifecycle functions:
 
 ```c
 hlffi_vm* vm = hlffi_create();
-if (!vm) {
+if (!vm)
+{
     fprintf(stderr, "Failed to create VM\n");
     return 1;
 }
 
 hlffi_error_code result = hlffi_init(vm, argc, argv);
-if (result != HLFFI_OK) {
+if (result != HLFFI_OK)
+{
     fprintf(stderr, "Init failed: %s\n", hlffi_get_error_string(result));
     hlffi_destroy(vm);
     return 1;
 }
 
 result = hlffi_load_file(vm, "game.hl");
-if (result != HLFFI_OK) {
+if (result != HLFFI_OK)
+{
     fprintf(stderr, "Load failed: %s\n", hlffi_get_error_string(result));
     hlffi_destroy(vm);
     return 1;
@@ -161,13 +168,15 @@ For value/field/method functions:
 
 ```c
 hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
-if (!player) {
+if (!player)
+{
     fprintf(stderr, "Failed to create Player: %s\n", hlffi_get_error(vm));
     return;
 }
 
 hlffi_value* hp = hlffi_get_field(player, "health");
-if (!hp) {
+if (!hp)
+{
     fprintf(stderr, "Failed to get field: %s\n", hlffi_get_error(vm));
     hlffi_value_free(player);
     return;
@@ -186,7 +195,8 @@ For setter/boolean functions:
 ```c
 hlffi_value* val = hlffi_value_int(vm, 100);
 
-if (!hlffi_set_field(obj, "health", val)) {
+if (!hlffi_set_field(obj, "health", val))
+{
     fprintf(stderr, "Failed to set field: %s\n", hlffi_get_error(vm));
 }
 
@@ -200,17 +210,20 @@ hlffi_value_free(val);
 ```c
 #include "hlffi.h"
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
     // Create VM:
     hlffi_vm* vm = hlffi_create();
-    if (!vm) {
+    if (!vm)
+    {
         fprintf(stderr, "FATAL: Failed to create VM\n");
         return 1;
     }
 
     // Initialize:
     hlffi_error_code result = hlffi_init(vm, argc, argv);
-    if (result != HLFFI_OK) {
+    if (result != HLFFI_OK)
+    {
         fprintf(stderr, "Init error: %s\n", hlffi_get_error_string(result));
         hlffi_destroy(vm);
         return 1;
@@ -218,7 +231,8 @@ int main(int argc, char** argv) {
 
     // Load bytecode:
     result = hlffi_load_file(vm, "game.hl");
-    if (result != HLFFI_OK) {
+    if (result != HLFFI_OK)
+    {
         fprintf(stderr, "Load error: %s\n", hlffi_get_error_string(result));
         fprintf(stderr, "Details: %s\n", hlffi_get_error(vm));
         hlffi_destroy(vm);
@@ -227,7 +241,8 @@ int main(int argc, char** argv) {
 
     // Call entry point:
     result = hlffi_call_entry(vm);
-    if (result != HLFFI_OK) {
+    if (result != HLFFI_OK)
+    {
         fprintf(stderr, "Entry call error: %s\n", hlffi_get_error_string(result));
         hlffi_destroy(vm);
         return 1;
@@ -235,7 +250,8 @@ int main(int argc, char** argv) {
 
     // Try to create object:
     hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
-    if (!player) {
+    if (!player)
+    {
         fprintf(stderr, "Failed to create Player: %s\n", hlffi_get_error(vm));
         hlffi_destroy(vm);
         return 1;
@@ -243,7 +259,8 @@ int main(int argc, char** argv) {
 
     // Try to access field:
     hlffi_value* hp = hlffi_get_field(player, "health");
-    if (!hp) {
+    if (!hp)
+    {
         fprintf(stderr, "Failed to get health field: %s\n", hlffi_get_error(vm));
         hlffi_value_free(player);
         hlffi_destroy(vm);
@@ -257,6 +274,7 @@ int main(int argc, char** argv) {
     // Cleanup:
     hlffi_value_free(hp);
     hlffi_value_free(player);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -271,7 +289,8 @@ int main(int argc, char** argv) {
 ```c
 // ✅ GOOD - Check every call
 hlffi_error_code result = hlffi_load_file(vm, "game.hl");
-if (result != HLFFI_OK) {
+if (result != HLFFI_OK)
+{
     fprintf(stderr, "Error: %s\n", hlffi_get_error_string(result));
     return 1;
 }
@@ -285,7 +304,8 @@ hlffi_load_file(vm, "game.hl");  // May fail silently
 ```c
 // ✅ GOOD - Free resources on error
 hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
-if (!player) {
+if (!player)
+{
     fprintf(stderr, "Error: %s\n", hlffi_get_error(vm));
     hlffi_destroy(vm);  // Clean up VM
     return 1;
@@ -293,7 +313,8 @@ if (!player) {
 
 // ❌ BAD - Leak resources
 hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
-if (!player) {
+if (!player)
+{
     return 1;  // VM leaked!
 }
 ```
@@ -303,13 +324,15 @@ if (!player) {
 ```c
 // ✅ GOOD - Contextual error message
 hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
-if (!player) {
+if (!player)
+{
     fprintf(stderr, "Failed to create Player object: %s\n", hlffi_get_error(vm));
 }
 
 // ❌ LESS HELPFUL - Generic message
 hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
-if (!player) {
+if (!player)
+{
     fprintf(stderr, "Error: %s\n", hlffi_get_error(vm));
 }
 ```
@@ -320,7 +343,8 @@ if (!player) {
 // ✅ GOOD - Log errors to file
 FILE* log = fopen("hlffi_errors.log", "a");
 hlffi_error_code result = hlffi_load_file(vm, "game.hl");
-if (result != HLFFI_OK) {
+if (result != HLFFI_OK)
+{
     fprintf(log, "[%s] Load error: %s\n", timestamp(), hlffi_get_error(vm));
     fclose(log);
 }
@@ -334,7 +358,8 @@ if (result != HLFFI_OK) {
 
 ```c
 hlffi_error_code result = hlffi_load_file(vm, "game.hl");
-if (result == HLFFI_ERROR_LOAD_FAILED) {
+if (result == HLFFI_ERROR_LOAD_FAILED)
+{
     fprintf(stderr, "Failed to load bytecode:\n");
     fprintf(stderr, "  - Check file exists: game.hl\n");
     fprintf(stderr, "  - Check file is valid .hl bytecode\n");
@@ -347,7 +372,8 @@ if (result == HLFFI_ERROR_LOAD_FAILED) {
 
 ```c
 hlffi_type* player_type = hlffi_find_type(vm, "Player");
-if (!player_type) {
+if (!player_type)
+{
     fprintf(stderr, "Type 'Player' not found:\n");
     fprintf(stderr, "  - Check class name spelling\n");
     fprintf(stderr, "  - Ensure class is compiled into bytecode\n");
@@ -359,7 +385,8 @@ if (!player_type) {
 
 ```c
 hlffi_value* result = hlffi_call_static(vm, "Game", "start", 0, NULL);
-if (!result) {
+if (!result)
+{
     fprintf(stderr, "Method call failed:\n");
     fprintf(stderr, "  - Check method name spelling\n");
     fprintf(stderr, "  - Verify method is public and static\n");
@@ -378,7 +405,8 @@ if (!result) {
 int retries = 3;
 hlffi_error_code result;
 
-for (int i = 0; i < retries; i++) {
+for (int i = 0; i < retries; i++)
+{
     result = hlffi_load_file(vm, "game.hl");
     if (result == HLFFI_OK) break;
 
@@ -387,7 +415,8 @@ for (int i = 0; i < retries; i++) {
     sleep(1);
 }
 
-if (result != HLFFI_OK) {
+if (result != HLFFI_OK)
+{
     fprintf(stderr, "All retry attempts failed\n");
     return 1;
 }
@@ -399,10 +428,13 @@ if (result != HLFFI_OK) {
 hlffi_value* config = hlffi_get_static_field(vm, "Config", "maxPlayers");
 int max_players;
 
-if (!config) {
+if (!config)
+{
     fprintf(stderr, "Warning: Config.maxPlayers not found, using default\n");
     max_players = 16;  // Fallback
-} else {
+}
+else
+{
     max_players = hlffi_value_as_int(config, 16);
     hlffi_value_free(config);
 }
@@ -414,7 +446,8 @@ if (!config) {
 // Try advanced feature:
 hlffi_value* result = hlffi_call_static(vm, "Graphics", "renderHDR", 0, NULL);
 
-if (!result) {
+if (!result)
+{
     // Fall back to basic rendering:
     fprintf(stderr, "HDR not available, using standard rendering\n");
     result = hlffi_call_static(vm, "Graphics", "renderStandard", 0, NULL);
@@ -441,7 +474,8 @@ setenv("HLFFI_VERBOSE", "1", 1);
 ```c
 // HLFFI wraps HashLink errors - check both:
 hlffi_error_code result = hlffi_load_file(vm, "game.hl");
-if (result != HLFFI_OK) {
+if (result != HLFFI_OK)
+{
     fprintf(stderr, "HLFFI error: %s\n", hlffi_get_error_string(result));
     fprintf(stderr, "HL error: %s\n", hlffi_get_error(vm));
 }

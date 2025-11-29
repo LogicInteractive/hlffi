@@ -1,4 +1,4 @@
-# HLFFI API Reference - Bytes (Binary Data)
+﻿# HLFFI API Reference - Bytes (Binary Data)
 
 **[← Maps](API_11_MAPS.md)** | **[Back to Index](API_REFERENCE.md)** | **[Enums →](API_13_ENUMS.md)**
 
@@ -106,7 +106,8 @@ void* hlffi_bytes_get_ptr(hlffi_value* bytes)
 hlffi_value* bytes = hlffi_bytes_new(vm, 10);
 unsigned char* ptr = (unsigned char*)hlffi_bytes_get_ptr(bytes);
 
-if (ptr) {
+if (ptr)
+{
     ptr[0] = 0xFF;  // Modify in-place
     ptr[1] = 0xAA;
 }
@@ -143,7 +144,8 @@ int hlffi_bytes_get(hlffi_value* bytes, int index)
 **Example:**
 ```c
 int byte = hlffi_bytes_get(bytes, 0);
-if (byte >= 0) {
+if (byte >= 0)
+{
     printf("First byte: 0x%02X\n", byte);
 }
 ```
@@ -216,7 +218,8 @@ hlffi_value* a = hlffi_bytes_from_string(vm, "abc");
 hlffi_value* b = hlffi_bytes_from_string(vm, "abd");
 
 int cmp = hlffi_bytes_compare(a, 0, b, 0, 3);
-if (cmp < 0) {
+if (cmp < 0)
+{
     printf("a < b\n");
 }
 ```
@@ -266,7 +269,8 @@ free(str);  // MUST free
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -282,7 +286,8 @@ int main() {
 
     // Read bytes:
     printf("Bytes: ");
-    for (int i = 0; i < len; i++) {
+    for (int i = 0; i < len; i++)
+    {
         int byte = hlffi_bytes_get(bytes, i);
         printf("0x%02X ", byte);
     }
@@ -290,7 +295,8 @@ int main() {
 
     // Zero-copy access:
     unsigned char* ptr = (unsigned char*)hlffi_bytes_get_ptr(bytes);
-    if (ptr) {
+    if (ptr)
+    {
         ptr[0] = 0x68;  // 'H' -> 'h'
     }
 
@@ -310,6 +316,7 @@ int main() {
     // Cleanup:
     hlffi_value_free(bytes);
     hlffi_value_free(dst);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -319,8 +326,10 @@ int main() {
 ```haxe
 import haxe.io.Bytes;
 
-class Main {
-    public static function main() {
+class Main
+{
+    public static function main()
+    {
         var bytes = Bytes.alloc(10);
         bytes.set(0, 0xFF);
         trace('Byte 0: ${bytes.get(0)}');
@@ -337,12 +346,14 @@ class Main {
 ```c
 // ✅ GOOD - Direct memory access
 unsigned char* ptr = (unsigned char*)hlffi_bytes_get_ptr(bytes);
-for (int i = 0; i < len; i++) {
+for (int i = 0; i < len; i++)
+{
     ptr[i] = i;  // Fast
 }
 
 // ❌ SLOWER - Individual calls
-for (int i = 0; i < len; i++) {
+for (int i = 0; i < len; i++)
+{
     hlffi_bytes_set(bytes, i, i);  // Function call overhead
 }
 ```
@@ -365,7 +376,8 @@ printf("%s\n", str);
 
 ```c
 // ✅ GOOD - Check return value
-if (!hlffi_bytes_blit(dst, 0, src, 5, 10)) {
+if (!hlffi_bytes_blit(dst, 0, src, 5, 10))
+{
     fprintf(stderr, "Blit failed - out of bounds\n");
 }
 

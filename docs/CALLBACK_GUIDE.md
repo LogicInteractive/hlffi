@@ -45,7 +45,8 @@ HLFFI callbacks enable **bidirectional communication** between C and Haxe:
 
 ```c
 /* Callback signature: hlffi_value* func(hlffi_vm* vm, int argc, hlffi_value** args) */
-static hlffi_value* on_button_click(hlffi_vm* vm, int argc, hlffi_value** args) {
+static hlffi_value* on_button_click(hlffi_vm* vm, int argc, hlffi_value** args)
+{
     /* Extract arguments */
     const char* button_id = hlffi_value_as_string(args[0]);
 
@@ -61,7 +62,8 @@ static hlffi_value* on_button_click(hlffi_vm* vm, int argc, hlffi_value** args) 
 
 ```c
 /* Register with name and argument count */
-if (!hlffi_register_callback(vm, "onButtonClick", on_button_click, 1)) {
+if (!hlffi_register_callback(vm, "onButtonClick", on_button_click, 1))
+{
     fprintf(stderr, "Failed to register callback: %s\n", hlffi_get_error(vm));
     return -1;
 }
@@ -83,11 +85,14 @@ hlffi_value_free(callback);
 ### Step 4: Call from Haxe
 
 ```haxe
-class UI {
+class UI
+{
     public static var onButtonClick:Dynamic;  /* Must be Dynamic! */
 
-    public static function handleClick(id:String):Void {
-        if (onButtonClick != null) {
+    public static function handleClick(id:String):Void
+    {
+        if (onButtonClick != null)
+        {
             onButtonClick(id);  /* Calls C function! */
         }
     }
@@ -103,7 +108,8 @@ class UI {
 **Use case**: Notify C that something happened, no data needed.
 
 ```c
-static hlffi_value* on_game_started(hlffi_vm* vm, int argc, hlffi_value** args) {
+static hlffi_value* on_game_started(hlffi_vm* vm, int argc, hlffi_value** args)
+{
     (void)argc; (void)args;  /* Unused */
 
     printf("Game started!\n");
@@ -119,10 +125,12 @@ hlffi_register_callback(vm, "onGameStarted", on_game_started, 0);
 
 ```haxe
 /* Haxe side */
-class Game {
+class Game
+{
     public static var onGameStarted:Dynamic;
 
-    static function startGame():Void {
+    static function startGame():Void
+    {
         if (onGameStarted != null) onGameStarted();
     }
 }
@@ -133,7 +141,8 @@ class Game {
 **Use case**: Send data from Haxe to C for processing.
 
 ```c
-static hlffi_value* on_player_scored(hlffi_vm* vm, int argc, hlffi_value** args) {
+static hlffi_value* on_player_scored(hlffi_vm* vm, int argc, hlffi_value** args)
+{
     int points = hlffi_value_as_int(args[0], 0);
     const char* reason = hlffi_value_as_string(args[1]);
 
@@ -150,11 +159,14 @@ hlffi_register_callback(vm, "onPlayerScored", on_player_scored, 2);
 
 ```haxe
 /* Haxe side */
-class Player {
+class Player
+{
     public static var onPlayerScored:Dynamic;
 
-    function collectCoin():Void {
-        if (onPlayerScored != null) {
+    function collectCoin():Void
+    {
+        if (onPlayerScored != null)
+        {
             onPlayerScored(100, "Coin collected");
         }
     }
@@ -166,7 +178,8 @@ class Player {
 **Use case**: Haxe asks C for information.
 
 ```c
-static hlffi_value* calculate_physics(hlffi_vm* vm, int argc, hlffi_value** args) {
+static hlffi_value* calculate_physics(hlffi_vm* vm, int argc, hlffi_value** args)
+{
     float velocity = hlffi_value_as_float(args[0], 0);
     float mass = hlffi_value_as_float(args[1], 0);
 
@@ -182,11 +195,14 @@ hlffi_register_callback(vm, "calculatePhysics", calculate_physics, 2);
 
 ```haxe
 /* Haxe side */
-class Physics {
+class Physics
+{
     public static var calculatePhysics:Dynamic;
 
-    function getForce(vel:Float, mass:Float):Float {
-        if (calculatePhysics != null) {
+    function getForce(vel:Float, mass:Float):Float
+    {
+        if (calculatePhysics != null)
+        {
             var result:Dynamic = calculatePhysics(vel, mass);
             return result;  /* Auto-converts to Float */
         }
@@ -200,19 +216,23 @@ class Physics {
 **Use case**: C callback triggers more Haxe code.
 
 ```c
-static hlffi_value* on_file_loaded(hlffi_vm* vm, int argc, hlffi_value** args) {
+static hlffi_value* on_file_loaded(hlffi_vm* vm, int argc, hlffi_value** args)
+{
     const char* filename = hlffi_value_as_string(args[0]);
 
     /* Load file in C */
     FileData* data = load_file_sync(filename);
 
-    if (data) {
+    if (data)
+    {
         /* Success - notify Haxe */
         hlffi_value* success_arg = hlffi_value_bool(vm, true);
         hlffi_value* args[] = {success_arg};
         hlffi_call_static(vm, "FileLoader", "onLoadComplete", 1, args);
         hlffi_value_free(success_arg);
-    } else {
+    }
+    else
+    {
         /* Failure - tell Haxe */
         hlffi_value* error_msg = hlffi_value_string(vm, "File not found");
         hlffi_value* args[] = {error_msg};
@@ -284,7 +304,8 @@ typedef hlffi_value* (*hlffi_native_func)(
 
 1. **Check argument count**
    ```c
-   if (argc != expected_count) {
+   if (argc != expected_count)
+   {
        fprintf(stderr, "Wrong arg count\n");
        return hlffi_value_null(vm);
    }
@@ -293,7 +314,8 @@ typedef hlffi_value* (*hlffi_native_func)(
 2. **Validate arguments**
    ```c
    int value = hlffi_value_as_int(args[0], -1);  /* Default -1 */
-   if (value == -1) {
+   if (value == -1)
+   {
        /* Handle invalid input */
    }
    ```
@@ -356,12 +378,14 @@ typedef hlffi_value* (*hlffi_native_func)(
 5. **Don't call callbacks from multiple threads** (unless wrapped)
    ```c
    /* ✗ UNSAFE */
-   void* worker_thread(void* arg) {
+   void* worker_thread(void* arg)
+   {
        on_my_callback(vm, 0, NULL);  /* NOT thread-safe! */
    }
 
    /* ✓ Use thread registration */
-   void* worker_thread(void* arg) {
+   void* worker_thread(void* arg)
+   {
        hlffi_worker_register();
        on_my_callback(vm, 0, NULL);
        hlffi_worker_unregister();
@@ -378,13 +402,17 @@ typedef hlffi_value* (*hlffi_native_func)(
 /* Event dispatcher */
 typedef void (*event_handler)(const char* event, void* data);
 
-static hlffi_value* on_event(hlffi_vm* vm, int argc, hlffi_value** args) {
+static hlffi_value* on_event(hlffi_vm* vm, int argc, hlffi_value** args)
+{
     const char* event_type = hlffi_value_as_string(args[0]);
 
     /* Dispatch to native event system */
-    if (strcmp(event_type, "pause") == 0) {
+    if (strcmp(event_type, "pause") == 0)
+    {
         pause_game();
-    } else if (strcmp(event_type, "resume") == 0) {
+    }
+    else if (strcmp(event_type, "resume") == 0)
+    {
         resume_game();
     }
 
@@ -392,10 +420,12 @@ static hlffi_value* on_event(hlffi_vm* vm, int argc, hlffi_value** args) {
 }
 
 /* Haxe triggers events */
-class Events {
+class Events
+{
     public static var onEvent:Dynamic;
 
-    public static function trigger(type:String):Void {
+    public static function trigger(type:String):Void
+    {
         if (onEvent != null) onEvent(type);
     }
 }
@@ -405,11 +435,13 @@ class Events {
 
 ```c
 /* C performs async work, calls back when done */
-static hlffi_value* start_download(hlffi_vm* vm, int argc, hlffi_value** args) {
+static hlffi_value* start_download(hlffi_vm* vm, int argc, hlffi_value** args)
+{
     const char* url = hlffi_value_as_string(args[0]);
 
     /* Start async download */
-    download_async(url, [vm](bool success, const char* data) {
+    download_async(url, [vm](bool success, const char* data)
+    {
         /* On completion, call Haxe */
         hlffi_value* args[2] = {
             hlffi_value_bool(vm, success),
@@ -428,7 +460,8 @@ static hlffi_value* start_download(hlffi_vm* vm, int argc, hlffi_value** args) {
 
 ```c
 /* C allocates resource, returns handle */
-static hlffi_value* create_texture(hlffi_vm* vm, int argc, hlffi_value** args) {
+static hlffi_value* create_texture(hlffi_vm* vm, int argc, hlffi_value** args)
+{
     int width = hlffi_value_as_int(args[0], 0);
     int height = hlffi_value_as_int(args[1], 0);
 
@@ -441,7 +474,8 @@ static hlffi_value* create_texture(hlffi_vm* vm, int argc, hlffi_value** args) {
     return hlffi_value_int(vm, texture_id);
 }
 
-static hlffi_value* destroy_texture(hlffi_vm* vm, int argc, hlffi_value** args) {
+static hlffi_value* destroy_texture(hlffi_vm* vm, int argc, hlffi_value** args)
+{
     int texture_id = hlffi_value_as_int(args[0], 0);
 
     gpu_destroy_texture(texture_id);

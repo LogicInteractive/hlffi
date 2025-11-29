@@ -1,4 +1,4 @@
-# HLFFI API Reference - Static Members
+﻿# HLFFI API Reference - Static Members
 
 **[← Values](API_07_VALUES.md)** | **[Back to Index](API_REFERENCE.md)** | **[Instance Members →](API_09_INSTANCE_MEMBERS.md)**
 
@@ -64,7 +64,8 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
 **Example:**
 ```c
 hlffi_value* val = hlffi_get_static_field(vm, "Config", "maxPlayers");
-if (!val) {
+if (!val)
+{
     fprintf(stderr, "Field not found: %s\n", hlffi_get_error(vm));
 }
 ```
@@ -120,7 +121,8 @@ hlffi_value_free(result);
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -138,7 +140,8 @@ int main() {
     
     // Call game start:
     hlffi_call_static(vm, "Game", "start", 0, NULL);
-    
+
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -146,14 +149,17 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class Config {
+class Config
+{
     public static var screenWidth:Int = 1920;
 }
 
-class Game {
+class Game
+{
     public static var playerName:String = "Default";
     
-    public static function start():Void {
+    public static function start():Void
+    {
         trace('Starting game for: $playerName');
     }
 }

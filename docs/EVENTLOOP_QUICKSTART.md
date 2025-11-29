@@ -10,9 +10,11 @@
 
 ```haxe
 // In your Main.hx or any class:
-public static function processEventLoop():Void {
+public static function processEventLoop():Void
+{
     var loop = sys.thread.Thread.current().events;
-    if (loop != null) {
+    if (loop != null)
+    {
         loop.progress();
     }
 }
@@ -22,7 +24,8 @@ public static function processEventLoop():Void {
 
 ```c
 // In your C/C++ game loop:
-while (running) {
+while (running)
+{
     hlffi_update(vm, delta_time);
     update_game();
     render();
@@ -57,15 +60,18 @@ while (running) {
 
 ### 1ms Updates (High Precision)
 ```c
-while (running) {
+while (running)
+{
     double now = get_time_ms();
 
-    if (now - last_update >= 1.0) {
+    if (now - last_update >= 1.0)
+    {
         hlffi_update(vm, 0.001f);  // 1ms resolution
         last_update = now;
     }
 
-    if (now - last_frame >= 16.666) {
+    if (now - last_frame >= 16.666)
+    {
         render();
         last_frame = now;
     }
@@ -82,21 +88,26 @@ while (running) {
 ### Pattern 1: Use Timers in Haxe
 
 ```haxe
-class Game {
-    public static function main() {
+class Game
+{
+    public static function main()
+    {
         // One-shot timer
-        haxe.Timer.delay(() -> {
+        haxe.Timer.delay(() ->
+        {
             trace("Fired after 1 second");
         }, 1000);
 
         // Interval timer
         var timer = new haxe.Timer(100);
-        timer.run = () -> {
+        timer.run = () ->
+        {
             trace("Fires every 100ms");
         };
 
         // MainLoop callback
-        haxe.MainLoop.add(() -> {
+        haxe.MainLoop.add(() ->
+        {
             trace("Every frame");
         });
     }
@@ -110,7 +121,8 @@ class Game {
 hlffi_call_static(vm, "Game", "setupTimers");
 
 // Then just keep calling update
-while (running) {
+while (running)
+{
     hlffi_update(vm, dt);
     render();
 }
@@ -177,7 +189,8 @@ Returns `true` if there might be pending events (conservative).
 // example_eventloop.c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     // Create VM
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
@@ -186,7 +199,8 @@ int main() {
 
     // Game loop
     bool running = true;
-    while (running) {
+    while (running)
+    {
         // Process events (timers, callbacks)
         hlffi_update(vm, 0.016f);
 
@@ -208,24 +222,30 @@ int main() {
 
 ```haxe
 // Game.hx
-class Game {
-    public static function main() {
+class Game
+{
+    public static function main()
+    {
         trace("Game initialized");
 
         // Set up a timer
-        haxe.Timer.delay(() -> {
+        haxe.Timer.delay(() ->
+        {
             trace("Timer fired!");
         }, 1000);
     }
 
-    public static function update() {
+    public static function update()
+    {
         // Your game logic
     }
 
     // REQUIRED: Event loop helper
-    public static function processEventLoop():Void {
+    public static function processEventLoop():Void
+    {
         var loop = sys.thread.Thread.current().events;
-        if (loop != null) {
+        if (loop != null)
+        {
             loop.progress();
         }
     }

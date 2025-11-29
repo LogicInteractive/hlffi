@@ -16,12 +16,14 @@ This section covers the VM lifecycle functions - the core create/init/load/run/d
    - [`hlffi_load_file()`](#hlffi_load_file)
    - [`hlffi_load_memory()`](#hlffi_load_memory)
    - [`hlffi_call_entry()`](#hlffi_call_entry)
+   - [`hlffi_close()`](#hlffi_close)
    - [`hlffi_destroy()`](#hlffi_destroy)
    - [`hlffi_get_error()`](#hlffi_get_error)
    - [`hlffi_get_error_string()`](#hlffi_get_error_string)
    - [`hlffi_update_stack_top()`](#hlffi_update_stack_top)
-4. [Best Practices](#best-practices)
-5. [Common Pitfalls](#common-pitfalls)
+4. [VM Restart (Experimental)](#vm-restart-experimental)
+5. [Best Practices](#best-practices)
+6. [Common Pitfalls](#common-pitfalls)
 
 ---
 
@@ -29,11 +31,11 @@ This section covers the VM lifecycle functions - the core create/init/load/run/d
 
 The VM lifecycle manages the HashLink virtual machine from creation to destruction. These functions must be called in the correct order:
 
-**create → init → load → call_entry → [use VM] → destroy**
+**create → init → load → call_entry → [use VM] → close → destroy**
 
 **Important Notes:**
-- Only **ONE** VM per process (HashLink limitation)
-- Cannot restart VM after `hlffi_destroy()` (use hot reload instead)
+- Only **ONE** VM active at a time (HashLink limitation)
+- VM restart IS supported (experimental) - see [VM_RESTART.md](VM_RESTART.md)
 - Entry point **must** be called before accessing static members
 - All lifecycle functions are **NOT thread-safe** (call from main thread)
 
@@ -46,14 +48,16 @@ The VM lifecycle manages the HashLink virtual machine from creation to destructi
 ```c
 // 1. Create VM handle
 hlffi_vm* vm = hlffi_create();
-if (!vm) {
+if (!vm)
+{
     fprintf(stderr, "Failed to create VM\n");
     return -1;
 }
 
 // 2. Initialize HashLink runtime
 hlffi_error_code err = hlffi_init(vm, 0, NULL);
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Init failed: %s\n", hlffi_get_error(vm));
     hlffi_destroy(vm);
     return -1;
@@ -61,7 +65,8 @@ if (err != HLFFI_OK) {
 
 // 3. Load bytecode
 err = hlffi_load_file(vm, "game.hl");
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Load failed: %s\n", hlffi_get_error(vm));
     hlffi_destroy(vm);
     return -1;
@@ -69,7 +74,8 @@ if (err != HLFFI_OK) {
 
 // 4. Call entry point (initializes globals)
 err = hlffi_call_entry(vm);
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Entry call failed: %s\n", hlffi_get_error(vm));
     hlffi_destroy(vm);
     return -1;
@@ -78,7 +84,10 @@ if (err != HLFFI_OK) {
 // 5. Use the VM (call functions, access data)
 hlffi_call_static(vm, "Game", "start", 0, NULL);
 
-// 6. Destroy VM (only at process exit!)
+// 6. Close VM (cleanup before destroy)
+hlffi_close(vm);
+
+// 7. Destroy VM
 hlffi_destroy(vm);
 ```
 
@@ -93,7 +102,8 @@ hlffi_error_code err = hlffi_init(vm, argc, argv);
 
 ```c
 hlffi_error_code err = hlffi_load_file(vm, "game.hl");
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     // Get error code name:
     fprintf(stderr, "Error %d: %s\n", err, hlffi_get_error_string(err));
 
@@ -127,7 +137,8 @@ Allocates a new VM instance structure. Does not initialize the HashLink runtime 
 **Example:**
 ```c
 hlffi_vm* vm = hlffi_create();
-if (!vm) {
+if (!vm)
+{
     fprintf(stderr, "Failed to create VM\n");
     return -1;
 }
@@ -150,7 +161,7 @@ hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv)
 ```
 
 **Description:**
-Initializes the HashLink runtime. Sets up the garbage collector, registers the main thread, and prepares for bytecode loading. **Can only be called ONCE per process.**
+Initializes the HashLink runtime. Sets up the garbage collector, registers the main thread, and prepares for bytecode loading. HashLink global state is initialized only once per process (subsequent calls skip already-done initializations).
 
 **Parameters:**
 - `vm` - VM instance from `hlffi_create()`
@@ -165,29 +176,28 @@ Initializes the HashLink runtime. Sets up the garbage collector, registers the m
 
 **Thread Safety:** ❌ Must be called from main thread
 
-**One-Time:** ✅ Can only be called once per process lifetime
-
 **Example:**
 ```c
 // Without arguments:
 hlffi_error_code err = hlffi_init(vm, 0, NULL);
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Init failed: %s\n", hlffi_get_error(vm));
     return -1;
 }
 
 // With command-line arguments:
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_error_code err = hlffi_init(vm, argc, argv);
     // Haxe code can now access Sys.args()
 }
 ```
 
-**Critical Notes:**
-- Cannot be called after `hlffi_destroy()`
-- Subsequent calls return `HLFFI_ERROR_ALREADY_INITIALIZED`
-- This is a HashLink limitation (global state initialization)
+**Notes:**
+- HashLink global state (`hl_global_init()`, `hl_register_thread()`) is initialized only once
+- Subsequent VM creations reuse the existing global state (enables VM restart)
 - Registers main thread with GC
 - Sets up memory allocator
 
@@ -224,7 +234,8 @@ Loads HashLink bytecode from a `.hl` file on disk.
 **Example:**
 ```c
 hlffi_error_code err = hlffi_load_file(vm, "game.hl");
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Load failed: %s\n", hlffi_get_error(vm));
     return -1;
 }
@@ -280,14 +291,16 @@ Loads HashLink bytecode from a memory buffer. Useful for embedded resources or e
 **Example:**
 ```c
 // Embedded bytecode (e.g., from xxd -i game.hl):
-unsigned char game_hl[] = {
+unsigned char game_hl[] =
+{
     0x48, 0x4c, 0x42, 0x03, // HLB header
     // ... rest of bytecode ...
 };
 unsigned int game_hl_len = sizeof(game_hl);
 
 hlffi_error_code err = hlffi_load_memory(vm, game_hl, game_hl_len);
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Load from memory failed: %s\n", hlffi_get_error(vm));
     return -1;
 }
@@ -341,7 +354,8 @@ Calls the entry point (Haxe `main()` function). **This MUST be called even if ma
 ```c
 // Haxe: function main() { trace("Hello"); }
 hlffi_error_code err = hlffi_call_entry(vm);
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Entry call failed: %s\n", hlffi_get_error(vm));
 }
 // Returns immediately if Haxe main() returns
@@ -372,6 +386,38 @@ hlffi_thread_start(vm);  // Calls entry point in separate thread
 
 ---
 
+### `hlffi_close()`
+
+**Signature:**
+```c
+void hlffi_close(hlffi_vm* vm)
+```
+
+**Description:**
+Cleans up the VM state before destruction. Releases module resources and prepares for destroy.
+
+**Parameters:**
+- `vm` - VM instance to close
+
+**Thread Safety:** ❌ Not thread-safe
+
+**Example:**
+```c
+// Before destroying VM:
+hlffi_close(vm);
+hlffi_destroy(vm);
+vm = NULL;
+```
+
+**Notes:**
+- Should be called before `hlffi_destroy()`
+- Safe to call even if init/load failed
+- Clears the `init` and `ready` flags on the VM
+
+**See Also:** [`hlffi_destroy()`](#hlffi_destroy)
+
+---
+
 ### `hlffi_destroy()`
 
 **Signature:**
@@ -380,38 +426,34 @@ void hlffi_destroy(hlffi_vm* vm)
 ```
 
 **Description:**
-Destroys the VM instance and shuts down the HashLink runtime. **Only call this at process exit!**
+Destroys the VM instance and frees its memory. Call `hlffi_close()` first.
 
 **Parameters:**
 - `vm` - VM instance to destroy
 
 **Thread Safety:** ❌ Not thread-safe
 
-**Critical:** ⚠️ Cannot create new VM after calling this (HashLink global state)
-
 **Example:**
 ```c
-// At program exit:
+// Proper shutdown:
+hlffi_close(vm);
 hlffi_destroy(vm);
 vm = NULL;
+
+// After destroy, you CAN create a new VM (experimental):
+vm = hlffi_create();
+hlffi_init(vm, 0, NULL);
+// ... load and use new VM
 ```
 
-**Important Notes:**
-- **DO NOT** use destroy/create for code updates → Use hot reload instead
-- HashLink runtime shutdown is irreversible
-- After calling this, the process cannot reinitialize HashLink
+**Notes:**
+- Call `hlffi_close()` before this function
 - Safe to call even if init/load failed
-- For VM restart patterns, see `docs/VM_RESTART.md` (experimental)
+- **VM restart IS supported** - you can create a new VM after destroy (experimental)
+- For hot reload (no restart needed), see [Hot Reload](API_05_HOT_RELOAD.md)
+- For VM restart patterns, see [VM_RESTART.md](VM_RESTART.md)
 
-**Why This Limitation Exists:**
-HashLink maintains global state (GC, type system, JIT) that cannot be safely torn down and reinitialized. This is a fundamental HashLink design constraint.
-
-**Alternatives to Destroy/Recreate:**
-- **Hot Reload** - Update code without VM restart (recommended)
-- **VM Restart Pattern** - Experimental, see `docs/VM_RESTART.md`
-- **Process Restart** - Full program restart (nuclear option)
-
-**See Also:** [`hlffi_create()`](#hlffi_create), [`hlffi_enable_hot_reload()`](API_05_HOT_RELOAD.md)
+**See Also:** [`hlffi_close()`](#hlffi_close), [`hlffi_create()`](#hlffi_create), [VM Restart](#vm-restart-experimental)
 
 ---
 
@@ -438,13 +480,15 @@ Returns a human-readable error message for the last error that occurred on this 
 
 **Example:**
 ```c
-if (hlffi_load_file(vm, "game.hl") != HLFFI_OK) {
+if (hlffi_load_file(vm, "game.hl") != HLFFI_OK)
+{
     fprintf(stderr, "Error: %s\n", hlffi_get_error(vm));
 }
 
 // Check if there's an error:
 const char* err = hlffi_get_error(vm);
-if (err && *err) {
+if (err && *err)
+{
     printf("Last error: %s\n", err);
 }
 ```
@@ -480,13 +524,15 @@ Converts an error code to a human-readable string.
 **Example:**
 ```c
 hlffi_error_code err = hlffi_load_file(vm, "game.hl");
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Error %d: %s\n", err, hlffi_get_error_string(err));
     fprintf(stderr, "Details: %s\n", hlffi_get_error(vm));
 }
 
 // Print all possible errors:
-for (int i = HLFFI_OK; i <= HLFFI_ERROR_UNKNOWN; i++) {
+for (int i = HLFFI_OK; i <= HLFFI_ERROR_UNKNOWN; i++)
+{
     printf("%d: %s\n", i, hlffi_get_error_string(i));
 }
 ```
@@ -518,21 +564,25 @@ Updates the GC stack top pointer to the current stack position. **Typically not 
 
 **Example:**
 ```c
-void my_game_loop(hlffi_vm* vm) {
+void my_game_loop(hlffi_vm* vm)
+{
     int stack_marker;  // Must be local variable
     hlffi_update_stack_top(&stack_marker);
 
     // Now safe to call HLFFI functions in loop
-    while (running) {
+    while (running)
+    {
         hlffi_update(vm, delta_time);
     }
 }
 
 // Macro version:
-void my_game_loop(hlffi_vm* vm) {
+void my_game_loop(hlffi_vm* vm)
+{
     HLFFI_ENTER_SCOPE();  // Creates stack_marker and calls update_stack_top
 
-    while (running) {
+    while (running)
+    {
         hlffi_update(vm, delta_time);
     }
 }
@@ -558,7 +608,83 @@ HashLink's GC scans the C call stack to find object references. When embedding H
 3. GC now scans from correct stack location
 4. Prevents false positives/negatives in GC marking
 
-**See Also:** `HLFFI_ENTER_SCOPE()` macro, `docs/GC_STACK_SCANNING.md`
+**See Also:** `HLFFI_ENTER_SCOPE()` macro, [GC_STACK_SCANNING.md](GC_STACK_SCANNING.md)
+
+---
+
+## VM Restart (Experimental)
+
+HLFFI supports restarting the HashLink VM within a single process. This is **experimental** but tested and working.
+
+### How It Works
+
+HashLink has two process-wide initializations:
+1. `hl_global_init()` - Initializes HashLink global state (GC, type system)
+2. `hl_register_thread()` - Registers main thread with GC
+
+HLFFI uses static flags to ensure these are called only once per process. When you create a new VM after destroying one, it reuses the existing global state.
+
+### Basic Restart Pattern
+
+```c
+for (int session = 0; session < 3; session++)
+{
+    // Create and use VM
+    hlffi_vm* vm = hlffi_create();
+    hlffi_init(vm, 0, NULL);
+    hlffi_load_file(vm, "game.hl");
+    hlffi_call_entry(vm);
+
+    // Use the VM...
+    hlffi_call_static(vm, "Game", "update", 0, NULL);
+
+    // Cleanup
+    hlffi_close(vm);
+    hlffi_destroy(vm);
+
+    // Brief pause before restart (recommended)
+    sleep(1);
+}
+```
+
+### Threaded Mode Restart
+
+```c
+for (int session = 0; session < 3; session++)
+{
+    hlffi_vm* vm = hlffi_create();
+    hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);
+    hlffi_init(vm, 0, NULL);
+    hlffi_load_file(vm, "game.hl");
+    hlffi_thread_start(vm);
+
+    // Use via sync calls...
+    hlffi_thread_call_sync(vm, my_callback, data);
+
+    hlffi_thread_stop(vm);
+    hlffi_close(vm);
+    hlffi_destroy(vm);
+    sleep(1);
+}
+```
+
+### Limitations
+
+1. **Experimental** - Not officially supported by HashLink
+2. **Memory accumulation** - Some internal state may not be fully released
+3. **Single VM at a time** - Don't create a second VM before destroying the first
+4. **Static variables reset** - Haxe statics reset on each `hlffi_load_file()`
+
+### When to Use
+
+| Scenario | Recommended Approach |
+|----------|---------------------|
+| Code iteration during development | Hot Reload |
+| Full state reset | VM Restart |
+| Level/scene reload | VM Restart or Hot Reload |
+| Long-running server refresh | VM Restart |
+
+For complete details, see [VM_RESTART.md](VM_RESTART.md).
 
 ---
 
@@ -569,7 +695,8 @@ HashLink's GC scans the C call stack to find object references. When embedding H
 ```c
 // ✅ GOOD
 hlffi_error_code err = hlffi_init(vm, 0, NULL);
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Init failed: %s\n", hlffi_get_error(vm));
     hlffi_destroy(vm);
     return -1;
@@ -590,34 +717,33 @@ int score = hlffi_get_static_int(vm, "Game", "score", 0);  // Now safe
 int score = hlffi_get_static_int(vm, "Game", "score", 0);  // Globals not initialized!
 ```
 
-### 3. Use Hot Reload, Not Destroy/Create
+### 3. Use Hot Reload for Code Updates
 
 ```c
-// ✅ GOOD - Hot reload for code updates
+// ✅ PREFERRED - Hot reload for code updates (preserves state)
 hlffi_enable_hot_reload(vm, true);
 // ... later ...
 hlffi_reload_module(vm, "game.hl");
 
-// ❌ BAD - Can't recreate VM
+// ✅ ALSO WORKS - VM restart (experimental, resets state)
+hlffi_close(vm);
 hlffi_destroy(vm);
-vm = hlffi_create();  // Won't work! HashLink globals destroyed
+sleep(1);  // Brief pause recommended
+vm = hlffi_create();
+hlffi_init(vm, 0, NULL);
+hlffi_load_file(vm, "game.hl");
+hlffi_call_entry(vm);
 ```
 
-### 4. Destroy Only at Process Exit
+### 4. Close Before Destroy
 
 ```c
 // ✅ GOOD
-int main() {
-    hlffi_vm* vm = hlffi_create();
-    // ... use VM throughout program ...
-    hlffi_destroy(vm);  // At very end
-    return 0;
-}
+hlffi_close(vm);
+hlffi_destroy(vm);
 
-// ❌ BAD
-void some_function() {
-    hlffi_destroy(vm);  // Don't destroy mid-program!
-}
+// ❌ BAD - Missing close
+hlffi_destroy(vm);  // May not clean up properly
 ```
 
 ### 5. Handle Threading Properly
@@ -650,18 +776,24 @@ int score = hlffi_get_static_int(vm, "Game", "score", 0);  // CRASH!
 
 ---
 
-### 2. Trying to Restart VM
+### 2. Forgetting to Close Before Destroy
 
 **Problem:**
 ```c
-hlffi_destroy(vm);
+hlffi_destroy(vm);  // Missing hlffi_close()!
 vm = hlffi_create();
-hlffi_init(vm, 0, NULL);  // ERROR! Can't reinitialize
+hlffi_init(vm, 0, NULL);
 ```
 
-**Symptoms:** `HLFFI_ERROR_ALREADY_INITIALIZED`
+**Symptoms:** Potential memory leaks or undefined behavior
 
-**Solution:** Use hot reload or see `docs/VM_RESTART.md` for experimental patterns
+**Solution:** Always call `hlffi_close()` before `hlffi_destroy()`:
+```c
+hlffi_close(vm);
+hlffi_destroy(vm);
+```
+
+**Note:** VM restart IS supported (experimental). See [VM_RESTART.md](VM_RESTART.md)
 
 ---
 
@@ -697,7 +829,8 @@ hlffi_load_file(vm, "old.hl");  // ERROR!
 
 **Problem:**
 ```c
-if (hlffi_load_file(vm, "game.hl") != HLFFI_OK) {
+if (hlffi_load_file(vm, "game.hl") != HLFFI_OK)
+{
     printf("Failed!\n");  // No details!
 }
 ```
@@ -706,7 +839,8 @@ if (hlffi_load_file(vm, "game.hl") != HLFFI_OK) {
 
 **Solution:** Always print error messages:
 ```c
-if (hlffi_load_file(vm, "game.hl") != HLFFI_OK) {
+if (hlffi_load_file(vm, "game.hl") != HLFFI_OK)
+{
     fprintf(stderr, "Load failed: %s\n", hlffi_get_error(vm));
 }
 ```

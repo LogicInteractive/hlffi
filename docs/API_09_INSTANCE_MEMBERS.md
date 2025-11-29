@@ -1,4 +1,4 @@
-# HLFFI API Reference - Instance Members
+﻿# HLFFI API Reference - Instance Members
 
 **[← Static Members](API_08_STATIC_MEMBERS.md)** | **[Back to Index](API_REFERENCE.md)** | **[Arrays →](API_10_ARRAYS.md)**
 
@@ -121,7 +121,8 @@ int health = hlffi_get_field_int(player, "health", 0);
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -149,12 +150,14 @@ int main() {
     printf("Health after damage: %d\n", hp);
     
     // Type check:
-    if (hlffi_is_instance_of(player, "Player")) {
+    if (hlffi_is_instance_of(player, "Player"))
+    {
         printf("Confirmed: is a Player\n");
     }
     
     // Cleanup:
     hlffi_value_free(player);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -162,21 +165,25 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class Player {
+class Player
+{
     public var health:Int;
     public var name:String;
     
-    public function new(name:String) {
+    public function new(name:String)
+    {
         this.name = name;
         this.health = 100;
     }
     
-    public function takeDamage(amount:Int):Void {
+    public function takeDamage(amount:Int):Void
+    {
         health -= amount;
         if (health < 0) health = 0;
     }
     
-    public function getHealth():Int {
+    public function getHealth():Int
+    {
         return health;
     }
 }
@@ -216,7 +223,8 @@ hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
 
 ```c
 // ✅ GOOD
-if (hlffi_is_instance_of(obj, "Player")) {
+if (hlffi_is_instance_of(obj, "Player"))
+{
     // Safe to use as Player
 }
 

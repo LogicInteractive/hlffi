@@ -1,4 +1,4 @@
-# HLFFI API Reference - Utilities & Helpers
+﻿# HLFFI API Reference - Utilities & Helpers
 
 **[← Performance](API_17_PERFORMANCE.md)** | **[Back to Index](API_REFERENCE.md)** | **[Error Handling →](API_19_ERROR_HANDLING.md)**
 
@@ -48,7 +48,8 @@ void hlffi_worker_register(void)
 
 **Example:**
 ```c
-void* worker_thread(void* arg) {
+void* worker_thread(void* arg)
+{
     hlffi_worker_register();  // MUST call first
 
     // Safe to use HLFFI now:
@@ -76,7 +77,8 @@ void hlffi_worker_unregister(void)
 
 **Example:**
 ```c
-void* worker_thread(void* arg) {
+void* worker_thread(void* arg)
+{
     hlffi_worker_register();
 
     // ... work ...
@@ -155,12 +157,14 @@ hlffi_blocking_end();
 #include "hlffi.h"
 #include <pthread.h>
 
-typedef struct {
+
+{
     hlffi_vm* vm;
     int task_id;
 } task_data;
 
-void* worker_thread(void* arg) {
+void* worker_thread(void* arg)
+{
     task_data* data = (task_data*)arg;
 
     // Register with GC:
@@ -176,7 +180,8 @@ void* worker_thread(void* arg) {
     );
     hlffi_value_free(id);
 
-    if (result) {
+    if (result)
+    {
         int status = hlffi_value_as_int(result, 0);
         printf("Task %d completed with status %d\n", data->task_id, status);
         hlffi_value_free(result);
@@ -189,7 +194,8 @@ void* worker_thread(void* arg) {
     return NULL;
 }
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -197,7 +203,8 @@ int main() {
 
     // Spawn 4 worker threads:
     pthread_t threads[4];
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         task_data* data = malloc(sizeof(task_data));
         data->vm = vm;
         data->task_id = i;
@@ -205,10 +212,12 @@ int main() {
     }
 
     // Wait for workers:
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         pthread_join(threads[i], NULL);
     }
 
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -221,14 +230,16 @@ int main() {
 ```c
 #include "hlffi.h"
 
-hlffi_value* load_file_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* load_file_callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     char* filename = hlffi_value_as_string(argv[0]);
 
     // Notify GC we're doing external I/O:
     hlffi_blocking_begin();
 
     FILE* f = fopen(filename, "r");
-    if (!f) {
+    if (!f)
+    {
         hlffi_blocking_end();
         free(filename);
         return hlffi_value_null(vm);
@@ -254,7 +265,8 @@ hlffi_value* load_file_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
     return result;
 }
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
 
@@ -264,6 +276,7 @@ int main() {
     hlffi_load_file(vm, "game.hl");
     hlffi_call_entry(vm);
 
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -274,8 +287,10 @@ int main() {
 @:hlNative("", "loadFile")
 static function loadFile(filename:Dynamic):Dynamic;
 
-class Main {
-    public static function main() {
+class Main
+{
+    public static function main()
+    {
         var content = loadFile("data.txt");
         trace('Loaded: $content');
     }
@@ -292,8 +307,10 @@ For C++ projects, use RAII guards for automatic cleanup:
 
 **Signature:**
 ```cpp
-namespace hlffi {
-    class WorkerGuard {
+namespace hlffi
+{
+    class WorkerGuard
+    {
         WorkerGuard();   // Calls hlffi_worker_register()
         ~WorkerGuard();  // Calls hlffi_worker_unregister()
     };
@@ -304,7 +321,8 @@ namespace hlffi {
 ```cpp
 #include "hlffi.h"
 
-void* worker_thread(void* arg) {
+void* worker_thread(void* arg)
+{
     hlffi::WorkerGuard guard;  // Auto register
 
     // Safe to use HLFFI:
@@ -320,8 +338,10 @@ void* worker_thread(void* arg) {
 
 **Signature:**
 ```cpp
-namespace hlffi {
-    class BlockingGuard {
+namespace hlffi
+{
+    class BlockingGuard
+    {
         BlockingGuard();   // Calls hlffi_blocking_begin()
         ~BlockingGuard();  // Calls hlffi_blocking_end()
     };
@@ -332,7 +352,8 @@ namespace hlffi {
 ```cpp
 #include "hlffi.h"
 
-hlffi_value* my_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* my_callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     hlffi::BlockingGuard guard;  // Auto begin
 
     // External I/O:
@@ -350,7 +371,8 @@ hlffi_value* my_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
 
 ```c
 // ✅ GOOD - Balanced
-void* worker(void* arg) {
+void* worker(void* arg)
+{
     hlffi_worker_register();
     // ... work ...
     hlffi_worker_unregister();
@@ -358,7 +380,8 @@ void* worker(void* arg) {
 }
 
 // ❌ BAD - Unbalanced
-void* worker(void* arg) {
+void* worker(void* arg)
+{
     hlffi_worker_register();
     // ... work ...
     // Missing: hlffi_worker_unregister();
@@ -384,7 +407,8 @@ sleep(1);
 
 ```cpp
 // ✅ GOOD - Exception-safe
-void* worker(void* arg) {
+void* worker(void* arg)
+{
     hlffi::WorkerGuard guard;  // Auto cleanup on any exit path
 
     if (error) throw std::runtime_error("Error");
@@ -393,10 +417,12 @@ void* worker(void* arg) {
 }  // Always calls unregister
 
 // ❌ RISKY - Manual cleanup
-void* worker(void* arg) {
+void* worker(void* arg)
+{
     hlffi_worker_register();
 
-    if (error) {
+    if (error)
+    {
         hlffi_worker_unregister();  // Must remember every exit path
         throw std::runtime_error("Error");
     }
@@ -419,7 +445,8 @@ hlffi_blocking_end();
 // ❌ UNNECESSARY - Don't guard CPU work
 hlffi_blocking_begin();  // Not needed
 int sum = 0;
-for (int i = 0; i < 1000; i++) {
+for (int i = 0; i < 1000; i++)
+{
     sum += i;
 }
 hlffi_blocking_end();

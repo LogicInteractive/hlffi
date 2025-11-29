@@ -1,4 +1,4 @@
-# HLFFI API Reference - Exception Handling
+﻿# HLFFI API Reference - Exception Handling
 
 **[← Callbacks](API_15_CALLBACKS.md)** | **[Back to Index](API_REFERENCE.md)** | **[Performance →](API_17_PERFORMANCE.md)**
 
@@ -16,12 +16,15 @@ hlffi_call_static(vm, "Game", "loadLevel", 1, args);  // May crash
 
 // With exception handling (safe):
 hlffi_call_result res = hlffi_try_call_static(vm, "Game", "loadLevel", 1, args);
-if (res.exception) {
+if (res.exception)
+{
     char* msg = hlffi_get_exception_message(res.exception);
     fprintf(stderr, "Error: %s\n", msg);
     free(msg);
     hlffi_value_free(res.exception);
-} else {
+}
+else
+{
     // Use res.value
     hlffi_value_free(res.value);
 }
@@ -46,7 +49,8 @@ if (res.exception) {
 ## Call Result Type
 
 ```c
-typedef struct {
+
+{
     hlffi_value* value;      // Return value (NULL if exception)
     hlffi_value* exception;  // Exception (NULL if success)
 } hlffi_call_result;
@@ -56,12 +60,16 @@ typedef struct {
 ```c
 hlffi_call_result res = hlffi_try_call_static(...);
 
-if (res.exception) {
+if (res.exception)
+{
     // Handle exception
     hlffi_value_free(res.exception);
-} else {
+}
+else
+{
     // Use res.value
-    if (res.value) {
+    if (res.value)
+    {
         hlffi_value_free(res.value);
     }
 }
@@ -92,14 +100,18 @@ hlffi_value* args[] = {hlffi_value_int(vm, 5)};
 hlffi_call_result res = hlffi_try_call_static(vm, "Game", "loadLevel", 1, args);
 hlffi_value_free(args[0]);
 
-if (res.exception) {
+if (res.exception)
+{
     char* msg = hlffi_get_exception_message(res.exception);
     fprintf(stderr, "Failed to load level: %s\n", msg);
     free(msg);
     hlffi_value_free(res.exception);
-} else {
+}
+else
+{
     printf("Level loaded successfully\n");
-    if (res.value) {
+    if (res.value)
+    {
         hlffi_value_free(res.value);
     }
 }
@@ -130,13 +142,17 @@ hlffi_value* args[] = {dmg};
 hlffi_call_result res = hlffi_try_call_method(player, "takeDamage", 1, args);
 hlffi_value_free(dmg);
 
-if (res.exception) {
+if (res.exception)
+{
     char* msg = hlffi_get_exception_message(res.exception);
     fprintf(stderr, "Error applying damage: %s\n", msg);
     free(msg);
     hlffi_value_free(res.exception);
-} else {
-    if (res.value) {
+}
+else
+{
+    if (res.value)
+    {
         hlffi_value_free(res.value);
     }
 }
@@ -159,7 +175,8 @@ char* hlffi_get_exception_message(hlffi_value* exception)
 
 **Example:**
 ```c
-if (res.exception) {
+if (res.exception)
+{
     char* msg = hlffi_get_exception_message(res.exception);
     printf("Exception: %s\n", msg);
     free(msg);
@@ -179,7 +196,8 @@ char* hlffi_get_exception_stack(hlffi_value* exception)
 
 **Example:**
 ```c
-if (res.exception) {
+if (res.exception)
+{
     char* msg = hlffi_get_exception_message(res.exception);
     char* stack = hlffi_get_exception_stack(res.exception);
 
@@ -205,7 +223,8 @@ bool hlffi_is_exception(hlffi_value* value)
 
 **Example:**
 ```c
-if (hlffi_is_exception(res.value)) {
+if (hlffi_is_exception(res.value))
+{
     printf("This is an exception\n");
 }
 ```
@@ -217,7 +236,8 @@ if (hlffi_is_exception(res.value)) {
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -232,7 +252,8 @@ int main() {
     );
     hlffi_value_free(filename);
 
-    if (res.exception) {
+    if (res.exception)
+    {
         // Extract error info:
         char* msg = hlffi_get_exception_message(res.exception);
         char* stack = hlffi_get_exception_stack(res.exception);
@@ -252,13 +273,17 @@ int main() {
         hlffi_call_static(vm, "FileLoader", "load", 1, args2);
         hlffi_value_free(filename);
 
-    } else {
+    }
+else
+{
         printf("File loaded successfully\n");
-        if (res.value) {
+        if (res.value)
+        {
             hlffi_value_free(res.value);
         }
     }
 
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -266,9 +291,12 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class FileLoader {
-    public static function load(filename:String):Void {
-        if (!sys.FileSystem.exists(filename)) {
+class FileLoader
+{
+    public static function load(filename:String):Void
+    {
+        if (!sys.FileSystem.exists(filename))
+        {
             throw 'File not found: $filename';
         }
         var content = sys.io.File.getContent(filename);
@@ -286,7 +314,8 @@ class FileLoader {
 ```c
 // ✅ GOOD - Catch file I/O exceptions
 hlffi_call_result res = hlffi_try_call_static(vm, "File", "load", 1, args);
-if (res.exception) {
+if (res.exception)
+{
     // Handle error gracefully
 }
 
@@ -298,14 +327,16 @@ hlffi_call_static(vm, "File", "load", 1, args);  // Crashes on throw
 
 ```c
 // ✅ GOOD - Free exception
-if (res.exception) {
+if (res.exception)
+{
     char* msg = hlffi_get_exception_message(res.exception);
     free(msg);
     hlffi_value_free(res.exception);  // MUST free
 }
 
 // ❌ BAD - Memory leak
-if (res.exception) {
+if (res.exception)
+{
     char* msg = hlffi_get_exception_message(res.exception);
     free(msg);
     // Missing: hlffi_value_free(res.exception);
@@ -333,18 +364,23 @@ free(msg);
 ```c
 // ✅ GOOD - Handle both cases
 hlffi_call_result res = hlffi_try_call_static(...);
-if (res.exception) {
+if (res.exception)
+{
     // Handle exception
     hlffi_value_free(res.exception);
-} else {
+}
+else
+{
     // Use value
-    if (res.value) {
+    if (res.value)
+    {
         hlffi_value_free(res.value);
     }
 }
 
 // ❌ BAD - Only check exception
-if (res.exception) {
+if (res.exception)
+{
     hlffi_value_free(res.exception);
 }
 // Missing: free res.value if present
@@ -359,7 +395,8 @@ if (res.exception) {
 ```c
 hlffi_call_result res = hlffi_try_call_static(vm, "Network", "connect", 0, NULL);
 
-if (res.exception) {
+if (res.exception)
+{
     char* msg = hlffi_get_exception_message(res.exception);
     fprintf(stderr, "Connection failed: %s\n", msg);
     fprintf(stderr, "Retrying...\n");
@@ -376,13 +413,16 @@ if (res.exception) {
 ```c
 hlffi_call_result res = hlffi_try_call_static(vm, "Analytics", "track", 1, args);
 
-if (res.exception) {
+if (res.exception)
+{
     // Log but don't fail:
     char* msg = hlffi_get_exception_message(res.exception);
     fprintf(stderr, "Analytics error (non-fatal): %s\n", msg);
     free(msg);
     hlffi_value_free(res.exception);
-} else {
+}
+else
+{
     if (res.value) hlffi_value_free(res.value);
 }
 
@@ -392,14 +432,19 @@ if (res.exception) {
 ### Exception Type Checking
 
 ```c
-if (res.exception) {
+if (res.exception)
+{
     char* msg = hlffi_get_exception_message(res.exception);
 
-    if (strstr(msg, "File not found")) {
+    if (strstr(msg, "File not found"))
+    {
         printf("Using default file...\n");
-    } else if (strstr(msg, "Permission denied")) {
+    } else if (strstr(msg, "Permission denied"))
+    {
         fprintf(stderr, "Access error\n");
-    } else {
+    }
+else
+{
         fprintf(stderr, "Unknown error: %s\n", msg);
     }
 

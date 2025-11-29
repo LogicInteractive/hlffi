@@ -1,4 +1,4 @@
-# HLFFI API Reference - Threading
+﻿# HLFFI API Reference - Threading
 
 **[← Event Loop](API_03_EVENT_LOOP.md)** | **[Back to Index](API_REFERENCE.md)** | **[Hot Reload →](API_05_HOT_RELOAD.md)**
 
@@ -47,7 +47,8 @@ Spawns a dedicated VM thread and calls `hlffi_call_entry()` in that thread.
 ```c
 hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);
 hlffi_error_code err = hlffi_thread_start(vm);
-if (err != HLFFI_OK) {
+if (err != HLFFI_OK)
+{
     fprintf(stderr, "Thread start failed\n");
 }
 // VM now running in background thread
@@ -109,7 +110,8 @@ typedef void (*hlffi_thread_func)(hlffi_vm* vm, void* userdata);
 
 **Example:**
 ```c
-void set_score_callback(hlffi_vm* vm, void* userdata) {
+void set_score_callback(hlffi_vm* vm, void* userdata)
+{
     int score = *(int*)userdata;
     hlffi_value* arg = hlffi_value_int(vm, score);
     hlffi_call_static(vm, "Game", "setScore", 1, &arg);
@@ -146,11 +148,13 @@ typedef void (*hlffi_thread_async_callback)(hlffi_vm* vm, void* result, void* us
 
 **Example:**
 ```c
-void increment_callback(hlffi_vm* vm, void* userdata) {
+void increment_callback(hlffi_vm* vm, void* userdata)
+{
     hlffi_call_static(vm, "Game", "incrementScore", 0, NULL);
 }
 
-void on_complete(hlffi_vm* vm, void* result, void* userdata) {
+void on_complete(hlffi_vm* vm, void* result, void* userdata)
+{
     printf("Increment complete\n");
 }
 
@@ -175,7 +179,8 @@ Registers a worker thread with the HashLink GC. **Call from worker thread BEFORE
 
 **Example:**
 ```c
-void* worker_thread(void* arg) {
+void* worker_thread(void* arg)
+{
     hlffi_worker_register();  // MUST call first
     
     hlffi_vm* vm = (hlffi_vm*)arg;
@@ -218,7 +223,8 @@ Notifies GC that thread is entering/exiting external blocking operation (file I/
 
 **Example:**
 ```c
-hlffi_value* save_file_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* save_file_callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     const char* path = hlffi_value_as_string(argv[0]);
     
     hlffi_blocking_begin();  // Notify GC
@@ -239,14 +245,16 @@ hlffi_value* save_file_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
 #include "hlffi.h"
 #include <pthread.h>
 
-void set_player_name(hlffi_vm* vm, void* userdata) {
+void set_player_name(hlffi_vm* vm, void* userdata)
+{
     const char* name = (const char*)userdata;
     hlffi_value* arg = hlffi_value_string(vm, name);
     hlffi_call_static(vm, "Game", "setPlayerName", 1, &arg);
     hlffi_value_free(arg);
 }
 
-int main() {
+int main()
+{
     // Setup THREADED mode:
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
@@ -255,7 +263,8 @@ int main() {
     hlffi_thread_start(vm);  // Haxe runs in background
     
     // Main thread does other work:
-    while (!should_quit()) {
+    while (!should_quit())
+    {
         // Synchronous call:
         hlffi_thread_call_sync(vm, set_player_name, "Hero");
         
@@ -268,6 +277,7 @@ int main() {
     
     // Cleanup:
     hlffi_thread_stop(vm);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -275,10 +285,13 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class Main {
-    public static function main() {
+class Main
+{
+    public static function main()
+    {
         // Blocking loop - runs in VM thread
-        while (true) {
+        while (true)
+        {
             Game.update();
             Game.render();
             Sys.sleep(0.016);
@@ -295,7 +308,8 @@ class Main {
 
 ```c
 // ✅ GOOD
-void* worker(void* arg) {
+void* worker(void* arg)
+{
     hlffi_worker_register();
     // ... work ...
     hlffi_worker_unregister();
@@ -303,7 +317,8 @@ void* worker(void* arg) {
 }
 
 // ❌ BAD
-void* worker(void* arg) {
+void* worker(void* arg)
+{
     hlffi_worker_register();
     // ... work ...
     // Missing unregister!
@@ -329,13 +344,15 @@ long_io_operation();
 
 ```cpp
 // C++ automatic management:
-void* worker(void* arg) {
+void* worker(void* arg)
+{
     hlffi::WorkerGuard guard;  // Auto register/unregister
     // ... work ...
     return NULL;  // Unregister automatic
 }
 
-hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     hlffi::BlockingGuard guard;  // Auto begin/end
     long_io_operation();
     return hlffi_value_null(vm);

@@ -1,4 +1,4 @@
-# HLFFI API Reference - Enums (Algebraic Data Types)
+﻿# HLFFI API Reference - Enums (Algebraic Data Types)
 
 **[← Bytes](API_12_BYTES.md)** | **[Back to Index](API_REFERENCE.md)** | **[Abstracts →](API_14_ABSTRACTS.md)**
 
@@ -40,12 +40,14 @@ Work with Haxe enums (algebraic data types with constructors and parameters).
 ## Haxe Enum Overview
 
 ```haxe
-enum Option {
+enum Option
+{
     None;           // Constructor 0, no parameters
     Some(value:Int);  // Constructor 1, 1 parameter
 }
 
-enum Result<T, E> {
+enum Result<T, E>
+{
     Ok(value:T);
     Err(error:E);
 }
@@ -162,7 +164,8 @@ hlffi_value* hlffi_enum_get_param(hlffi_value* value, int param_index)
 ```c
 // Given: Option.Some(42)
 hlffi_value* param = hlffi_enum_get_param(opt, 0);
-if (param) {
+if (param)
+{
     int value = hlffi_value_as_int(param, 0);
     printf("Some(%d)\n", value);  // Some(42)
     hlffi_value_free(param);
@@ -230,9 +233,11 @@ bool hlffi_enum_is(hlffi_value* value, int index)
 
 **Example:**
 ```c
-if (hlffi_enum_is(opt, 0)) {
+if (hlffi_enum_is(opt, 0))
+{
     printf("Is None\n");
-} else if (hlffi_enum_is(opt, 1)) {
+} else if (hlffi_enum_is(opt, 1))
+{
     printf("Is Some\n");
 }
 ```
@@ -250,11 +255,13 @@ bool hlffi_enum_is_named(hlffi_value* value, const char* name)
 
 **Example:**
 ```c
-if (hlffi_enum_is_named(opt, "Some")) {
+if (hlffi_enum_is_named(opt, "Some"))
+{
     hlffi_value* val = hlffi_enum_get_param(opt, 0);
     printf("Some(%d)\n", hlffi_value_as_int(val, 0));
     hlffi_value_free(val);
-} else if (hlffi_enum_is_named(opt, "None")) {
+} else if (hlffi_enum_is_named(opt, "None"))
+{
     printf("None\n");
 }
 ```
@@ -266,7 +273,8 @@ if (hlffi_enum_is_named(opt, "Some")) {
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -275,7 +283,8 @@ int main() {
     // Enumerate constructors:
     int count = hlffi_enum_get_construct_count(vm, "Option");
     printf("Option constructors (%d):\n", count);
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
+    {
         char* name = hlffi_enum_get_construct_name(vm, "Option", i);
         printf("  [%d] %s\n", i, name);
         free(name);
@@ -294,7 +303,8 @@ int main() {
     hlffi_value_free(val);
 
     // Inspect Some:
-    if (hlffi_enum_is_named(some, "Some")) {
+    if (hlffi_enum_is_named(some, "Some"))
+    {
         hlffi_value* param = hlffi_enum_get_param(some, 0);
         printf("Some(%d)\n", hlffi_value_as_int(param, 0));  // Some(42)
         hlffi_value_free(param);
@@ -302,9 +312,11 @@ int main() {
 
     // Pattern matching:
     hlffi_value* opt = some;  // Could be either None or Some
-    if (hlffi_enum_is(opt, 0)) {
+    if (hlffi_enum_is(opt, 0))
+    {
         printf("Matched None\n");
-    } else if (hlffi_enum_is(opt, 1)) {
+    } else if (hlffi_enum_is(opt, 1))
+    {
         hlffi_value* v = hlffi_enum_get_param(opt, 0);
         printf("Matched Some(%d)\n", hlffi_value_as_int(v, 0));
         hlffi_value_free(v);
@@ -313,6 +325,7 @@ int main() {
     // Cleanup:
     hlffi_value_free(none);
     hlffi_value_free(some);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -320,17 +333,21 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-enum Option {
+enum Option
+{
     None;
     Some(value:Int);
 }
 
-class Main {
-    public static function main() {
+class Main
+{
+    public static function main()
+    {
         var opt1 = Option.None;
         var opt2 = Option.Some(42);
 
-        switch (opt2) {
+        switch (opt2)
+        {
             case None:
                 trace("None");
             case Some(v):
@@ -348,11 +365,13 @@ class Main {
 
 ```c
 // ✅ GOOD - Check constructor before accessing params
-if (hlffi_enum_is_named(result, "Ok")) {
+if (hlffi_enum_is_named(result, "Ok"))
+{
     hlffi_value* value = hlffi_enum_get_param(result, 0);
     printf("Success: %d\n", hlffi_value_as_int(value, 0));
     hlffi_value_free(value);
-} else if (hlffi_enum_is_named(result, "Err")) {
+} else if (hlffi_enum_is_named(result, "Err"))
+{
     hlffi_value* err = hlffi_enum_get_param(result, 0);
     char* msg = hlffi_value_as_string(err);
     printf("Error: %s\n", msg);
@@ -383,7 +402,8 @@ printf("%s\n", name);
 ```c
 // ✅ GOOD
 hlffi_value* param = hlffi_enum_get_param(opt, 0);
-if (param) {
+if (param)
+{
     // ... use param ...
     hlffi_value_free(param);
 }
@@ -402,11 +422,14 @@ hlffi_value* param = hlffi_enum_get_param(opt, 0);
 
 ```c
 // Check for value:
-if (hlffi_enum_is_named(opt, "Some")) {
+if (hlffi_enum_is_named(opt, "Some"))
+{
     hlffi_value* val = hlffi_enum_get_param(opt, 0);
     printf("Has value: %d\n", hlffi_value_as_int(val, 0));
     hlffi_value_free(val);
-} else {
+}
+else
+{
     printf("No value\n");
 }
 ```
@@ -415,11 +438,14 @@ if (hlffi_enum_is_named(opt, "Some")) {
 
 ```c
 // Handle success/error:
-if (hlffi_enum_is_named(res, "Ok")) {
+if (hlffi_enum_is_named(res, "Ok"))
+{
     hlffi_value* val = hlffi_enum_get_param(res, 0);
     printf("Success\n");
     hlffi_value_free(val);
-} else {
+}
+else
+{
     hlffi_value* err = hlffi_enum_get_param(res, 0);
     char* msg = hlffi_value_as_string(err);
     fprintf(stderr, "Error: %s\n", msg);

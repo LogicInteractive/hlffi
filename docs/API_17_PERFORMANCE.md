@@ -1,4 +1,4 @@
-# HLFFI API Reference - Performance & Caching
+﻿# HLFFI API Reference - Performance & Caching
 
 **[← Exceptions](API_16_EXCEPTIONS.md)** | **[Back to Index](API_REFERENCE.md)** | **[Utilities →](API_18_UTILITIES.md)**
 
@@ -14,13 +14,15 @@ Optimize hot paths with method caching for **60x speedup**.
 
 ```c
 // Slow (40ns per call):
-for (int i = 0; i < 1000; i++) {
+for (int i = 0; i < 1000; i++)
+{
     hlffi_call_static(vm, "Game", "update", 0, NULL);  // Hash lookup every call
 }
 
 // Fast (0.7ns per call - 60x faster):
 hlffi_cached_call* update = hlffi_cache_static_method(vm, "Game", "update");
-for (int i = 0; i < 1000; i++) {
+for (int i = 0; i < 1000; i++)
+{
     hlffi_call_cached(update, 0, NULL);  // Direct call
 }
 hlffi_cache_free(update);
@@ -69,7 +71,8 @@ hlffi_cached_call* update = hlffi_cache_static_method(vm, "Game", "update");
 hlffi_cached_call* render = hlffi_cache_static_method(vm, "Graphics", "render");
 
 // Use in hot loop (60x faster):
-while (running) {
+while (running)
+{
     hlffi_call_cached(update, 0, NULL);
     hlffi_call_cached(render, 0, NULL);
 }
@@ -208,7 +211,8 @@ hlffi_cache_free(update);
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -219,14 +223,16 @@ int main() {
     hlffi_cached_call* render = hlffi_cache_static_method(vm, "Graphics", "render");
     hlffi_cached_call* process = hlffi_cache_static_method(vm, "Physics", "process");
 
-    if (!update || !render || !process) {
+    if (!update || !render || !process)
+    {
         fprintf(stderr, "Failed to cache methods\n");
         hlffi_destroy(vm);
         return 1;
     }
 
     // Game loop (60 FPS):
-    for (int frame = 0; frame < 3600; frame++) {  // 60 seconds
+    for (int frame = 0; frame < 3600; frame++)
+    {
         // Call cached methods (60x faster than name lookup):
         hlffi_call_cached(update, 0, NULL);
         hlffi_call_cached(process, 0, NULL);
@@ -240,6 +246,7 @@ int main() {
     hlffi_cache_free(update);
     hlffi_cache_free(render);
     hlffi_cache_free(process);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -247,20 +254,26 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class Game {
-    public static function update():Void {
+class Game
+{
+    public static function update():Void
+    {
         // Game logic
     }
 }
 
-class Graphics {
-    public static function render():Void {
+class Graphics
+{
+    public static function render():Void
+    {
         // Rendering
     }
 }
 
-class Physics {
-    public static function process():Void {
+class Physics
+{
+    public static function process():Void
+    {
         // Physics step
     }
 }
@@ -281,7 +294,8 @@ class Physics {
 ```c
 // Uncached (40ms):
 clock_t start = clock();
-for (int i = 0; i < 1000000; i++) {
+for (int i = 0; i < 1000000; i++)
+{
     hlffi_call_static(vm, "Math", "add", 2, args);
 }
 printf("Uncached: %ld ms\n", (clock() - start) * 1000 / CLOCKS_PER_SEC);
@@ -289,7 +303,8 @@ printf("Uncached: %ld ms\n", (clock() - start) * 1000 / CLOCKS_PER_SEC);
 // Cached (0.7ms):
 hlffi_cached_call* add = hlffi_cache_static_method(vm, "Math", "add");
 start = clock();
-for (int i = 0; i < 1000000; i++) {
+for (int i = 0; i < 1000000; i++)
+{
     hlffi_call_cached(add, 2, args);
 }
 printf("Cached: %ld ms\n", (clock() - start) * 1000 / CLOCKS_PER_SEC);
@@ -305,13 +320,15 @@ hlffi_cache_free(add);
 ```c
 // ✅ GOOD - Cache outside loop
 hlffi_cached_call* update = hlffi_cache_static_method(vm, "Game", "update");
-for (int i = 0; i < 1000; i++) {
+for (int i = 0; i < 1000; i++)
+{
     hlffi_call_cached(update, 0, NULL);
 }
 hlffi_cache_free(update);
 
 // ❌ BAD - Cache inside loop
-for (int i = 0; i < 1000; i++) {
+for (int i = 0; i < 1000; i++)
+{
     hlffi_cached_call* update = hlffi_cache_static_method(vm, "Game", "update");
     hlffi_call_cached(update, 0, NULL);
     hlffi_cache_free(update);  // Defeats the purpose!
@@ -347,7 +364,8 @@ hlffi_cached_call* update = hlffi_cache_static_method(vm, "Game", "update");
 ```c
 // ✅ GOOD - Verify cache creation
 hlffi_cached_call* update = hlffi_cache_static_method(vm, "Game", "update");
-if (!update) {
+if (!update)
+{
     fprintf(stderr, "Failed to cache Game.update\n");
     return;
 }

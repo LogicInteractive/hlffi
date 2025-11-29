@@ -1,4 +1,4 @@
-# HLFFI API Reference - Callbacks & FFI
+﻿# HLFFI API Reference - Callbacks & FFI
 
 **[← Abstracts](API_14_ABSTRACTS.md)** | **[Back to Index](API_REFERENCE.md)** | **[Exceptions →](API_16_EXCEPTIONS.md)**
 
@@ -18,7 +18,8 @@ static function myCallback(x:Dynamic):Dynamic;
 
 ```c
 // C side:
-hlffi_value* my_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* my_callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     int x = hlffi_value_as_int(argv[0], 0);
     printf("Called from Haxe: %d\n", x);
     return hlffi_value_int(vm, x * 2);
@@ -87,7 +88,8 @@ bool hlffi_register_callback(
 
 **Example:**
 ```c
-hlffi_value* on_message(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* on_message(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     char* msg = hlffi_value_as_string(argv[0]);
     printf("Message: %s\n", msg);
     free(msg);
@@ -141,7 +143,8 @@ hlffi_native_func hlffi_get_callback(const char* name)
 **Example:**
 ```c
 hlffi_native_func cb = hlffi_get_callback("onMessage");
-if (cb) {
+if (cb)
+{
     printf("Callback 'onMessage' is registered\n");
 }
 ```
@@ -170,7 +173,8 @@ hlffi_unregister_callback("onMessage");
 #include "hlffi.h"
 
 // Callback: Add two numbers
-hlffi_value* native_add(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* native_add(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     int a = hlffi_value_as_int(argv[0], 0);
     int b = hlffi_value_as_int(argv[1], 0);
     int result = a + b;
@@ -179,14 +183,16 @@ hlffi_value* native_add(hlffi_vm* vm, int argc, hlffi_value** argv) {
 }
 
 // Callback: Print message
-hlffi_value* native_print(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* native_print(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     char* msg = hlffi_value_as_string(argv[0]);
     printf("C: %s\n", msg);
     free(msg);
     return hlffi_value_null(vm);
 }
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
 
@@ -197,6 +203,7 @@ int main() {
     hlffi_load_file(vm, "game.hl");
     hlffi_call_entry(vm);  // Haxe will call callbacks
 
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -204,7 +211,8 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class Main {
+class Main
+{
     // Declare native callbacks:
     @:hlNative("", "nativeAdd")
     static function nativeAdd(a:Dynamic, b:Dynamic):Dynamic;
@@ -212,7 +220,8 @@ class Main {
     @:hlNative("", "nativePrint")
     static function nativePrint(msg:Dynamic):Void;
 
-    public static function main() {
+    public static function main()
+    {
         // Call C from Haxe:
         var result = nativeAdd(10, 20);
         trace('Result from C: $result');  // 30
@@ -255,7 +264,8 @@ static function callback(arg:Int):Int;
 
 ```c
 // ✅ GOOD
-hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     char* str = hlffi_value_as_string(argv[0]);
     printf("%s\n", str);
     free(str);  // MUST free
@@ -263,7 +273,8 @@ hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
 }
 
 // ❌ BAD - Memory leak
-hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     char* str = hlffi_value_as_string(argv[0]);
     printf("%s\n", str);
     // Missing: free(str);
@@ -275,13 +286,15 @@ hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
 
 ```c
 // ✅ GOOD - Always return a value
-hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     // ... do work ...
     return hlffi_value_null(vm);  // For void return
 }
 
 // ❌ BAD - Don't return NULL directly
-hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     // ... do work ...
     return NULL;  // Undefined behavior
 }
@@ -294,7 +307,8 @@ hlffi_value* callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
 ### Event Callback
 
 ```c
-hlffi_value* on_player_hit(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* on_player_hit(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     int damage = hlffi_value_as_int(argv[0], 0);
     char* attacker = hlffi_value_as_string(argv[1]);
 
@@ -310,7 +324,8 @@ hlffi_register_callback(vm, "onPlayerHit", on_player_hit, 2);
 ### Computation Callback
 
 ```c
-hlffi_value* calculate_score(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* calculate_score(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     int kills = hlffi_value_as_int(argv[0], 0);
     int deaths = hlffi_value_as_int(argv[1], 1);
 
@@ -335,7 +350,8 @@ hlffi_register_callback(vm, "calculateScore", calculate_score, 2);
 
 **Example:**
 ```c
-hlffi_value* blocking_callback(hlffi_vm* vm, int argc, hlffi_value** argv) {
+hlffi_value* blocking_callback(hlffi_vm* vm, int argc, hlffi_value** argv)
+{
     hlffi_blocking_begin();  // Allow VM to continue
     sleep(1);  // External I/O
     hlffi_blocking_end();    // Resume VM operations
