@@ -11,7 +11,7 @@
 
 ---
 
-HLFFI is a C/C++ library that embeds the [HashLink](https://hashlink.haxe.org/) virtual machine into any application. It provides a clean, production-ready API for running [Haxe](https://haxe.org/) code from C/C++ hosts.
+HLFFI is a C/C++ library that embeds the [HashLink](https://hashlink.haxe.org/) virtual machine into any application. It provides a clean, production-ready API for running, controlling and interfacing with [Haxe](https://haxe.org/) code from C/C++ hosts.
 
 ```c
 #include "hlffi.h"
