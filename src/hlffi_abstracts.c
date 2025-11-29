@@ -11,11 +11,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* External HashLink string function */
-extern char* hl_to_utf8(const uchar* str);
-
-/* Forward declaration */
-extern hlffi_type* hlffi_find_type(hlffi_vm* vm, const char* name);
+/* HashLink string functions are available via hl.h included by hlffi_internal.h */
 
 /* ========== ABSTRACT TYPE QUERIES ========== */
 

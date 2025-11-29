@@ -606,7 +606,65 @@ const char* hlffi_get_exception_message(hlffi_vm* vm) {
 
 const char* hlffi_get_exception_stack(hlffi_vm* vm) {
     if (!vm) return NULL;
-    return vm->exception_stack[0] ? vm->exception_stack : NULL;
+
+    /* If exception was explicitly cleared (no message), return NULL
+     * This is the key: exception_msg acts as the "exception active" flag */
+    if (!vm->exception_msg[0]) {
+        return NULL;
+    }
+
+    /* Get thread info for stack trace */
+    hl_thread_info* t = hl_get_thread();
+    if (!t || t->exc_stack_count == 0) {
+        /* No stack trace available, but exception message exists
+         * Return a minimal message */
+        if (!vm->exception_stack[0]) {
+            snprintf(vm->exception_stack, sizeof(vm->exception_stack),
+                     "Stack trace not available\n");
+        }
+        return vm->exception_stack;
+    }
+
+    /* Build/rebuild stack trace string from captured addresses
+     * We regenerate each time to ensure it's fresh */
+    char* buffer = vm->exception_stack;
+    int buffer_size = sizeof(vm->exception_stack);
+    int pos = 0;
+
+    pos += snprintf(buffer + pos, buffer_size - pos, "Stack trace:\n");
+
+    for (int i = 0; i < t->exc_stack_count && pos < buffer_size - 1; i++) {
+        void* addr = t->exc_stack_trace[i];
+        uchar sym[256];
+        int size = 256;
+
+        /* Resolve symbol using HashLink's resolver */
+        uchar* str = hl_setup.resolve_symbol(addr, sym, &size);
+        if (str && pos < buffer_size - 1) {
+            /* Convert from UTF-16 to UTF-8 */
+            char* utf8 = hl_to_utf8(str);
+            if (utf8) {
+                pos += snprintf(buffer + pos, buffer_size - pos, "  %s\n", utf8);
+            }
+        } else {
+            /* Fallback: show address */
+            pos += snprintf(buffer + pos, buffer_size - pos, "  [0x%p]\n", addr);
+        }
+    }
+
+    buffer[buffer_size - 1] = '\0';  /* Ensure null termination */
+    return buffer;
+}
+
+bool hlffi_has_exception(hlffi_vm* vm) {
+    if (!vm) return false;
+    return vm->exception_msg[0] != '\0';
+}
+
+void hlffi_clear_exception(hlffi_vm* vm) {
+    if (!vm) return;
+    vm->exception_msg[0] = '\0';
+    vm->exception_stack[0] = '\0';
 }
 
 void hlffi_blocking_begin(void) {

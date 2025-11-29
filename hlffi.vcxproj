@@ -114,6 +114,11 @@
     <ClCompile Include="src\hlffi_threading.c" />
     <ClCompile Include="src\hlffi_objects.c" />
     <ClCompile Include="src\hlffi_callbacks.c" />
+    <ClCompile Include="src\hlffi_enums.c" />
+    <ClCompile Include="src\hlffi_maps.c" />
+    <ClCompile Include="src\hlffi_bytes.c" />
+    <ClCompile Include="src\hlffi_abstracts.c" />
+    <ClCompile Include="src\hlffi_cache.c" />
   </ItemGroup>
   <ItemGroup>
     <!-- HashLink loader sources (must be compiled into application, not in hlffi.lib) -->

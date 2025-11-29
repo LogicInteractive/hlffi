@@ -1,14 +1,14 @@
 # HLFFI v3.0 — Master Plan Status Update
-**Last Updated:** November 27, 2025 (Evening - Post Timer Tests)
-**Status:** Phases 0-4 Complete, Phase 1 Event Loop COMPLETE, Phase 6 Partial, Production Ready
+**Last Updated:** November 28, 2025 (Phase 1 Hot Reload Complete)
+**Status:** Phases 0-4, 6, 7 Complete, Phase 1 FULLY COMPLETE, Production Ready
 
 ---
 
 ## Executive Summary
 
-**✅ COMPLETE:** Phases 0, 1 (Event Loop), 2, 3, 4 (100%)
-**⚠️ PARTIAL:** Phase 1 (Hot Reload & Threading stubs only), Phase 6 (Exception handling working)
-**❌ TODO:** Phases 5, 7, 8, 9
+**✅ COMPLETE:** Phases 0, 1, 2, 3, 4, 5 (Advanced Types), 6 (Exceptions & Callbacks), 7 (Performance & Caching) (100%)
+**⚠️ PARTIAL:** Phase 8 (Documentation & Guides) (~80% complete)
+**❌ TODO:** Phases 9, 10
 
 **Current Capability:** Full bidirectional C↔Haxe FFI with:
 - VM lifecycle management
@@ -54,9 +54,9 @@
 
 ---
 
-### ✅ Phase 1: VM Lifecycle (90% Complete)
+### ✅ Phase 1: VM Lifecycle (100% Complete)
 
-**Status:** CORE COMPLETE, Event Loop Integration COMPLETE, Hot Reload & Threaded Mode TODO
+**Status:** FULLY COMPLETE - Core, Event Loop, Threading, AND Hot Reload all working
 
 #### ✅ Core Lifecycle (100%)
 - ✅ `hlffi_create()` - allocate VM
@@ -112,28 +112,71 @@ Now all 11 timer tests pass including 1ms, 2ms, 5ms, 10ms, 20ms, 50ms, 100ms pre
 - `test_timers.c` - 11 test cases (all passing on Linux AND Windows)
 - `test_timers.vcxproj` - Visual Studio project for Windows testing
 
-#### ❌ Hot Reload (0% - Not Implemented)
-- ❌ `hlffi_enable_hot_reload()`
-- ❌ `hlffi_reload_module()`
-- ❌ `hlffi_set_reload_callback()`
-- ❌ Requires HashLink 1.12+ (not yet implemented)
+#### ✅ Hot Reload (100% - COMPLETE!)
 
-#### ⚠️ Integration Modes (60% - Partial)
+**Status:** FULLY IMPLEMENTED and TESTED (Nov 28, 2025)
+**Test Results:** Hot reload test passing - getValue() changes from 100 to 200
+
+- ✅ `hlffi_enable_hot_reload()` - enable before loading module
+- ✅ `hlffi_reload_module()` - reload from file
+- ✅ `hlffi_reload_module_memory()` - reload from memory buffer
+- ✅ `hlffi_set_reload_callback()` - notification on reload
+- ✅ `hlffi_check_reload()` - auto-reload on file change
+- ✅ `hlffi_is_hot_reload_enabled()` - check status
+
+**Key Behavior:**
+- Function code is patched in-place ✅
+- Static variables persist across reloads (NOT reinitialized) ✅
+- Callback notifies when reload completes ✅
+- Uses HashLink's `hl_module_patch()` internally
+
+**Test Files:**
+- `test_hot_reload.c` - C test demonstrating hot reload
+- `test/HotReload.hx` - Haxe test class
+- `test/hot_reload_v1.hl` - Initial bytecode (getValue returns 100)
+- `test/hot_reload_v2.hl` - Updated bytecode (getValue returns 200)
+
+**Documentation:**
+- ✅ `docs/HOT_RELOAD.md` - comprehensive guide
+
+#### ✅ Integration Modes (100% - COMPLETE!)
+
+**Status:** FULLY IMPLEMENTED and TESTED (Nov 28, 2025)
+**Test Results:** 7/7 threading tests passing, 3/3 VM restart sessions
+
 - ✅ `hlffi_set_integration_mode()` - implemented
 - ✅ Mode 1 (Non-Threaded) - **FULLY WORKING** with event loop
-- ❌ Mode 2 (Threaded) - **STUB ONLY** (dedicated VM thread not implemented)
-- ❌ Worker thread helpers - stubs only
+- ✅ Mode 2 (Threaded) - **FULLY WORKING** with dedicated VM thread
+- ✅ `hlffi_thread_start()` - spawn VM thread, call entry point
+- ✅ `hlffi_thread_stop()` - graceful shutdown with message queue drain
+- ✅ `hlffi_thread_is_running()` - check thread status
+- ✅ `hlffi_thread_call_sync()` - synchronous call from main thread
+- ✅ `hlffi_thread_call_async()` - async call with completion callback
+- ✅ Worker thread helpers - `hlffi_worker_register()`, `hlffi_worker_unregister()`
+
+**VM Restart (Experimental):**
+- ✅ Create → use → destroy → restart cycle works
+- ✅ Works in both non-threaded and threaded modes
+- ✅ See `docs/VM_RESTART.md` for details and limitations
+
+**Test Files:**
+- `test_threading.c` - 7 comprehensive tests (all passing)
+- `test_vm_restart.c` - Non-threaded restart test (3 sessions)
+- `test_threaded_restart.c` - Threaded restart with C-driven counting
+- `test_threaded_blocking.c` - Threaded restart with Haxe blocking loop
 
 **Documentation:**
 - ✅ `docs/TIMERS_ASYNC_THREADING.md` - comprehensive guide
 - ✅ `docs/GC_STACK_SCANNING.md` - GC fix documentation
 
 **Files:**
-- `src/hlffi_lifecycle.c` (~10KB) - Core lifecycle working
+- `src/hlffi_lifecycle.c` (~10KB) - Core lifecycle + VM restart support
 - `src/hlffi_integration.c` (~4KB) - Event loop integration complete
 - `src/hlffi_events.c` (~5KB) - Full event loop implementation
-- `src/hlffi_threading.c` (~791 bytes) - Stub
-- `src/hlffi_reload.c` (~735 bytes) - Stub
+- `src/hlffi_threading.c` (~439 lines) - **FULL IMPLEMENTATION** (message queue, sync/async calls)
+- `src/hlffi_reload.c` (~200 lines) - **FULL IMPLEMENTATION** (hot reload via hl_module_patch)
+- `docs/VM_RESTART.md` - VM restart documentation
+- `docs/HOT_RELOAD.md` - Hot reload documentation
 
 ---
 
@@ -256,95 +299,287 @@ int health = hlffi_get_field_int(player, "health", 0);
 
 ## Remaining Phases
 
-### ❌ Phase 5: Advanced Value Types (0% Complete)
+### ✅ Phase 5: Advanced Value Types (100% Complete)
 
-**Status:** NOT STARTED
+**Status:** COMPLETE
+**Test Results:** All map, bytes, and enum tests passing
+**Date Completed:** November 28, 2025
 
-**Planned:**
-- Arrays (create, get/set, push/pop)
-- Maps (create, get/set, exists, keys)
-- Enums (construct, match, extract)
-- Bytes (create, read/write)
-- Null handling (proper null values)
+**Maps (Complete):**
+- ✅ `hlffi_map_get()` - Get value for key
+- ✅ `hlffi_map_set()` - Set key-value pair
+- ✅ `hlffi_map_exists()` - Check if key exists
+- ✅ `hlffi_map_remove()` - Remove key
+- ✅ `hlffi_map_keys()` - Get key iterator
+- ✅ `hlffi_map_values()` - Get value iterator
+- ✅ Support for `Map<Int, V>` and `Map<String, V>`
+- ✅ StringMap key encoding fix (HBYTES → HOBJ conversion)
 
-**Priority:** MEDIUM (many apps don't need advanced types)
+**Bytes (Complete):**
+- ✅ `hlffi_bytes_from_data()` - Create Bytes from C buffer
+- ✅ `hlffi_bytes_get_data()` - Get raw data pointer (zero-copy)
+- ✅ `hlffi_bytes_get_length()` - Get byte length
+- ✅ In-place modification support
+- ✅ Binary data exchange C↔Haxe
+
+**Enums (Complete):**
+- ✅ `hlffi_enum_get_constructor()` - Get constructor name
+- ✅ `hlffi_enum_get_param()` - Get constructor parameter
+- ✅ `hlffi_enum_get_index()` - Get enum index
+- ✅ Access enum values from Haxe
+- ✅ Extract constructor parameters
+
+**Arrays:**
+- ✅ Native array support via `hlffi_array_helpers.h`
+- ✅ Array access through instance methods
+- ✅ Comprehensive array test suite
+
+**Files:**
+- `src/hlffi_maps.c` - Map operations
+- `src/hlffi_bytes.c` - Binary data support
+- `src/hlffi_enums.c` - Enum operations
+- `src/hlffi_abstracts.c` - Abstract type helpers
+- `include/hlffi_array_helpers.h` - Array utilities
+- `test_map_demo.c` - Map tests
+- `test_bytes_demo.c` - Bytes tests
+- `test_enum_demo.c` - Enum tests
+- `test/MapTest.hx`, `test/BytesTest.hx`, `test/EnumTest.hx`
+- `docs/PHASE5_COMPLETE.md` (202 lines) - Complete documentation
+- `docs/MAPS_GUIDE.md` - Detailed map usage
+- `docs/NATIVE_ARRAYS.md` - Array implementation guide
+
+**Known Limitations:**
+- Maps must be created in Haxe (not C)
+- Enums must be created in Haxe (not C)
+- No direct map size query (use Lambda.count())
+
+**Priority:** ✅ COMPLETE
 
 ---
 
-### ⚠️ Phase 6: Callbacks & Exceptions (60% Complete)
+### ✅ Phase 6: Callbacks & Exceptions (100% Complete)
 
-**Status:** EXCEPTION HANDLING COMPLETE, Callbacks TODO
-**Test Results:** 9/9 tests passing
+**Status:** COMPLETE
+**Test Results:** 14/14 exception tests passing, 14/14 callback tests passing
+**Date Completed:** November 27, 2025
 
-**Completed:**
+**Exception Handling (Complete):**
 - ✅ `hlffi_try_call_static()` - call with exception catching
 - ✅ `hlffi_get_exception_message()` - get exception text
+- ✅ `hlffi_get_exception_stack()` - get stack trace
 - ✅ `hlffi_has_exception()` - check for pending exception
 - ✅ `hlffi_clear_exception()` - clear exception state
-- ✅ `hlffi_blocking_begin/end()` - GC blocking notification
-- ✅ Exception storage in VM struct
-- ✅ All 9 exception tests passing
+- ✅ Full stack trace extraction with line numbers
+- ✅ 14/14 exception tests passing
 
-**Not Implemented:**
-- ❌ Register C function as Haxe callback
-- ❌ Call C from Haxe
-- ❌ Stack trace extraction (message only)
+**C→Haxe Callbacks (Complete):**
+- ✅ `hlffi_register_callback()` - Register C functions callable from Haxe
+- ✅ `hlffi_get_callback()` - Retrieve registered callback
+- ✅ `hlffi_unregister_callback()` - Remove callback
+- ✅ Support for 0-4 argument callbacks
+- ✅ Multiple callback registration
+- ✅ Callback invocation from Haxe
+- ✅ 14/14 callback tests passing
 
 **Files:**
-- `src/hlffi_callbacks.c` (~8KB) - Exception handling + callback stubs
-- `test_exceptions.c` - 9 comprehensive tests
-- `test/Exceptions.hx` - Haxe test class
+- `src/hlffi_callbacks.c` - Full implementation (exceptions + callbacks)
+- `test_exceptions.c` - 14 comprehensive exception tests
+- `test_callbacks.c` - 14 comprehensive callback tests
+- `test/Exceptions.hx` - Exception test class
+- `test/Callbacks.hx` - Callback test class
 
 **Critical Bug Fix (Nov 27):**
 - Fixed heap corruption caused by mismatched `struct hlffi_vm` definitions
 - Created `src/hlffi_internal.h` to unify struct definitions across all source files
 - See `docs/STRUCT_MISMATCH_FIX.md` for details
 
-**Priority:** MEDIUM (exception handling done, callbacks nice-to-have)
+**Priority:** ✅ COMPLETE
 
 ---
 
-### ❌ Phase 7: Performance & Polish (0% Complete)
+### ✅ Phase 7: Performance & Polish (100% Complete)
 
-**Status:** NOT STARTED
+**Status:** COMPLETE
+**Test Results:** Zero memory leaks confirmed (valgrind)
+**Date Completed:** November 28, 2025
 
-**Planned:**
-- Method/field lookup caching
-- Benchmark suite
-- Memory profiling
-- Complete documentation
-- Migration guide
+**Completed:**
+- ✅ **Caching API** - `hlffi_cache_static_method()`, `hlffi_call_cached()`, `hlffi_cached_call_free()`
+- ✅ **Performance benchmarks** - 34.73 ns/call measured (8-10x faster than uncached)
+- ✅ **Memory profiling** - Valgrind confirms 0 definitely lost bytes
+- ✅ **Comprehensive testing** - Multiple test suites (minimal, stress, memory)
+- ✅ **Complete documentation** - `docs/PHASE7_COMPLETE.md` (comprehensive guide)
 
-**Priority:** MEDIUM (current performance acceptable)
+**Key Metrics:**
+- **Performance**: 34.73 ns per cached call vs ~300ns uncached (8-10x speedup)
+- **Memory safety**: 0 definitely lost bytes (valgrind confirmed)
+- **Test coverage**: 101,300 cached calls tested, 1,000 create/free cycles
+- **Scalability**: Successfully handles 100,000+ iterations
+
+**Files:**
+- `src/hlffi_cache.c` (~224 lines) - Core caching implementation
+- `include/hlffi.h` - API declarations
+- `test_cache_minimal.c` - Basic functionality test (PASSING)
+- `test_cache.c` - 7 comprehensive tests
+- `test_cache_loop.c` - Stress test with 100k iterations (PASSING)
+- `test_cache_memory.c` - Memory leak test (PASSING)
+- `benchmark/bench_cache_simple.c` - Performance benchmark
+- `benchmark/bench_cache.c` - Comprehensive benchmark suite
+- `test/CacheTest.hx` - Haxe test class
+- `docs/PHASE7_COMPLETE.md` (comprehensive documentation)
+- `docs/PHASE7_MEMORY_REPORT.md` (valgrind analysis)
+
+**API Example:**
+```c
+// Cache method (one-time ~300ns cost)
+hlffi_cached_call* update = hlffi_cache_static_method(vm, "Game", "update");
+
+// Call cached method (34ns overhead)
+for (int i = 0; i < 10000; i++) {
+    hlffi_value* result = hlffi_call_cached(update, 0, NULL);
+    if (result) hlffi_value_free(result);
+}
+
+// Cleanup
+hlffi_cached_call_free(update);
+```
+
+**Memory Management:**
+- Proper GC root management (`hl_add_root`/`hl_remove_root`)
+- Safe initialization (calloc → assign → root → mark)
+- Zero leaks confirmed through 1000 create/free cycles
+- All existing tests still passing (no regressions)
+
+**Priority:** ✅ COMPLETE
 
 ---
 
-### ❌ Phase 8: Cross-Platform (0% Complete)
+### ⚠️ Phase 8: Documentation & Guides (80% Complete)
 
-**Status:** NOT STARTED
+**Status:** MOSTLY COMPLETE - Comprehensive phase docs exist, missing unified API reference
 
-**Platforms:**
-- Linux - ✅ PRIMARY (currently working)
-- Windows (MSVC) - ❌ Not tested
-- macOS - ❌ Not tested
-- WebAssembly - ❌ Not tested
-- Android/iOS - ❌ Not tested
+**Completed Documentation:**
+
+**Phase-Specific Guides (Excellent):**
+- ✅ `docs/PHASE3_COMPLETE.md` (1079 lines) - Static members comprehensive guide
+- ✅ `docs/PHASE4_INSTANCE_MEMBERS.md` (267 lines) - Instance API documentation
+- ✅ `docs/PHASE5_COMPLETE.md` (202 lines) - Maps, Bytes, Enums, Arrays
+- ✅ `docs/PHASE6_COMPLETE.md` (12KB) - Exceptions & Callbacks
+- ✅ `docs/PHASE7_COMPLETE.md` (15KB) - Performance caching API
+- ✅ `docs/PHASE7_MEMORY_REPORT.md` (4.5KB) - Valgrind analysis
+
+**Feature-Specific Guides:**
+- ✅ `docs/HOT_RELOAD.md` (6KB) - Hot reload guide (Nov 28, 2025)
+- ✅ `docs/VM_RESTART.md` (5KB) - VM restart patterns (Nov 28, 2025)
+- ✅ `docs/TIMERS_ASYNC_THREADING.md` (10KB) - Event loop & threading
+- ✅ `docs/EVENTLOOP_QUICKSTART.md` (5KB) - Quick start guide
+- ✅ `docs/GC_STACK_SCANNING.md` (4.5KB) - GC fix documentation
+- ✅ `docs/STRUCT_MISMATCH_FIX.md` (4KB) - Critical bug fix
+- ✅ `docs/CALLBACK_GUIDE.md` (13KB) - C callbacks guide
+- ✅ `docs/MAPS_GUIDE.md` (5KB) - Map operations
+- ✅ `docs/NATIVE_ARRAYS.md` (12KB) - Array implementation
+- ✅ `docs/WINDOWS_TESTS.md` (5KB) - Windows testing guide
+
+**Technical Resources:**
+- ✅ `docs/HASHLINK_PATCH.md` - HashLink modifications
+- ✅ `docs/hashlink-resources.md` - External resources
+- ✅ `MEMORY_AUDIT.md` - Memory management analysis
+
+**README Files:**
+- ✅ `README.md` - Main project README
+- ✅ `test/README.md` - Test documentation
+- ✅ `CLAUDE.md` - Project guidance for Claude Code
+
+**Missing Documentation (TODO):**
+
+1. **Unified API Reference** ❌
+   - Complete function reference (all ~150+ functions)
+   - Organized by category
+   - Quick lookup format
+   - Code examples for each function
+
+2. **Getting Started Guide** ⚠️
+   - Step-by-step tutorial
+   - "Hello World" walkthrough
+   - Common patterns
+   - Best practices summary
+
+3. **Architecture Overview** ⚠️
+   - System design document
+   - Component interaction diagrams
+   - Memory model explanation
+   - Threading architecture
+
+4. **Migration Guides** ❌
+   - Upgrading from older versions
+   - Breaking changes
+   - Deprecation notices
+
+5. **Cookbook/Recipes** ⚠️
+   - Common use cases
+   - Production patterns
+   - Performance tips
+   - Troubleshooting guide
+
+**Priority:** HIGH (API reference is critical for production use)
+
+**Effort Estimate:** 2-3 days for complete API reference
+
+---
+
+### ❌ Phase 9: Cross-Platform Builds (20% Complete)
+
+**Status:** PARTIAL - Linux & Windows working, other platforms not tested
+
+**Completed Platforms:**
+- ✅ **Linux** - Primary development platform (all tests passing)
+- ✅ **Windows MSVC** - Visual Studio 2022 solution working (Nov 27, 2025)
+
+**Platforms Not Tested:**
+- ❌ **macOS** - Should work (uses same Unix APIs as Linux)
+- ❌ **WebAssembly** - Requires HashLink HL/C mode
+- ❌ **Android** - Requires HashLink HL/C mode + JNI bridge
+- ❌ **iOS** - Requires HashLink HL/C mode
+- ❌ **Raspberry Pi** - Should work (Linux ARM)
+
+**Build Systems:**
+- ✅ Makefile (Linux)
+- ✅ Visual Studio Solution (Windows)
+- ❌ CMake (planned, not implemented)
+- ❌ Xcode project (macOS)
 
 **Priority:** VARIES (depends on deployment needs)
 
+**Notes:**
+- Mobile platforms will require significant work (HashLink in HL/C mode)
+- WebAssembly needs investigation (HashLink WASM support)
+- macOS should be straightforward (BSD/Unix)
+
 ---
 
-### ❌ Phase 9: Plugin System (0% Complete)
+### ❌ Phase 10: Plugin System (0% Complete)
 
-**Status:** NOT STARTED (Experimental)
+**Status:** NOT STARTED (Experimental, Low Priority)
 
-**Planned:**
-- Dynamic module loading
-- Plugin management
-- Cross-module calls
-- Type sharing
+**Planned Features:**
+- Dynamic module loading at runtime
+- Plugin management system
+- Cross-module function calls
+- Type sharing between modules
+- Hot-swappable plugins
 
-**Priority:** LOW (bleeding-edge HL feature, experimental)
+**Technical Challenges:**
+- HashLink plugin support is experimental
+- Requires hl_module_load_ex() (bleeding-edge API)
+- GC coordination across modules
+- Symbol resolution
+
+**Priority:** LOW (experimental HashLink feature)
+
+**Notes:**
+- This is a future/experimental feature
+- Not required for production use
+- Would enable extensibility without recompilation
 
 ---
 
@@ -400,19 +635,6 @@ int field_count = hlffi_class_get_field_count(player_type);
 
 ### ❌ What Doesn't Work Yet
 
-**Arrays/Maps/Enums:**
-```c
-// NOT IMPLEMENTED
-hlffi_value* arr = hlffi_array_new(vm, int_type, 10);
-hlffi_value* map = hlffi_map_new(vm);
-```
-
-**Callbacks (C←Haxe):**
-```c
-// NOT IMPLEMENTED
-hlffi_register_callback(vm, "onEvent", my_c_function, 1);
-```
-
 **Hot Reload:**
 ```c
 // NOT IMPLEMENTED (stubs return HLFFI_ERROR_NOT_IMPLEMENTED)
@@ -422,19 +644,28 @@ hlffi_reload_module(vm, "game.hl");
 
 **Threaded Mode (Mode 2):**
 ```c
-// NOT IMPLEMENTED (stubs return HLFFI_ERROR_NOT_IMPLEMENTED)
-hlffi_thread_start(vm);
-hlffi_thread_call_sync(vm, callback, userdata);
-hlffi_thread_call_async(vm, callback, on_complete, userdata);
+// ✅ WORKING - 7/7 tests pass
+hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);
+hlffi_thread_start(vm);  // Spawns VM thread, calls entry point
+hlffi_thread_call_sync(vm, callback, userdata);  // Synchronous call
+hlffi_thread_call_async(vm, callback, on_complete, userdata);  // Async call
+hlffi_thread_stop(vm);  // Graceful shutdown
 ```
 
 **Worker Thread Helpers:**
 ```c
-// NOT IMPLEMENTED (empty stubs)
-hlffi_worker_register();
-hlffi_worker_unregister();
-hlffi_blocking_begin();
-hlffi_blocking_end();
+// ✅ WORKING
+hlffi_worker_register();   // Register worker thread with GC
+hlffi_worker_unregister(); // Unregister worker thread
+```
+
+**VM Restart (Experimental):**
+```c
+// ✅ WORKING - 3 sessions tested
+// See docs/VM_RESTART.md for details
+hlffi_destroy(vm);
+sleep(1);
+vm = hlffi_create();  // Works! HashLink globals persist
 ```
 
 ### ✅ What DOES Work Now (Previously Listed as Not Working)
@@ -450,12 +681,55 @@ hlffi_has_pending_work(vm);
 
 **Exception Handling:**
 ```c
-// ✅ WORKING - 9/9 tests pass
+// ✅ WORKING - 14/14 tests pass
 hlffi_try_call_static(vm, "Class", "method", 0, NULL);
 if (hlffi_has_exception(vm)) {
     const char* msg = hlffi_get_exception_message(vm);
+    const char* stack = hlffi_get_exception_stack(vm);
     hlffi_clear_exception(vm);
 }
+```
+
+**Callbacks (C←Haxe):**
+```c
+// ✅ WORKING - 14/14 tests pass
+hlffi_register_callback(vm, "onEvent", my_c_function, 1);
+vclosure* callback = hlffi_get_callback(vm, "onEvent");
+hlffi_unregister_callback(vm, "onEvent");
+```
+
+**Performance Caching:**
+```c
+// ✅ WORKING - 8-10x speedup
+hlffi_cached_call* cache = hlffi_cache_static_method(vm, "Game", "update");
+hlffi_value* result = hlffi_call_cached(cache, 0, NULL);
+hlffi_cached_call_free(cache);
+```
+
+**Maps:**
+```c
+// ✅ WORKING - Full CRUD operations
+hlffi_value* val = hlffi_map_get(vm, map, key);
+hlffi_map_set(vm, map, key, value);
+bool exists = hlffi_map_exists(vm, map, key);
+hlffi_map_remove(vm, map, key);
+hlffi_value* keys = hlffi_map_keys(vm, map);
+```
+
+**Bytes:**
+```c
+// ✅ WORKING - Binary data exchange
+hlffi_value* bytes = hlffi_bytes_from_data(vm, data, length);
+uint8_t* ptr = hlffi_bytes_get_data(bytes);  // Zero-copy access
+int len = hlffi_bytes_get_length(bytes);
+```
+
+**Enums:**
+```c
+// ✅ WORKING - Constructor access
+char* name = hlffi_enum_get_constructor(state);  // "Running"
+hlffi_value* param = hlffi_enum_get_param(state, 0);
+int index = hlffi_enum_get_index(state);
 ```
 
 ---
@@ -511,103 +785,135 @@ if (hlffi_has_exception(vm)) {
 
 ## Priority Recommendations
 
-### ✅ Recently Completed (Nov 27, 2025)
+### ✅ Recently Completed (Nov 27-28, 2025)
 
-1. **~~Phase 6: Exception Handling~~** ✅ DONE
+1. **~~Phase 6: Exception Handling & Callbacks~~** ✅ DONE (Nov 27)
    - `hlffi_try_call_static()` - working
    - `hlffi_get_exception_message()` - working
+   - `hlffi_get_exception_stack()` - working
    - `hlffi_has_exception()` / `hlffi_clear_exception()` - working
-   - 9/9 tests passing
+   - C→Haxe callbacks - working
+   - 14/14 exception tests passing, 14/14 callback tests passing
 
-2. **~~Phase 1 Extensions: Event Loop Integration~~** ✅ DONE
+2. **~~Phase 1 Extensions: Event Loop Integration~~** ✅ DONE (Nov 27)
    - `hlffi_update()` - working
    - `hlffi_process_events()` - working
    - haxe.Timer support - working
    - MainLoop callbacks - working
    - 11/11 tests passing on Linux AND Windows
 
-3. **~~Windows/MSVC Build~~** ✅ DONE
+3. **~~Windows/MSVC Build~~** ✅ DONE (Nov 27)
    - Visual Studio 2022 solution working
    - All tests compile and pass
    - Cross-platform test_timers.c (Windows/Linux)
 
+4. **~~Phase 7: Performance Caching API~~** ✅ DONE (Nov 28)
+   - `hlffi_cache_static_method()` - working
+   - `hlffi_call_cached()` - working
+   - 8-10x speedup for cached calls (34.73 ns/call)
+   - Zero memory leaks (valgrind confirmed)
+   - Comprehensive test suite and benchmarks
+   - Full documentation
+
+5. **~~Phase 5: Advanced Value Types~~** ✅ DONE (Nov 28)
+   - Maps (IntMap, StringMap) - working
+   - Bytes (binary data) - working
+   - Enums (constructor access) - working
+   - Arrays (native support) - working
+   - Full test coverage
+
 ### High Priority (Should Do Next)
 
-1. **Phase 6: C Callbacks from Haxe** (6 hours)
-   - Register C function as Haxe callback
-   - Call C from Haxe code
-   - Needed for event-driven APIs
+1. **Phase 8: Unified API Reference** (2-3 days)
+   - Complete function reference (~150+ functions)
+   - Organized by category (lifecycle, types, values, etc.)
+   - Quick lookup format
+   - Code examples for each function
+   - Critical for production adoption
 
-2. **Phase 5: Advanced Value Types** (10 hours)
-   - Arrays (create, get/set, push/pop)
-   - Maps (create, get/set, exists, keys)
-   - Many game APIs need these
+2. **Phase 8: Getting Started Guide** (1 day)
+   - Step-by-step tutorial
+   - "Hello World" complete walkthrough
+   - Common patterns and idioms
+   - Best practices summary
 
 ### Medium Priority (Nice to Have)
 
-3. **Enums and Bytes** (4 hours)
-   - Enums (construct, match, extract)
-   - Bytes for binary data
+3. **Phase 8: Architecture Documentation** (1-2 days)
+   - System design overview
+   - Component interaction diagrams
+   - Memory model explanation
+   - Threading architecture details
 
-4. **Phase 7: Performance & Polish** (6 hours)
-   - Lookup caching (easy win)
-   - Benchmarks (understand overhead)
-   - Documentation polish
+4. **Phase 8: Cookbook/Recipes** (1 day)
+   - Common use case examples
+   - Production deployment patterns
+   - Performance optimization tips
+   - Troubleshooting guide
 
-6. **C++ Wrapper API** (4 hours)
-   - Original plan included C++ wrappers
+5. **C++ Wrapper API** (2-3 days)
    - RAII guards (`BlockingGuard`, `WorkerGuard`)
    - Template type safety
    - Method chaining elegance
+   - Modern C++ patterns
 
 ### Low Priority (Future)
 
-7. **Phase 8: Cross-Platform** (8 hours per platform)
-   - Only if deployment needs it
-   - Mobile likely needs HL/C mode
-   - WebAssembly definitely needs HL/C
+6. **Phase 9: macOS Build** (1 day)
+   - Should work out of box (Unix/BSD APIs)
+   - Create Xcode project
+   - Test suite validation
 
-8. **Phase 1 Extensions: Hot Reload** (6 hours)
-   - Requires HL 1.12+
-   - Nice for development
-   - Not critical for production
+7. **Phase 9: Mobile Platforms** (1-2 weeks per platform)
+   - Android (requires HL/C mode + JNI)
+   - iOS (requires HL/C mode)
+   - Significant effort, only if needed
 
-9. **Phase 9: Plugin System** (6 hours)
-   - Experimental HL feature
-   - Bleeding edge
-   - Limited use cases
+8. **Phase 9: WebAssembly** (1 week)
+   - Investigate HashLink WASM support
+   - Requires HL/C mode
+   - Browser integration
+
+9. **Phase 10: Plugin System** (1-2 weeks)
+   - Experimental HashLink feature
+   - Dynamic module loading
+   - Limited use cases currently
 
 ---
 
 ## Key Technical Debt
 
-### Documentation Gaps
+### Phase 8: Documentation Gaps (High Priority)
 
-- ❌ No complete API reference (only phase-specific docs)
-- ❌ No migration guide from old hlffi
-- ❌ No best practices guide
-- ✅ Phase docs excellent but scattered
+- ❌ **No unified API reference** - Critical for production adoption
+- ❌ **No Getting Started tutorial** - Needed for new users
+- ⚠️ **Architecture overview missing** - Would help advanced users
+- ❌ **No migration guide** - From older versions
+- ⚠️ **No cookbook/recipes** - Common patterns not collected
+- ✅ **Phase-specific docs excellent** - But scattered across 15+ files
 
-### Testing Gaps
+### Phase 9: Platform Coverage (Medium Priority)
 
-- ❌ No memory leak tests (valgrind)
-- ❌ No stress tests
-- ❌ No cross-platform CI
-- ✅ Phase tests comprehensive
+- ✅ **Linux fully tested** - Primary platform working
+- ✅ **Windows MSVC working** - Visual Studio 2022 support (Nov 27, 2025)
+- ❌ **macOS not tested** - Should work (Unix/BSD)
+- ❌ **Mobile platforms** - Android/iOS need HL/C mode
+- ❌ **WebAssembly** - Not investigated
 
-### Build System
+### Build System (Low Priority)
 
-- ❌ CMake not implemented (Makefile only)
-- ❌ Windows build not tested
-- ❌ No pkg-config integration
-- ✅ Linux Makefile works well
+- ✅ **Makefile working** - Linux build system complete
+- ✅ **Visual Studio solution** - Windows build working
+- ❌ **CMake not implemented** - Would enable multi-platform
+- ❌ **Xcode project missing** - For macOS development
+- ❌ **No pkg-config** - For system integration
 
-### Code Quality
+### Code Quality (Nice to Have)
 
-- ❌ No C++ wrappers (C API only)
-- ❌ Some stub files (threading, events, reload)
-- ✅ Core implementation solid
-- ✅ Error handling consistent
+- ❌ **No C++ wrappers** - C API only (RAII would be nice)
+- ✅ **All core features implemented** - Threading, hot reload complete
+- ✅ **Core implementation solid** - Well-tested
+- ✅ **Error handling consistent** - Proper error codes throughout
 
 ---
 
@@ -666,30 +972,35 @@ if (hlffi_has_exception(vm)) {
 
 ## Conclusion
 
-**HLFFI v3.0 is production-ready for game engine and application embedding** (Phases 0-4 + Event Loop + Exceptions complete).
+**HLFFI v3.0 is production-ready for game engine and application embedding** (Phases 0-7 complete, ~95% of planned features).
 
 **Strengths:**
 - ✅ Solid VM lifecycle management
 - ✅ Complete static member access
 - ✅ Full instance member support
 - ✅ **Event loop integration (haxe.Timer, MainLoop) - FULLY WORKING**
-- ✅ **Exception handling - WORKING**
+- ✅ **Exception handling with stack traces - WORKING**
+- ✅ **C→Haxe callbacks - WORKING**
+- ✅ **Maps, Bytes, Enums - WORKING**
+- ✅ **Native array support - WORKING**
+- ✅ **Performance caching API (8-10x speedup) - WORKING**
+- ✅ **Zero memory leaks (valgrind confirmed)**
 - ✅ Convenience APIs reduce boilerplate by 70%
 - ✅ Memory management well-documented
 - ✅ **Cross-platform (Linux + Windows MSVC)**
 - ✅ Excellent phase-specific documentation
+- ✅ Comprehensive benchmarks and profiling
 
 **Remaining Gaps:**
-- ⚠️ No advanced types (arrays, maps, enums) - Phase 5
-- ⚠️ No C callbacks from Haxe (Haxe calling C functions) - Phase 6
-- ⚠️ Threaded mode (Mode 2) stubbed - Phase 1
-- ⚠️ Hot reload not implemented - Phase 1
+- ⚠️ **Documentation incomplete** - No unified API reference (Phase 8)
+- ⚠️ **Additional platforms not tested** - macOS, mobile, WebAssembly (Phase 9)
+- ⚠️ **No Getting Started guide** - Needs beginner tutorial (Phase 8)
 
 **Recommendation:**
-1. **Ship it** for engine embedding - Phase 0-4 + Event Loop sufficient for most use cases
-2. **Next sprint:** Phase 6 C Callbacks (register C functions callable from Haxe)
-3. **Then:** Phase 5 Arrays/Maps for complex data structures
-4. **Polish:** Phase 7 (performance, docs, benchmarks)
+1. **Complete Phase 8 documentation** - Unified API reference is critical for adoption (2-3 days effort)
+2. **Ship for production** - All core features complete (Phases 0-7), Linux & Windows working
+3. **Optional:** Platform-specific builds (Phase 9) only if deployment requires
+4. **Future:** Plugin system (Phase 10) for advanced extensibility
 
 **Test Summary (All Passing):**
 | Test Suite | Tests | Platform |
@@ -698,12 +1009,25 @@ if (hlffi_has_exception(vm)) {
 | test_static | 10/10 | Linux + Windows |
 | test_static_extended | 56/56 | Linux + Windows |
 | test_instance_basic | 10/10 | Linux + Windows |
-| test_exceptions | 9/9 | Linux + Windows |
+| test_exceptions | 14/14 | Linux + Windows |
+| test_callbacks | 14/14 | Linux + Windows |
 | test_timers | 11/11 | Linux + Windows |
+| test_cache_minimal | All | Linux |
+| test_cache_loop | 100k iterations | Linux |
+| test_cache_memory | 0 leaks | Linux (valgrind) |
 
 **Timeline:**
-- Phases 0-4: Complete
-- Phase 1 Event Loop: Complete
-- Phase 6 Exceptions: Complete
-- **Total working functionality: ~85%** of originally planned features
-- Remaining: Arrays/Maps, C Callbacks, Threaded Mode, Hot Reload
+- **Phases 0-7: Complete ✅** (All core features)
+  - Phase 0: Foundation & Architecture ✅
+  - Phase 1: VM Lifecycle (Core + Event Loop + Threading + Hot Reload) ✅
+  - Phase 2: Type System & Reflection ✅
+  - Phase 3: Static Members ✅
+  - Phase 4: Instance Members ✅
+  - Phase 5: Advanced Value Types (Maps, Bytes, Enums, Arrays) ✅
+  - Phase 6: Callbacks & Exceptions ✅
+  - Phase 7: Performance & Caching ✅
+- **Phase 8: Documentation** ⚠️ 80% complete (API reference TODO)
+- **Phase 9: Cross-Platform** ⚠️ 20% complete (Linux & Windows working)
+- **Phase 10: Plugin System** ❌ Not started
+- **Total implementation: ~95%** of core features complete
+- **Production-ready for:** Game engines, native apps, tools (Linux & Windows)

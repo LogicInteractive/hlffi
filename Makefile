@@ -35,11 +35,12 @@ HLFFI_WRAPPER_SRC = \
 	src/hlffi_objects.c \
 	src/hlffi_callbacks.c \
 	src/hlffi_events.c \
-	src/hlffi_integration.c
+	src/hlffi_integration.c \
+	src/hlffi_cache.c \
+	src/hlffi_threading.c
 
 # Stub files (not yet implemented, excluded from Linux build):
 # src/hlffi_reload.c
-# src/hlffi_threading.c
 
 # HashLink VM core sources (EXCLUDING allocator.c which must be with gc.c)
 HL_VM_SRC = \
@@ -103,6 +104,7 @@ TEST_EXCEPTIONS = test_exceptions
 TEST_ARRAYS = test_arrays
 TEST_ARRAY_VALUES_DEMO = test_array_values_demo
 TEST_MAP_DEMO = test_map_demo
+TEST_THREADING = test_threading
 
 # Linker flags for tests
 # CRITICAL: Must use --whole-archive for libhl.a to expose all primitives to dlsym()
@@ -148,7 +150,7 @@ $(BIN_DIR):
 
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
-	rm -f $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC) $(TEST_CALLBACKS) $(TEST_EXCEPTIONS) $(TEST_ARRAYS) $(TEST_ARRAY_VALUES_DEMO) $(TEST_MAP_DEMO)
+	rm -f $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC) $(TEST_CALLBACKS) $(TEST_EXCEPTIONS) $(TEST_ARRAYS) $(TEST_ARRAY_VALUES_DEMO) $(TEST_MAP_DEMO) $(TEST_THREADING)
 	@echo "Cleaned build artifacts"
 
 # Print detailed info
@@ -160,7 +162,7 @@ verbose: info
 	@for src in $(HLFFI_SRC); do echo "  - $$src"; done
 
 # Test targets
-tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC) $(TEST_CALLBACKS) $(TEST_EXCEPTIONS) $(TEST_ARRAYS) $(TEST_ARRAY_VALUES_DEMO) $(TEST_MAP_DEMO)
+tests: $(TEST_LIBHL) $(TEST_HELLO) $(TEST_RUNNER) $(TEST_REFLECTION) $(TEST_STATIC) $(TEST_INSTANCE_BASIC) $(TEST_CALLBACKS) $(TEST_EXCEPTIONS) $(TEST_ARRAYS) $(TEST_ARRAY_VALUES_DEMO) $(TEST_MAP_DEMO) $(TEST_THREADING)
 	@echo ""
 	@echo "✓ All tests built successfully!"
 	@echo ""
@@ -219,5 +221,9 @@ $(TEST_ARRAY_VALUES_DEMO): test_array_values_demo.c $(LIBHL) $(HLFFI)
 	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
 
 $(TEST_MAP_DEMO): test_map_demo.c $(LIBHL) $(HLFFI)
+	@echo "Building $@..."
+	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)
+
+$(TEST_THREADING): test_threading.c $(LIBHL) $(HLFFI)
 	@echo "Building $@..."
 	$(CC) -o $@ $< -Iinclude -Ivendor/hashlink/src -Lbin -lhlffi $(LDFLAGS)

@@ -9,11 +9,7 @@
 #include "hlffi_internal.h"
 #include <string.h>
 
-/* External HashLink bytes functions */
-extern vbyte* hl_alloc_bytes(int size);
-extern vbyte* hl_copy_bytes(const vbyte* ptr, int size);
-extern void hl_bytes_blit(char* dst, int dpos, char* src, int spos, int len);
-extern int hl_bytes_compare(vbyte* a, int apos, vbyte* b, int bpos, int len);
+/* HashLink bytes functions are available via hl.h included by hlffi_internal.h */
 
 /* ========== BYTES CREATION ========== */
 
@@ -128,8 +124,8 @@ bool hlffi_bytes_blit(hlffi_value* dst, int dst_pos, hlffi_value* src, int src_p
 
     if (!dst_bytes || !src_bytes) return false;
 
-    /* Use HashLink's blit (handles overlaps with memmove) */
-    hl_bytes_blit((char*)dst_bytes, dst_pos, (char*)src_bytes, src_pos, len);
+    /* Use memmove to handle overlapping regions safely */
+    memmove(dst_bytes + dst_pos, src_bytes + src_pos, len);
     return true;
 }
 
@@ -146,7 +142,7 @@ int hlffi_bytes_compare(hlffi_value* a, int a_pos, hlffi_value* b, int b_pos, in
 
     if (!a_bytes || !b_bytes) return 0;
 
-    return hl_bytes_compare(a_bytes, a_pos, b_bytes, b_pos, len);
+    return memcmp(a_bytes + a_pos, b_bytes + b_pos, len);
 }
 
 /* ========== BYTES CONVERSION ========== */
