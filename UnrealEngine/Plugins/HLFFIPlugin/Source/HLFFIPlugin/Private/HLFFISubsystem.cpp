@@ -516,7 +516,7 @@ FString UHLFFISubsystem::CallStaticMethodReturnString(const FString& ClassName, 
 		return FString();
 	}
 
-	char* str = hlffi_value_as_string(result, nullptr);
+	char* str = hlffi_value_as_string(result);
 	FString value = str ? FString(ANSI_TO_TCHAR(str)) : FString();
 
 	if (str)
@@ -620,7 +620,7 @@ FString UHLFFISubsystem::GetStaticString(const FString& ClassName, const FString
 		return FString();
 	}
 
-	char* str = hlffi_value_as_string(val, nullptr);
+	char* str = hlffi_value_as_string(val);
 	FString result = str ? FString(ANSI_TO_TCHAR(str)) : FString();
 
 	if (str)
@@ -672,10 +672,9 @@ FString UHLFFISubsystem::GetLastError() const
 
 void UHLFFISubsystem::ForceGarbageCollection()
 {
-	if (VM)
-	{
-		hlffi_gc_collect(VM);
-	}
+	// Note: HashLink GC runs automatically. No manual trigger available in HLFFI API.
+	// This function is kept for API compatibility.
+	UE_LOG(LogHLFFI, Verbose, TEXT("ForceGarbageCollection called - HashLink GC runs automatically."));
 }
 
 // ==================== Private Helpers ====================
@@ -713,7 +712,6 @@ void UHLFFISubsystem::CleanupVM()
 
 	if (VM)
 	{
-		hlffi_close(VM);
 		hlffi_destroy(VM);
 		VM = nullptr;
 	}
