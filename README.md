@@ -11,8 +11,6 @@
 
 ---
 
-## What is HLFFI?
-
 HLFFI is a C/C++ library that embeds the [HashLink](https://hashlink.haxe.org/) virtual machine into any application. It provides a clean, production-ready API for running [Haxe](https://haxe.org/) code from C/C++ hosts.
 
 ```c
@@ -245,45 +243,6 @@ int main()
 
 ---
 
-## 🏗️ Project Structure
-
-```
-hlffi/
-├── include/
-│   └── hlffi.h              # Public API header
-├── src/
-│   ├── hlffi_core.c         # Version info, utilities
-│   ├── hlffi_lifecycle.c    # VM lifecycle (create, init, destroy)
-│   ├── hlffi_integration.c  # Integration modes (update, threading)
-│   ├── hlffi_events.c       # Event loop integration (UV, MainLoop)
-│   ├── hlffi_threading.c    # Threaded mode (message queue)
-│   ├── hlffi_reload.c       # Hot reload support
-│   ├── hlffi_types.c        # Type system
-│   ├── hlffi_values.c       # Value creation and extraction
-│   ├── hlffi_objects.c      # Object manipulation
-│   ├── hlffi_callbacks.c    # Callbacks & exceptions
-│   ├── hlffi_maps.c         # Map operations
-│   ├── hlffi_bytes.c        # Bytes handling
-│   ├── hlffi_enums.c        # Enum support
-│   ├── hlffi_abstracts.c    # Abstract types
-│   └── hlffi_cache.c        # Performance caching
-├── examples/
-│   ├── hello_world/         # Basic entry point example
-│   ├── example_threaded.c   # Threaded integration
-│   └── ...                  # More examples
-├── test/
-│   ├── *.hx                 # Haxe test files
-│   ├── *.hl                 # Compiled bytecode
-│   └── build.bat            # Compile test files
-├── docs/
-│   ├── guide/               # User guide (4 parts)
-│   ├── wiki/                # Wiki pages
-│   └── API_*.md             # API reference (19 sections)
-└── CMakeLists.txt           # Build system
-```
-
----
-
 ## 🔧 CMake Options
 
 | Option | Default | Description |
@@ -384,7 +343,6 @@ MIT License - Same as HashLink. See [LICENSE](LICENSE) for details.
 
 - [HashLink](https://github.com/HaxeFoundation/hashlink) by Haxe Foundation / Nicolas Cannasse
 - [hashlink-embed](https://github.com/lalawue/hashlink-embed) Ruby library (research reference)
-- [AndroidBuildTools](https://github.com/LogicInteractive/AndroidBuildTools) production patterns
 
 ---
 
