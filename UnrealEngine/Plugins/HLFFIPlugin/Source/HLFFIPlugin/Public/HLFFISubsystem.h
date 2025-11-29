@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Tickable.h"
+#include "Containers/Ticker.h"
 #include "HLFFISubsystem.generated.h"
 
 // Forward declarations - avoid including hlffi.h in header
@@ -83,6 +84,35 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "HLFFI|Lifecycle")
 	bool IsVMRunning() const;
+
+	// ==================== High-Frequency Timer Processing ====================
+
+	/**
+	 * Enable high-frequency event processing for precise ms-level timers.
+	 *
+	 * By default, hlffi_update() is called at frame rate (~60Hz = 16ms precision).
+	 * For Haxe timers that need 1-10ms precision, enable this to run a background
+	 * thread that processes events at 1ms intervals.
+	 *
+	 * @param bEnable True to enable high-frequency processing
+	 * @param IntervalMs Update interval in milliseconds (default: 1ms)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HLFFI|Timers")
+	void SetHighFrequencyTimerEnabled(bool bEnable, int32 IntervalMs = 1);
+
+	/**
+	 * Check if high-frequency timer processing is enabled
+	 * @return True if the high-frequency timer thread is running
+	 */
+	UFUNCTION(BlueprintPure, Category = "HLFFI|Timers")
+	bool IsHighFrequencyTimerEnabled() const;
+
+	/**
+	 * Get the current high-frequency timer interval
+	 * @return Interval in milliseconds
+	 */
+	UFUNCTION(BlueprintPure, Category = "HLFFI|Timers")
+	int32 GetHighFrequencyTimerInterval() const;
 
 	// ==================== Hot Reload ====================
 
@@ -295,9 +325,27 @@ private:
 	/** Whether the VM is in the process of initializing */
 	bool bIsInitializing = false;
 
+	/** Whether high-frequency timer processing is enabled */
+	bool bHighFrequencyTimerEnabled = false;
+
+	/** High-frequency timer update interval in ms */
+	int32 TimerIntervalMs = 1;
+
+	/** Handle for the high-frequency ticker (processes haxe.Timer events at 1ms) */
+	FTSTicker::FDelegateHandle HighFrequencyTickerHandle;
+
+	/** High-frequency ticker callback - processes TIMERS only */
+	bool OnHighFrequencyTick(float DeltaTime);
+
 	/** Internal helper to resolve .hl file path */
 	FString ResolveHLFilePath(const FString& InPath) const;
 
 	/** Internal helper for cleanup */
 	void CleanupVM();
+
+	/** Start the high-frequency ticker */
+	void StartHighFrequencyTicker();
+
+	/** Stop the high-frequency ticker */
+	void StopHighFrequencyTicker();
 };

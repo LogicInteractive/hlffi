@@ -12,7 +12,8 @@ The HLFFI Plugin embeds the HashLink Virtual Machine into Unreal Engine, allowin
 - **Blueprint Integration**: Full Blueprint API for calling Haxe functions
 - **Hot Reload**: Reload Haxe code without restarting the editor
 - **Game Instance Subsystem**: Proper UE5 subsystem architecture
-- **Per-Frame Updates**: Automatic event loop processing
+- **Two-Loop Architecture**: Separate event processing for MainLoop (frame rate) and Timers (high frequency)
+- **High-Frequency Timers**: Optional 1ms timer precision for haxe.Timer
 
 ## Installation
 
@@ -154,6 +155,14 @@ haxe -hl game.hl -main Game
 | `SetHotReloadEnabled(bool)` | Enable/disable hot reload |
 | `TriggerHotReload()` | Manually trigger reload |
 
+### High-Frequency Timers
+
+| Function | Description |
+|----------|-------------|
+| `SetHighFrequencyTimerEnabled(bool, IntervalMs)` | Enable 1ms timer processing |
+| `IsHighFrequencyTimerEnabled()` | Check if high-frequency mode is on |
+| `GetHighFrequencyTimerInterval()` | Get current timer interval |
+
 ### Events (Delegates)
 
 | Event | Description |
@@ -161,6 +170,38 @@ haxe -hl game.hl -main Game
 | `OnVMStarted` | Broadcast when VM starts |
 | `OnVMStopped` | Broadcast when VM stops |
 | `OnHotReload` | Broadcast after hot reload (success/fail) |
+
+## Event Loop Architecture
+
+The plugin uses a two-loop architecture to handle Haxe events efficiently:
+
+### MainLoop (Frame Rate)
+
+Processed at frame rate (~60fps / ~16ms):
+- `haxe.MainLoop.add()` callbacks
+- Render and update logic
+
+This is handled automatically in the subsystem's `Tick()` function.
+
+### Timers (High Frequency)
+
+Processed optionally at high frequency (~1ms):
+- `haxe.Timer` events
+- `haxe.Timer.delay()` callbacks
+
+By default, timers are processed at frame rate (~16ms precision). For applications requiring precise timing (e.g., music games, precise animations), enable high-frequency mode:
+
+```cpp
+// From C++
+HLFFI->SetHighFrequencyTimerEnabled(true, 1);  // 1ms intervals
+```
+
+```
+// From Blueprint
+HLFFI Set High Frequency Timer Enabled (Enable: true, IntervalMs: 1)
+```
+
+**Note:** High-frequency mode uses UE's FTSTicker which runs on the game thread. For true 1ms precision, your game must maintain a stable frame rate.
 
 ## Directory Structure
 

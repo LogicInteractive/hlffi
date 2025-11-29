@@ -178,14 +178,22 @@ typedef enum {
 /**
  * Event loop type for hlffi_process_events().
  *
- * UV: libuv event loop (async I/O, HTTP, file watch, timers)
- * HAXE: haxe.EventLoop (haxe.Timer, haxe.MainLoop callbacks)
- * ALL: Both UV + Haxe (default for hlffi_update)
+ * UV:       libuv event loop (async I/O, HTTP, file watch)
+ * HAXE:     Both Timers + MainLoop together (legacy, for compatibility)
+ * ALL:      UV + Haxe (default for hlffi_update)
+ * TIMERS:   sys.thread.EventLoop only (haxe.Timer, high-frequency ~1ms)
+ * MAINLOOP: haxe.MainLoop only (MainLoop.add callbacks, frame-rate ~16ms)
+ *
+ * For game engines with separate update rates:
+ *   - Call hlffi_process_events(vm, HLFFI_EVENTLOOP_TIMERS) at 1ms intervals
+ *   - Call hlffi_process_events(vm, HLFFI_EVENTLOOP_MAINLOOP) at frame rate
  */
 typedef enum {
     HLFFI_EVENTLOOP_UV = 0,
     HLFFI_EVENTLOOP_HAXE = 1,
-    HLFFI_EVENTLOOP_ALL = 2
+    HLFFI_EVENTLOOP_ALL = 2,
+    HLFFI_EVENTLOOP_TIMERS = 3,
+    HLFFI_EVENTLOOP_MAINLOOP = 4
 } hlffi_eventloop_type;
 
 /* ========== CALLBACKS ========== */

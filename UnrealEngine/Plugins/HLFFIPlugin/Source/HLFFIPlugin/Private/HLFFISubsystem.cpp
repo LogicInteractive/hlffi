@@ -4,15 +4,20 @@
 #include "HLFFIPluginModule.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 
 // Include HLFFI header (implementation is in HLFFIPluginModule.cpp)
 #include "hlffi.h"
+
+// ==================== UHLFFISubsystem ====================
 
 UHLFFISubsystem::UHLFFISubsystem()
 {
 	VM = nullptr;
 	bHotReloadEnabled = true;
 	bIsInitializing = false;
+	bHighFrequencyTimerEnabled = false;
+	TimerIntervalMs = 1;
 }
 
 void UHLFFISubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -45,8 +50,16 @@ void UHLFFISubsystem::Tick(float DeltaTime)
 {
 	if (VM && !bIsInitializing)
 	{
-		// Process HLFFI events (UV loop, Haxe EventLoop)
-		hlffi_update(VM, DeltaTime);
+		// Process MainLoop callbacks at frame rate (~60fps / ~16ms)
+		// This handles haxe.MainLoop.add() callbacks
+		hlffi_process_events(VM, HLFFI_EVENTLOOP_MAINLOOP);
+
+		// If high-frequency timers are NOT enabled, also process timers here
+		// This gives ~16ms precision but works out-of-the-box
+		if (!bHighFrequencyTimerEnabled)
+		{
+			hlffi_process_events(VM, HLFFI_EVENTLOOP_TIMERS);
+		}
 
 		// Check for hot reload if enabled
 		if (bHotReloadEnabled)
@@ -111,13 +124,16 @@ bool UHLFFISubsystem::StartVM(const FString& HLFilePath)
 		return false;
 	}
 
-	// Step 3: Enable hot reload if desired
+	// Step 3: Set NON_THREADED mode (engine controls event loop)
+	hlffi_set_integration_mode(VM, HLFFI_MODE_NON_THREADED);
+
+	// Step 4: Enable hot reload if desired
 	if (bHotReloadEnabled)
 	{
 		hlffi_enable_hot_reload(VM, true);
 	}
 
-	// Step 4: Load bytecode
+	// Step 5: Load bytecode
 	err = hlffi_load_file(VM, TCHAR_TO_ANSI(*ResolvedPath));
 	if (err != HLFFI_OK)
 	{
@@ -127,7 +143,7 @@ bool UHLFFISubsystem::StartVM(const FString& HLFilePath)
 		return false;
 	}
 
-	// Step 5: Call entry point (initializes Haxe statics)
+	// Step 6: Call entry point (initializes Haxe statics)
 	err = hlffi_call_entry(VM);
 	if (err != HLFFI_OK)
 	{
@@ -186,6 +202,86 @@ bool UHLFFISubsystem::RestartVM(const FString& HLFilePath)
 bool UHLFFISubsystem::IsVMRunning() const
 {
 	return VM != nullptr && !bIsInitializing;
+}
+
+// ==================== High-Frequency Timer Processing ====================
+
+void UHLFFISubsystem::SetHighFrequencyTimerEnabled(bool bEnable, int32 IntervalMs)
+{
+	TimerIntervalMs = FMath::Max(1, IntervalMs);
+
+	if (bEnable && !bHighFrequencyTimerEnabled)
+	{
+		StartHighFrequencyTicker();
+	}
+	else if (!bEnable && bHighFrequencyTimerEnabled)
+	{
+		StopHighFrequencyTicker();
+	}
+}
+
+bool UHLFFISubsystem::IsHighFrequencyTimerEnabled() const
+{
+	return bHighFrequencyTimerEnabled;
+}
+
+int32 UHLFFISubsystem::GetHighFrequencyTimerInterval() const
+{
+	return TimerIntervalMs;
+}
+
+bool UHLFFISubsystem::OnHighFrequencyTick(float DeltaTime)
+{
+	// Process ONLY haxe.Timer events at high frequency
+	// This is called at ~1ms intervals for precise timer support
+	if (VM && !bIsInitializing)
+	{
+		hlffi_process_events(VM, HLFFI_EVENTLOOP_TIMERS);
+	}
+
+	// Return true to keep the ticker alive
+	return true;
+}
+
+void UHLFFISubsystem::StartHighFrequencyTicker()
+{
+	if (bHighFrequencyTimerEnabled)
+	{
+		return; // Already running
+	}
+
+	// Calculate interval in seconds (FTSTicker uses seconds)
+	float IntervalSeconds = TimerIntervalMs / 1000.0f;
+
+	// Register the high-frequency ticker
+	// FTSTicker is thread-safe and runs on the game thread
+	HighFrequencyTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &UHLFFISubsystem::OnHighFrequencyTick),
+		IntervalSeconds
+	);
+
+	bHighFrequencyTimerEnabled = true;
+
+	UE_LOG(LogHLFFI, Log, TEXT("High-frequency timer processing enabled at %dms intervals."), TimerIntervalMs);
+}
+
+void UHLFFISubsystem::StopHighFrequencyTicker()
+{
+	if (!bHighFrequencyTimerEnabled)
+	{
+		return; // Not running
+	}
+
+	// Remove the ticker
+	if (HighFrequencyTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(HighFrequencyTickerHandle);
+		HighFrequencyTickerHandle.Reset();
+	}
+
+	bHighFrequencyTimerEnabled = false;
+
+	UE_LOG(LogHLFFI, Log, TEXT("High-frequency timer processing disabled."));
 }
 
 // ==================== Hot Reload ====================
@@ -606,6 +702,9 @@ FString UHLFFISubsystem::ResolveHLFilePath(const FString& InPath) const
 
 void UHLFFISubsystem::CleanupVM()
 {
+	// Stop the high-frequency ticker first
+	StopHighFrequencyTicker();
+
 	if (VM)
 	{
 		hlffi_close(VM);
