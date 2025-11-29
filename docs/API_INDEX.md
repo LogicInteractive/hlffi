@@ -1,18 +1,20 @@
 # HLFFI API Index
 
-> Complete reference for all 130 HLFFI functions
+> <small>Complete reference for all 130 HLFFI functions</small>
 
 <details>
 <summary><strong>Quick Navigation</strong></summary>
 
-[VM Lifecycle](#vm-lifecycle) · [Integration](#integration-modes) · [Event Loop](#event-loop) · [Threading](#threading) · [Hot Reload](#hot-reload) · [Types](#type-system) · [Values](#value-system) · [Static](#static-members) · [Instance](#instance-members) · [Arrays](#arrays) · [Maps](#maps) · [Bytes](#bytes) · [Enums](#enums) · [Abstracts](#abstracts) · [Callbacks](#callbacks--ffi) · [Exceptions](#exception-handling) · [Performance](#performance--caching)
+<small>[VM Lifecycle](#vm-lifecycle) · [Integration](#integration-modes) · [Event Loop](#event-loop) · [Threading](#threading) · [Hot Reload](#hot-reload) · [Types](#type-system) · [Values](#value-system) · [Static](#static-members) · [Instance](#instance-members) · [Arrays](#arrays) · [Maps](#maps) · [Bytes](#bytes) · [Enums](#enums) · [Abstracts](#abstracts) · [Callbacks](#callbacks--ffi) · [Exceptions](#exception-handling) · [Performance](#performance--caching)</small>
 
 </details>
 
 ---
 
-### VM Lifecycle
+#### VM Lifecycle
 <sub>9 functions · Create, initialize, load, and manage the HashLink VM</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -26,8 +28,12 @@
 | `hlffi_get_error(vm)` | Get last error message (static string) |
 | `hlffi_get_error_string(code)` | Convert error code to human-readable string |
 
+</small>
+
 <details>
 <summary>View details</summary>
+
+<small>
 
 ```c
 hlffi_vm* hlffi_create(void)
@@ -74,22 +80,30 @@ const char* hlffi_get_error_string(hlffi_error_code code)
 ```
 Convert error code to human-readable string. Returns static error message for given code.
 
+</small>
+
 </details>
 
 ---
 
-### Integration Modes
+#### Integration Modes
 <sub>2 functions · Choose between NON_THREADED and THREADED execution</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
 | `hlffi_set_integration_mode(vm, mode)` | Set integration mode (must call before entry point) |
 | `hlffi_get_integration_mode(vm)` | Get current integration mode |
 
+</small>
+
 ---
 
-### Event Loop
+#### Event Loop
 <sub>4 functions · Process UV loop and Haxe EventLoop for timers and async operations</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -98,10 +112,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_process_events(vm, type)` | Process specific event loop type (UV_LOOP or HAXE_EVENTLOOP) |
 | `hlffi_has_pending_events(vm, type)` | Check if specific event loop has pending work |
 
+</small>
+
 ---
 
-### Threading
+#### Threading
 <sub>9 functions · VM thread management and worker thread support</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -115,10 +133,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_blocking_begin()` | Notify GC that thread is starting external I/O |
 | `hlffi_blocking_end()` | Notify GC that thread returned from external I/O |
 
+</small>
+
 ---
 
-### Hot Reload
+#### Hot Reload
 <sub>6 functions · Runtime code updates without restart</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -129,10 +151,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_set_reload_callback(vm, callback, userdata)` | Set callback invoked after successful reload |
 | `hlffi_check_reload(vm)` | Check if bytecode file changed and reload if needed |
 
+</small>
+
 ---
 
-### Type System
+#### Type System
 <sub>10 functions · Type introspection and reflection</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -147,10 +173,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_class_get_method_name(type, index)` | Get method name by index |
 | `hlffi_is_jit_mode()` | Check if running in JIT mode (vs interpreter) |
 
+</small>
+
 ---
 
-### Value System
+#### Value System
 <sub>11 functions · Boxing and unboxing between C and Haxe types</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -166,10 +196,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_value_as_string(value)` | Unbox Haxe String to C UTF-8 string (caller must free) |
 | `hlffi_value_is_null(value)` | Check if value is null |
 
+</small>
+
 ---
 
-### Static Members
+#### Static Members
 <sub>3 functions · Access static fields and methods</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -177,10 +211,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_set_static_field(vm, class, field, value)` | Set static field value |
 | `hlffi_call_static(vm, class, method, argc, argv)` | Call static method by name |
 
+</small>
+
 ---
 
-### Instance Members
-<sub>16 functions · Create objects and access instance fields/methods</sub>
+#### Instance Members
+<sub>17 functions · Create objects and access instance fields/methods</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -203,10 +241,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_call_method_string(obj, method, argc, argv)` | Call method returning string (caller must free) |
 | `hlffi_is_instance_of(obj, class)` | Check if object is instance of class |
 
+</small>
+
 ---
 
-### Arrays
+#### Arrays
 <sub>12 functions · Dynamic arrays, NativeArrays, and struct arrays</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -223,10 +265,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_native_array_new_struct(vm, type, length)` | Create NativeArray of structs |
 | `hlffi_native_array_get_struct_ptr(arr)` | Get pointer to first struct in NativeArray |
 
+</small>
+
 ---
 
-### Maps
+#### Maps
 <sub>9 functions · Hash tables and dictionaries</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -240,10 +286,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_map_size(map)` | Get number of entries |
 | `hlffi_map_clear(map)` | Remove all entries |
 
+</small>
+
 ---
 
-### Bytes
+#### Bytes
 <sub>11 functions · Binary data and byte buffers</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -259,10 +309,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_bytes_set(bytes, index, value)` | Set single byte at index |
 | `hlffi_bytes_fill(bytes, pos, len, value)` | Fill byte range with value |
 
+</small>
+
 ---
 
-### Enums
+#### Enums
 <sub>10 functions · Algebraic data types with constructors</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -277,10 +331,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_enum_is(value, index)` | Check if enum is specific constructor index |
 | `hlffi_enum_is_named(value, name)` | Check if enum is specific constructor name |
 
+</small>
+
 ---
 
-### Abstracts
+#### Abstracts
 <sub>5 functions · Abstract type detection and handling</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -290,10 +348,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_value_is_abstract(value)` | Check if value is abstract type |
 | `hlffi_value_get_abstract_name(value)` | Get abstract name of value (caller must free) |
 
+</small>
+
 ---
 
-### Callbacks & FFI
+#### Callbacks & FFI
 <sub>4 functions · C ↔ Haxe interop</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -302,10 +364,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_get_callback(vm, name)` | Get registered callback function |
 | `hlffi_unregister_callback(vm, name)` | Remove registered callback |
 
+</small>
+
 ---
 
-### Exception Handling
+#### Exception Handling
 <sub>7 functions · Try-catch support and stack traces</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -317,10 +383,14 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_has_exception(vm)` | Check if VM has pending exception |
 | `hlffi_clear_exception(vm)` | Clear pending exception |
 
+</small>
+
 ---
 
-### Performance & Caching
+#### Performance & Caching
 <sub>5 functions · Method caching for 60x speedup</sub>
+
+<small>
 
 | Function | Description |
 |----------|-------------|
@@ -329,6 +399,8 @@ Convert error code to human-readable string. Returns static error message for gi
 | `hlffi_cached_call_free(cached)` | Free cached method handle |
 | `hlffi_cache_instance_method(vm, class, method)` | Cache instance method (NOT YET IMPLEMENTED) |
 | `hlffi_call_cached_method(cached, instance, argc, argv)` | Call cached instance method (NOT YET IMPLEMENTED) |
+
+</small>
 
 ---
 
