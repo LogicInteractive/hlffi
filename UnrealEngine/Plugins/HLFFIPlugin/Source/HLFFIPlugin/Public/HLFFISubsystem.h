@@ -25,8 +25,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHLFFIHotReload, bool, bSuccess);
  *
  * Usage:
  *   1. Place your .hl file in the project's Content folder
- *   2. Set the HLFilePath property (relative to Content folder)
- *   3. The VM will automatically start when Play begins
+ *   2. Set the DefaultHLFilePath property (relative to Content folder)
+ *   3. Enable bAutoStartVM to start automatically, or call StartVM() manually
  *
  * Features:
  *   - Automatic VM lifecycle management
@@ -34,7 +34,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHLFFIHotReload, bool, bSuccess);
  *   - Blueprint and C++ API for calling Haxe functions
  *   - Per-frame update for event loop processing
  */
-UCLASS()
+UCLASS(Config=Game)
 class HLFFIPLUGIN_API UHLFFISubsystem : public UGameInstanceSubsystem, public FTickableGameObject
 {
 	GENERATED_BODY()
@@ -53,6 +53,22 @@ public:
 	virtual bool IsTickable() const override;
 	virtual TStatId GetStatId() const override;
 	//~ End FTickableGameObject Interface
+
+	// ==================== Auto-Start Configuration ====================
+
+	/**
+	 * If true, the VM will automatically start when the GameInstance initializes.
+	 * Set this in your project's DefaultGame.ini or via Blueprint.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "HLFFI|AutoStart")
+	bool bAutoStartVM = false;
+
+	/**
+	 * Default path to the .hl file to load on auto-start.
+	 * Can be relative to Content folder (e.g., "Scripts/game.hl") or absolute.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "HLFFI|AutoStart")
+	FString DefaultHLFilePath = TEXT("Scripts/game.hl");
 
 	// ==================== VM Lifecycle ====================
 

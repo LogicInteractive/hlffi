@@ -26,9 +26,15 @@ void UHLFFISubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	UE_LOG(LogHLFFI, Log, TEXT("HLFFISubsystem initialized."));
 
-	// Note: We don't automatically start the VM here.
-	// Users should call StartVM() with their .hl file path,
-	// either from Blueprint BeginPlay or from game code.
+	// Auto-start VM if enabled
+	if (bAutoStartVM && !DefaultHLFilePath.IsEmpty())
+	{
+		UE_LOG(LogHLFFI, Log, TEXT("Auto-starting VM with: %s"), *DefaultHLFilePath);
+		if (!StartVM(DefaultHLFilePath))
+		{
+			UE_LOG(LogHLFFI, Warning, TEXT("Auto-start failed. Call StartVM() manually or check DefaultHLFilePath."));
+		}
+	}
 }
 
 void UHLFFISubsystem::Deinitialize()
