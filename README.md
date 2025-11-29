@@ -36,24 +36,19 @@ int main()
 
 ---
 
-## Why HLFFI?
+## Overview
 
-### The Problem
+HashLink provides a high-performance runtime for Haxe, but embedding it in C/C++ applications requires working with its internal APIs directly. HLFFI provides a production-ready abstraction layer that handles the complexity of VM lifecycle management, garbage collection, type conversions, and threading.
 
-You want to use Haxe for game logic, scripting, or rapid prototyping in your C/C++ application. HashLink is Haxe's high-performance runtime, but embedding it requires understanding its internal APIs, managing GC roots manually, and dealing with threading complexities.
+**What it does:**
+- Manages HashLink VM initialization, bytecode loading, and cleanup
+- Provides automatic GC root management for values passed between C and Haxe
+- Handles type conversions between C primitives and HashLink's type system
+- Integrates with libuv and Haxe's event loop automatically
+- Supports both engine-controlled and threaded integration modes
+- Enables hot reload of Haxe modules without application restart
 
-### The Solution
-
-HLFFI wraps all of that complexity into a simple, clean API:
-
-| Challenge | Without HLFFI | With HLFFI |
-|-----------|---------------|------------|
-| **GC Root Management** | Manual `hl_add_root()` / `hl_remove_root()` calls | Automatic - just use `hlffi_value_free()` |
-| **Type Conversions** | Raw `vdynamic*` manipulation | Type-safe `hlffi_value_*` helpers |
-| **Error Handling** | Check global state, decode errors | Clear error codes + `hlffi_get_error()` |
-| **Threading** | Complex GC registration | Simple `hlffi_worker_register()` |
-| **Event Loops** | Manual UV + MainLoop integration | One call: `hlffi_update(vm, dt)` |
-| **Hot Reload** | Not easily possible | Built-in `hlffi_reload_module()` |
+**Problem solved:** Without HLFFI, embedding HashLink requires manual management of GC roots (`hl_add_root`/`hl_remove_root`), raw `vdynamic*` pointer manipulation, manual thread registration, and integration of multiple event loops. HLFFI encapsulates these operations into a consistent API with clear error handling and automatic resource management.
 
 ---
 
