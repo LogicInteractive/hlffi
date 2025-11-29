@@ -1,4 +1,4 @@
-# HLFFI API Reference - Arrays
+﻿# HLFFI API Reference - Arrays
 
 **[← Instance Members](API_09_INSTANCE_MEMBERS.md)** | **[Back to Index](API_REFERENCE.md)** | **[Maps →](API_11_MAPS.md)**
 
@@ -73,7 +73,8 @@ hlffi_value* hlffi_array_get(hlffi_vm* vm, hlffi_value* arr, int index)
 ```c
 hlffi_value* arr = hlffi_array_new(vm, &hlt_i32, 5);
 hlffi_value* elem = hlffi_array_get(vm, arr, 0);
-if (elem) {
+if (elem)
+{
     int value = hlffi_value_as_int(elem, 0);
     printf("arr[0] = %d\n", value);
     hlffi_value_free(elem);
@@ -113,7 +114,8 @@ int hlffi_array_length(hlffi_value* arr)
 **Example:**
 ```c
 int len = hlffi_array_length(arr);
-for (int i = 0; i < len; i++) {
+for (int i = 0; i < len; i++)
+{
     hlffi_value* elem = hlffi_array_get(vm, arr, i);
     // ... use elem ...
     hlffi_value_free(elem);
@@ -161,7 +163,8 @@ hlffi_value* hlffi_array_new_struct(hlffi_vm* vm, hlffi_type* struct_type, int l
 
 **Example:**
 ```c
-// Haxe: @:struct class Vec3 { public var x:Float; public var y:Float; public var z:Float; }
+// Haxe: @:struct class Vec3
+{
 hlffi_type* vec3_type = hlffi_find_type(vm, "Vec3");
 hlffi_value* arr = hlffi_array_new_struct(vm, vec3_type, 100);
 ```
@@ -180,10 +183,12 @@ void* hlffi_array_get_struct(hlffi_value* arr, int index)
 **Example:**
 ```c
 // C struct matching Haxe @:struct class:
-typedef struct { double x, y, z; } Vec3;
+
+{ double x, y, z; } Vec3;
 
 Vec3* v = (Vec3*)hlffi_array_get_struct(arr, 0);
-if (v) {
+if (v)
+{
     v->x = 1.0;  // Modify in-place (no boxing!)
     v->y = 2.0;
     v->z = 3.0;
@@ -214,7 +219,8 @@ hlffi_array_set_struct(vm, arr, 0, &v, sizeof(Vec3));
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -238,7 +244,8 @@ int main() {
     // Read back:
     int len = hlffi_array_length(scores);
     printf("Scores (%d):\n", len);
-    for (int i = 0; i < len; i++) {
+    for (int i = 0; i < len; i++)
+    {
         hlffi_value* elem = hlffi_array_get(vm, scores, i);
         int score = hlffi_value_as_int(elem, 0);
         printf("  [%d] = %d\n", i, score);
@@ -246,7 +253,8 @@ int main() {
     }
 
     // Struct array (zero-copy):
-    typedef struct { double x, y, z; } Vec3;
+    
+{ double x, y, z; } Vec3;
     hlffi_type* vec_type = hlffi_find_type(vm, "Vec3");
     hlffi_value* positions = hlffi_array_new_struct(vm, vec_type, 10);
 
@@ -259,6 +267,7 @@ int main() {
     // Cleanup:
     hlffi_value_free(scores);
     hlffi_value_free(positions);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -266,12 +275,14 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-@:struct class Vec3 {
+@:struct class Vec3
+{
     public var x:Float;
     public var y:Float;
     public var z:Float;
 
-    public function new(x:Float, y:Float, z:Float) {
+    public function new(x:Float, y:Float, z:Float)
+    {
         this.x = x; this.y = y; this.z = z;
     }
 }
@@ -286,7 +297,8 @@ int main() {
 ```c
 // ✅ GOOD - Preallocate known size
 hlffi_value* arr = hlffi_array_new(vm, &hlt_i32, 1000);
-for (int i = 0; i < 1000; i++) {
+for (int i = 0; i < 1000; i++)
+{
     hlffi_value* val = hlffi_value_int(vm, i);
     hlffi_array_set(vm, arr, i, val);
     hlffi_value_free(val);
@@ -294,7 +306,8 @@ for (int i = 0; i < 1000; i++) {
 
 // ❌ SLOWER - Growing with push
 hlffi_value* arr = hlffi_array_new(vm, &hlt_i32, 0);
-for (int i = 0; i < 1000; i++) {
+for (int i = 0; i < 1000; i++)
+{
     hlffi_value* val = hlffi_value_int(vm, i);
     hlffi_array_push(vm, arr, val);  // Reallocation overhead
     hlffi_value_free(val);

@@ -13,38 +13,28 @@
 ---
 
 
-**HLFFI is a HashLink FFI library, purpose-built for embedding Haxe/HashLink into native applications like game engines (Unreal, Unity, Godot), mobile apps, and custom C/C++ tools.
+**HLFFI** is a HashLink FFI library for embedding Haxe/HashLink into native applications like game engines (Unreal, Unity, Godot), mobile apps, and custom C/C++ tools.
 
-
-## ⚠️ Status : Experimental
-
-
-
-**Phase 0: Foundation & Architecture** ✅ **COMPLETE**
-**Phase 1: Core Lifecycle & Integration Modes** 🔨 **IN PROGRESS**
-
-✅ **Working**: VM lifecycle (create, init, load, destroy), NON_THREADED mode, basic tests
-🔨 **TODO**: Event loop integration, THREADED mode, hot reload
-
-See [MASTER_PLAN.md](docs/MASTER_PLAN.md) for the complete 9-phase roadmap.
-See [BUILD_NOTES.md](BUILD_NOTES.md) for current build status and known issues.
 
 ## ✨ Key Features
 
 - **Two Integration Modes**: Non-threaded (engine controls loop) and Threaded (dedicated VM thread)
-- **Event Loop Integration**: Automatic UV and haxe.EventLoop processing with weak symbols
-- **Hot Reload Support**: Reload Haxe modules without restarting your app
+- **Event Loop Integration**: Automatic UV and haxe.EventLoop processing
+- **Hot Reload Support**: Reload Haxe modules without restarting your app (HL 1.12+)
+- **VM Restart Support**: Experimental support for restarting the VM within a single process
 - **Clean C API**: Explicit error codes, no hidden state, C++17 RAII wrappers
 - **Automatic GC Root Management**: No manual dispose needed
-- **Cross-Platform**: Windows (Visual Studio) first, Linux/macOS/Android/WASM later
+- **Complete Type System**: Arrays, Maps, Bytes, Enums, Abstracts, and Callbacks
+- **Cross-Platform**: Windows (Visual Studio) first, Linux/macOS/Android/WASM planned
 
 ## 🚀 Quick Start (Windows/Visual Studio)
 
 ### Prerequisites
 
-1. **HashLink**: Install from [hashlink.haxe.org](https://hashlink.haxe.org/)
-2. **Visual Studio 2019 or 2022**
-3. **CMake 3.15+**
+1. **Haxe**: Install from [haxe.org](https://haxe.org/download/)
+2. **HashLink**: Install from [hashlink.haxe.org](https://hashlink.haxe.org/) (1.12+ for hot reload)
+3. **Visual Studio 2019 or 2022**
+4. **CMake 3.15+**
 
 ### Build HLFFI
 
@@ -66,16 +56,16 @@ cmake --install . --prefix C:\HLFFI
 
 **Use when**: Your engine/application controls the main loop (Unreal, Unity, Godot, custom game loops)
 
-```cpp
-// main.cpp
+```c
+// main.c
 #include <hlffi.h>
 
-int main() {
+int main()
+{
     // Phase 1: Create and initialize VM
     hlffi_vm* vm = hlffi_create();
 
-    const char* args[] = {"main"};
-    hlffi_init(vm, 1, (char**)args);
+    hlffi_init(vm, 0, NULL);
 
     // Load bytecode
     hlffi_load_file(vm, "game.hl");
@@ -88,7 +78,9 @@ int main() {
 
     // Phase 2: Main game loop (your engine controls this)
     float delta_time = 0.016f; // 60 FPS
-    while (running) {
+    bool running = true;
+    while (running)
+    {
         // Update HLFFI - processes UV and haxe.EventLoop events
         hlffi_update(vm, delta_time);
 
@@ -98,6 +90,7 @@ int main() {
     }
 
     // Phase 3: Shutdown
+    hlffi_close(vm);
     hlffi_destroy(vm);
 
     return 0;
@@ -113,29 +106,28 @@ int main() {
 
 **Use when**: You want Haxe to run on a dedicated thread with message queue communication
 
-```cpp
-// main.cpp
+```c
+// main.c
 #include <hlffi.h>
 
-int main() {
+int main()
+{
     // Create and initialize VM
     hlffi_vm* vm = hlffi_create();
 
-    const char* args[] = {"main"};
-    hlffi_init(vm, 1, (char**)args);
+    hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
 
     // Set threaded mode
     hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);
 
-    // Call entry point (may block if Haxe has while loop)
-    hlffi_call_entry(vm);
-
-    // Start dedicated VM thread
+    // Start dedicated VM thread (calls entry point internally)
     hlffi_thread_start(vm);
 
     // Main thread continues...
-    while (running) {
+    bool running = true;
+    while (running)
+    {
         // Call Haxe functions from other threads
         hlffi_thread_call_sync(vm, my_callback, userdata);
 
@@ -145,6 +137,7 @@ int main() {
 
     // Stop VM thread
     hlffi_thread_stop(vm);
+    hlffi_close(vm);
     hlffi_destroy(vm);
 
     return 0;
@@ -153,25 +146,54 @@ int main() {
 
 ## 📚 Documentation
 
-### Core Documentation
-- **[MASTER_PLAN.md](docs/MASTER_PLAN.md)** - Complete implementation roadmap (9 phases)
-- **[API Reference](docs/API_REFERENCE.md)** - Full API documentation (Phase 7)
+### User Guide (Start Here!)
 
-### Research & Design Decisions
-- **[FFI_RESEARCH.md](docs/FFI_RESEARCH.md)** - Analysis of 75+ sources, 11 documented gotchas
-- **[ANDROID_INSIGHTS_FOR_HLFFI.md](docs/ANDROID_INSIGHTS_FOR_HLFFI.md)** - Production Android implementation patterns
-- **[HAXE_MAINLOOP_INTEGRATION.md](docs/HAXE_MAINLOOP_INTEGRATION.md)** - MainLoop integration guide
-- **[MAINLOOP_CLARIFICATION.md](docs/MAINLOOP_CLARIFICATION.md)** - When MainLoop is needed (optional)
-- **[THREADING_MODEL_REPORT.md](docs/THREADING_MODEL_REPORT.md)** - Threading model analysis
-- **[VM_RESTART_INVESTIGATION.md](docs/VM_RESTART_INVESTIGATION.md)** - Why VM restart is NOT supported
-- **[VM_MODES_AND_THREADING_DEEP_DIVE.md](docs/VM_MODES_AND_THREADING_DEEP_DIVE.md)** - HL/JIT vs HL/C threading (100% verified)
+- **[Part 1: Getting Started](docs/guide/GUIDE_01_GETTING_STARTED.md)** - Your first HLFFI program
+- **[Part 2: Calling Haxe](docs/guide/GUIDE_02_CALLING_HAXE.md)** - Static methods, instance methods, fields
+- **[Part 3: Data Exchange](docs/guide/GUIDE_03_DATA_EXCHANGE.md)** - Arrays, Maps, Bytes, Enums
+- **[Part 4: Advanced Topics](docs/guide/GUIDE_04_ADVANCED.md)** - Callbacks, hot reload, threading
+
+### Wiki
+
+- **[Home](docs/wiki/HOME.md)** - Overview and use cases
+- **[Prerequisites](docs/wiki/PREREQUISITES.md)** - What you need to install
+
+### API Reference
+
+- **[API Index](docs/API_INDEX.md)** - Complete API at a glance
+- **[VM Lifecycle](docs/API_01_VM_LIFECYCLE.md)** - Create, init, load, destroy
+- **[Integration Modes](docs/API_02_INTEGRATION_MODES.md)** - Non-threaded vs threaded
+- **[Event Loop](docs/API_03_EVENT_LOOP.md)** - UV and Haxe event processing
+- **[Threading](docs/API_04_THREADING.md)** - Multi-threaded integration
+- **[Hot Reload](docs/API_05_HOT_RELOAD.md)** - Update code without restart
+- **[Type System](docs/API_06_TYPE_SYSTEM.md)** - Type reflection and inspection
+- **[Values](docs/API_07_VALUES.md)** - Creating and extracting values
+- **[Static Members](docs/API_08_STATIC_MEMBERS.md)** - Static fields and methods
+- **[Instance Members](docs/API_09_INSTANCE_MEMBERS.md)** - Object creation and access
+- **[Arrays](docs/API_10_ARRAYS.md)** - Array and NativeArray operations
+- **[Maps](docs/API_11_MAPS.md)** - Map operations
+- **[Bytes](docs/API_12_BYTES.md)** - Binary data handling
+- **[Enums](docs/API_13_ENUMS.md)** - Enum value access
+- **[Abstracts](docs/API_14_ABSTRACTS.md)** - Abstract type handling
+- **[Callbacks](docs/API_15_CALLBACKS.md)** - C callbacks from Haxe
+- **[Exceptions](docs/API_16_EXCEPTIONS.md)** - Exception handling
+- **[Performance](docs/API_17_PERFORMANCE.md)** - Optimization tips
+- **[Utilities](docs/API_18_UTILITIES.md)** - Helper functions
+- **[Error Handling](docs/API_19_ERROR_HANDLING.md)** - Error codes and recovery
+
+### Additional Resources
+
+- **[HLFFI Manual](docs/hlffi_manual.md)** - Complete developer manual
+- **[Callback Guide](docs/CALLBACK_GUIDE.md)** - In-depth callback patterns
+- **[VM Restart](docs/VM_RESTART.md)** - Experimental VM restart support
+- **[Event Loop Quickstart](docs/EVENTLOOP_QUICKSTART.md)** - Quick event loop guide
 
 ## 🏗️ Project Structure
 
 ```
 hlffi/
 ├── include/
-│   └── hlffi.h              # Public API header (500+ lines)
+│   └── hlffi.h              # Public API header
 ├── src/
 │   ├── hlffi_core.c         # Version info, utilities
 │   ├── hlffi_lifecycle.c    # VM lifecycle (create, init, destroy)
@@ -179,20 +201,27 @@ hlffi/
 │   ├── hlffi_events.c       # Event loop integration (UV, MainLoop)
 │   ├── hlffi_threading.c    # Threaded mode (message queue)
 │   ├── hlffi_reload.c       # Hot reload support
-│   ├── hlffi_types.c        # Type system (Phase 2)
-│   ├── hlffi_static.c       # Static member access (Phase 3)
-│   ├── hlffi_objects.c      # Object manipulation (Phase 4)
-│   ├── hlffi_values.c       # Advanced value types (Phase 5)
-│   └── hlffi_callbacks.c    # Callbacks & exceptions (Phase 6)
+│   ├── hlffi_types.c        # Type system
+│   ├── hlffi_values.c       # Value creation and extraction
+│   ├── hlffi_objects.c      # Object manipulation
+│   ├── hlffi_callbacks.c    # Callbacks & exceptions
+│   ├── hlffi_maps.c         # Map operations
+│   ├── hlffi_bytes.c        # Bytes handling
+│   ├── hlffi_enums.c        # Enum support
+│   ├── hlffi_abstracts.c    # Abstract types
+│   └── hlffi_cache.c        # Performance caching
 ├── examples/
-│   ├── version.c            # Simple version check
-│   ├── hello_world.c        # Entry point example
-│   ├── non_threaded.c       # Non-threaded integration
-│   └── hot_reload.c         # Hot reload demo
-├── tests/
-│   └── CMakeLists.txt       # Test suite (Phase 1+)
+│   ├── hello_world/         # Basic entry point example
+│   ├── example_threaded.c   # Threaded integration
+│   └── ...                  # More examples
+├── test/
+│   ├── *.hx                 # Haxe test files
+│   ├── *.hl                 # Compiled bytecode
+│   └── build.bat            # Compile test files
 ├── docs/
-│   └── *.md                 # Research & design docs
+│   ├── guide/               # User guide (4 parts)
+│   ├── wiki/                # Wiki pages
+│   └── API_*.md             # API reference (19 sections)
 └── CMakeLists.txt           # Build system
 ```
 
@@ -204,6 +233,7 @@ hlffi/
 | `HLFFI_BUILD_STATIC` | `ON` | Build static library (.lib/.a) |
 | `HLFFI_BUILD_EXAMPLES` | `ON` | Build example programs |
 | `HLFFI_BUILD_TESTS` | `ON` | Build test suite |
+| `HLFFI_ENABLE_HOT_RELOAD` | `ON` | Enable hot reload (requires HL 1.12+) |
 | `HASHLINK_DIR` | Auto-detect | HashLink installation path |
 
 Example:
@@ -211,57 +241,55 @@ Example:
 cmake .. -DHLFFI_BUILD_SHARED=OFF -DHASHLINK_DIR=C:\HashLink
 ```
 
-## 🎯 Implementation Roadmap
+## 🔑 Key Design Decisions
 
-- ✅ **Phase 0**: Foundation & Architecture (COMPLETE)
-  - Project structure, build system, core header
-- 🔨 **Phase 1**: Core Lifecycle & Integration Modes (IN PROGRESS)
-  - VM lifecycle, non-threaded/threaded modes, event loops, hot reload
-- ⏳ **Phase 2**: Type System Basics
-- ⏳ **Phase 3**: Static Member Access
-- ⏳ **Phase 4**: Object Manipulation
-- ⏳ **Phase 5**: Advanced Value Types
-- ⏳ **Phase 6**: Callbacks & Exception Handling
-- ⏳ **Phase 7**: Optimization & Documentation
-- ⏳ **Phase 8**: Cross-Platform Support
-- ⏳ **Phase 9**: Plugin System (Future)
+### 1. VM Restart Support (Experimental)
 
-## 🔑 Key Design Decisions (From Research Phase)
+HLFFI supports restarting the HashLink VM within a single process. This is experimental and works around HashLink's design which assumes single-initialization per process.
 
-### 1. VM Restart NOT Supported
-**Why**: HashLink's GC initialization is non-idempotent (`hl_gc_init()` can't be called twice)
-**Solution**: Use hot reload instead (`hlffi_reload_module()`)
-**Source**: [VM_RESTART_INVESTIGATION.md](docs/VM_RESTART_INVESTIGATION.md)
+**Use for**: Hot reload scenarios, game level reloading, testing multiple configurations
+
+See [VM_RESTART.md](docs/VM_RESTART.md) for details and limitations.
 
 ### 2. Main Thread is Safe (100% Verified)
+
 **Myth**: "HashLink must run on a dedicated thread"
-**Reality**: VM core does NOT block unless Haxe code has a while loop
-**Source**: [VM_MODES_AND_THREADING_DEEP_DIVE.md](docs/VM_MODES_AND_THREADING_DEEP_DIVE.md)
+
+**Reality**: VM core does NOT block unless Haxe code has a while loop. Non-threaded mode is the recommended approach for most integrations.
 
 ### 3. haxe.MainLoop is OPTIONAL
+
 **When needed**: Only if Haxe code uses `haxe.Timer` or `haxe.MainLoop.add()`
-**Detection**: Weak symbols at runtime
-**Source**: [MAINLOOP_CLARIFICATION.md](docs/MAINLOOP_CLARIFICATION.md)
+
+**Detection**: Weak symbols at runtime - no overhead if not used
 
 ### 4. Two Integration Patterns
-**Pattern A (Android)**: Haxe controls loop with `while()` - entry point blocks
-**Pattern B (Unreal/Unity)**: Engine controls loop - entry point returns
-**Source**: [ANDROID_INSIGHTS_FOR_HLFFI.md](docs/ANDROID_INSIGHTS_FOR_HLFFI.md)
+
+**Pattern A (Non-Threaded)**: Engine controls loop - entry point returns immediately
+- Recommended for: Unreal, Unity, Godot, custom game loops
+- Call `hlffi_update()` every frame
+
+**Pattern B (Threaded)**: Haxe controls loop with `while()` - runs on dedicated thread
+- Use when: Haxe code has blocking loop (Android pattern)
+- Use `hlffi_thread_call_sync()` for thread-safe calls
 
 ### 5. Event Loop Processing
-**UV Loop**: `uv_run(loop, UV_RUN_NOWAIT)` - non-blocking
-**Haxe EventLoop**: `EventLoop.main.loopOnce(false)` - non-blocking
-**Both**: Called every frame in `hlffi_update()`
-**Source**: [ANDROID_INSIGHTS_FOR_HLFFI.md](docs/ANDROID_INSIGHTS_FOR_HLFFI.md)
 
-### 6. No Manual GC Root Management
+**UV Loop**: `uv_run(loop, UV_RUN_NOWAIT)` - non-blocking
+
+**Haxe EventLoop**: `EventLoop.main.loopOnce(false)` - non-blocking
+
+**Both**: Called every frame in `hlffi_update()` when event loops exist
+
+### 6. Automatic GC Root Management
+
 **Old way**: Manual `hl_add_root()` / `hl_remove_root()` (error-prone)
-**New way**: Automatic root management in HLFFI (Issue #624 pattern)
-**Source**: [FFI_RESEARCH.md](docs/FFI_RESEARCH.md) - Gotcha #9
+
+**HLFFI way**: Automatic root management - objects created with `hlffi_new()` are GC-rooted until freed with `hlffi_value_free()`
 
 ## 🤝 Contributing
 
-HLFFI v3.0 is currently in active development. See [MASTER_PLAN.md](docs/MASTER_PLAN.md) for the roadmap.
+HLFFI is in active development. Contributions welcome!
 
 ## 📝 License
 
@@ -279,4 +307,5 @@ Created by [LogicInteractive](https://github.com/LogicInteractive)
 
 ---
 
-**Status**: Phase 0 Complete ✅ | Phase 1 In Progress 🔨 | Windows/Visual Studio Focus 🪟
+**HLFFI v3.0.0** | Windows/Visual Studio Focus 🪟 | HashLink 1.12+ Recommended
+

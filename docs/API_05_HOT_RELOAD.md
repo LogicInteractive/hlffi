@@ -1,4 +1,4 @@
-# HLFFI API Reference - Hot Reload
+﻿# HLFFI API Reference - Hot Reload
 
 **[← Threading](API_04_THREADING.md)** | **[Back to Index](API_REFERENCE.md)** | **[Type System →](API_06_TYPE_SYSTEM.md)**
 
@@ -90,9 +90,12 @@ Reloads bytecode from file. Updates function implementations, **preserves static
 
 **Example:**
 ```c
-if (hlffi_reload_module(vm, "game_v2.hl") == HLFFI_OK) {
+if (hlffi_reload_module(vm, "game_v2.hl") == HLFFI_OK)
+{
     printf("Reloaded successfully\n");
-} else {
+}
+else
+{
     fprintf(stderr, "Reload failed: %s\n", hlffi_get_error(vm));
 }
 ```
@@ -143,10 +146,14 @@ typedef void (*hlffi_reload_callback)(hlffi_vm* vm, bool success, void* userdata
 
 **Example:**
 ```c
-void on_reload(hlffi_vm* vm, bool success, void* userdata) {
-    if (success) {
+void on_reload(hlffi_vm* vm, bool success, void* userdata)
+{
+    if (success)
+    {
         printf("✓ Reload successful!\n");
-    } else {
+    }
+else
+{
         printf("✗ Reload failed: %s\n", hlffi_get_error(vm));
     }
 }
@@ -170,7 +177,8 @@ Checks if the loaded file has changed and automatically reloads if needed.
 
 **Example (Game Loop):**
 ```c
-while (running) {
+while (running)
+{
     hlffi_check_reload(vm);  // Auto-reload on file change
     hlffi_update(vm, dt);
     render();
@@ -184,17 +192,22 @@ while (running) {
 ```c
 #include "hlffi.h"
 
-void on_reload(hlffi_vm* vm, bool success, void* userdata) {
-    if (success) {
+void on_reload(hlffi_vm* vm, bool success, void* userdata)
+{
+    if (success)
+    {
         printf("✓ Code reloaded successfully\n");
         // Re-initialize if needed
         hlffi_call_static(vm, "Game", "onReload", 0, NULL);
-    } else {
+    }
+else
+{
         printf("✗ Reload failed: %s\n", hlffi_get_error(vm));
     }
 }
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     
@@ -206,19 +219,22 @@ int main() {
     hlffi_call_entry(vm);
     
     // Development loop:
-    while (!should_quit()) {
+    while (!should_quit())
+    {
         // Auto-reload when file changes:
         hlffi_check_reload(vm);
         
         // Or manual reload on keypress:
-        if (key_pressed('R')) {
+        if (key_pressed('R'))
+        {
             hlffi_reload_module(vm, "game.hl");
         }
         
         hlffi_update(vm, dt);
         render();
     }
-    
+
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -226,14 +242,17 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class Game {
+class Game
+{
     public static var score:Int = 0;  // Persists across reloads
     
-    public static function getValue():Int {
+    public static function getValue():Int
+    {
         return 100;  // Change to 200, recompile, reload
     }
     
-    public static function onReload() {
+    public static function onReload()
+    {
         trace('Code reloaded! Score still: $score');
     }
 }
@@ -262,8 +281,10 @@ hlffi_enable_hot_reload(vm, true);  // Too late!
 hlffi_set_reload_callback(vm, on_reload, NULL);
 
 // Can reinitialize state if needed
-void on_reload(hlffi_vm* vm, bool success, void* userdata) {
-    if (success) {
+void on_reload(hlffi_vm* vm, bool success, void* userdata)
+{
+    if (success)
+    {
         reinit_game_state();
     }
 }
@@ -273,14 +294,19 @@ void on_reload(hlffi_vm* vm, bool success, void* userdata) {
 
 ```haxe
 // Static variables PERSIST across reloads
-class Game {
+class Game
+{
     public static var initialized:Bool = false;
     
-    public static function init() {
-        if (!initialized) {
+    public static function init()
+    {
+        if (!initialized)
+        {
             // First init
             initialized = true;
-        } else {
+        }
+else
+{
             // Already initialized (hot reload occurred)
             // Don't re-init!
         }
@@ -296,17 +322,20 @@ class Game {
 
 ```haxe
 // ✅ CAN hot reload:
-class Player {
+class Player
+{
     var x:Float;  // Same fields
     var y:Float;
     
-    public function move() {
+    public function move()
+    {
         x += 10;  // ← Can change implementation
     }
 }
 
 // ❌ CANNOT hot reload:
-class Player {
+class Player
+{
     var x:Float;
     var y:Float;
     var z:Float;  // ← Added new field - requires full restart
@@ -316,7 +345,8 @@ class Player {
 ### Static Variables Don't Reset
 
 ```haxe
-class Game {
+class Game
+{
     public static var score:Int = 1000;  // Initial value
 }
 
@@ -326,7 +356,8 @@ class Game {
 
 **Workaround:** Add explicit reset function:
 ```haxe
-public static function resetScore() {
+public static function resetScore()
+{
     score = 1000;
 }
 ```

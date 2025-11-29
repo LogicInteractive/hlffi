@@ -1,4 +1,4 @@
-# HLFFI API Reference - Type System & Reflection
+﻿# HLFFI API Reference - Type System & Reflection
 
 **[← Hot Reload](API_05_HOT_RELOAD.md)** | **[Back to Index](API_REFERENCE.md)** | **[Values →](API_07_VALUES.md)**
 
@@ -30,7 +30,8 @@ The type system allows runtime introspection of Haxe types.
 ```c
 // Find a type:
 hlffi_type* player_type = hlffi_find_type(vm, "Player");
-if (!player_type) {
+if (!player_type)
+{
     fprintf(stderr, "Type 'Player' not found\n");
     return;
 }
@@ -42,14 +43,16 @@ printf("Type: %s (kind: %d)\n", name, kind);
 
 // Get parent class:
 hlffi_type* parent = hlffi_class_get_super(player_type);
-if (parent) {
+if (parent)
+{
     printf("Extends: %s\n", hlffi_type_get_name(parent));
 }
 
 // Enumerate fields:
 int field_count = hlffi_class_get_field_count(player_type);
 printf("Fields (%d):\n", field_count);
-for (int i = 0; i < field_count; i++) {
+for (int i = 0; i < field_count; i++)
+{
     const char* fname = hlffi_class_get_field_name(player_type, i);
     hlffi_type* ftype = hlffi_class_get_field_type(player_type, i);
     printf("  %s : %s\n", fname, hlffi_type_get_name(ftype));
@@ -58,7 +61,8 @@ for (int i = 0; i < field_count; i++) {
 // Enumerate methods:
 int method_count = hlffi_class_get_method_count(player_type);
 printf("Methods (%d):\n", method_count);
-for (int i = 0; i < method_count; i++) {
+for (int i = 0; i < method_count; i++)
+{
     const char* mname = hlffi_class_get_method_name(player_type, i);
     printf("  %s()\n", mname);
 }
@@ -88,13 +92,16 @@ typedef enum {
 ## Enumerating All Types
 
 ```c
-void type_visitor(hlffi_type* type, void* userdata) {
+void type_visitor(hlffi_type* type, void* userdata)
+{
     hlffi_type_kind kind = hlffi_type_get_kind(type);
     const char* name = hlffi_type_get_name(type);
     
-    if (kind == HLFFI_TYPE_OBJ) {
+    if (kind == HLFFI_TYPE_OBJ)
+    {
         printf("Class: %s\n", name);
-    } else if (kind == HLFFI_TYPE_ENUM) {
+    } else if (kind == HLFFI_TYPE_ENUM)
+    {
         printf("Enum: %s\n", name);
     }
 }

@@ -75,12 +75,14 @@ This is called at the start of:
 If the internal fix ever proves insufficient (e.g., in complex threading scenarios), users can manually update `stack_top` using the public API:
 
 ```c
-void my_game_update(hlffi_vm* vm) {
+void my_game_update(hlffi_vm* vm)
+{
     // Tell GC where the current stack frame is
     HLFFI_ENTER_SCOPE();
 
     // Now safe to call HLFFI functions in loops
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 1000; i++)
+    {
         hlffi_value* val = hlffi_value_float(vm, delta);
         hlffi_call_static(vm, "Game", "update", 1, &val);
         hlffi_value_free(val);
@@ -91,7 +93,8 @@ void my_game_update(hlffi_vm* vm) {
 Or using the lower-level function:
 
 ```c
-void my_game_update(hlffi_vm* vm) {
+void my_game_update(hlffi_vm* vm)
+{
     int stack_marker;
     hlffi_update_stack_top(&stack_marker);
 

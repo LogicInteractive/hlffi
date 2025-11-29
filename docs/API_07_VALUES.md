@@ -1,4 +1,4 @@
-# HLFFI API Reference - Value System
+﻿# HLFFI API Reference - Value System
 
 **[← Type System](API_06_TYPE_SYSTEM.md)** | **[Back to Index](API_REFERENCE.md)** | **[Static Members →](API_08_STATIC_MEMBERS.md)**
 
@@ -23,7 +23,8 @@ hlffi_value_free(hp_val);
 // Now 'health' is safe to store
 
 // ❌ WRONG: Storing non-rooted value
-struct Data { hlffi_value* temp; };  // DON'T DO THIS!
+struct Data
+{
 data->temp = hlffi_value_int(vm, 100);  // NOT GC-rooted!
 ```
 
@@ -152,14 +153,16 @@ hlffi_value_free(hp);
 // Store 'health' (C int) anywhere
 
 // ❌ BAD - Store value wrapper
-struct Player { hlffi_value* health; };  // NOT safe!
+struct Player
+{
 ```
 
 ### 3. Only Store GC-Rooted Values
 
 ```c
 // ✅ GOOD - hlffi_new() is rooted
-struct Game { hlffi_value* player; };
+struct Game
+{
 game->player = hlffi_new(vm, "Player", 0, NULL);  // GC-rooted, safe to store
 
 // ❌ BAD - Not rooted

@@ -1,4 +1,4 @@
-# HLFFI API Reference - Abstracts
+﻿# HLFFI API Reference - Abstracts
 
 **[← Enums](API_13_ENUMS.md)** | **[Back to Index](API_REFERENCE.md)** | **[Callbacks →](API_15_CALLBACKS.md)**
 
@@ -11,17 +11,21 @@ Work with Haxe abstract types (type wrappers over underlying types).
 **Haxe Abstracts** are compile-time wrappers that provide type safety without runtime overhead. They wrap primitive types, objects, or other abstracts.
 
 ```haxe
-abstract UserId(Int) {
-    public inline function new(id:Int) {
+abstract UserId(Int)
+{
+    public inline function new(id:Int)
+    {
         this = id;
     }
 
-    public inline function toInt():Int {
+    public inline function toInt():Int
+    {
         return this;
     }
 }
 
-abstract Meters(Float) to Float from Float {}
+abstract Meters(Float) to Float from Float
+{
 ```
 
 **Key Point:** At runtime, abstracts are just their underlying type. HLFFI works with the underlying type directly.
@@ -51,7 +55,8 @@ hlffi_type* hlffi_abstract_find(hlffi_vm* vm, const char* name)
 **Example:**
 ```c
 hlffi_type* user_id = hlffi_abstract_find(vm, "UserId");
-if (!user_id) {
+if (!user_id)
+{
     fprintf(stderr, "Abstract 'UserId' not found\n");
 }
 ```
@@ -85,14 +90,18 @@ Abstracts are transparent at runtime - use the underlying type directly.
 
 **Haxe:**
 ```haxe
-abstract UserId(Int) {
-    public inline function new(id:Int) {
+abstract UserId(Int)
+{
+    public inline function new(id:Int)
+    {
         this = id;
     }
 }
 
-class User {
-    public static function getUserName(id:UserId):String {
+class User
+{
+    public static function getUserName(id:UserId):String
+    {
         return "User" + id;
     }
 }
@@ -121,14 +130,18 @@ hlffi_value_free(name);
 
 **Haxe:**
 ```haxe
-abstract Meters(Float) to Float from Float {
-    public inline function toKilometers():Float {
+abstract Meters(Float) to Float from Float
+{
+    public inline function toKilometers():Float
+    {
         return this / 1000.0;
     }
 }
 
-class Distance {
-    public static function convert(m:Meters):Float {
+class Distance
+{
+    public static function convert(m:Meters):Float
+    {
         return m.toKilometers();
     }
 }
@@ -156,8 +169,10 @@ hlffi_value_free(km);
 
 **Haxe:**
 ```haxe
-abstract Point({x:Float, y:Float}) {
-    public inline function new(x:Float, y:Float) {
+abstract Point({x:Float, y:Float})
+{
+    public inline function new(x:Float, y:Float)
+    {
         this = {x: x, y: y};
     }
 
@@ -190,7 +205,8 @@ hlffi_value_free(obj);
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -198,7 +214,8 @@ int main() {
 
     // Find abstract type:
     hlffi_type* user_id_type = hlffi_abstract_find(vm, "UserId");
-    if (user_id_type) {
+    if (user_id_type)
+    {
         char* name = hlffi_abstract_get_name(user_id_type);
         printf("Found abstract: %s\n", name);
         free(name);
@@ -209,7 +226,8 @@ int main() {
     hlffi_value* args[] = {id};
     hlffi_value* user = hlffi_call_static(vm, "User", "getById", 1, args);
 
-    if (user) {
+    if (user)
+    {
         char* name = hlffi_get_field_string(user, "name");
         printf("User: %s\n", name);
         free(name);
@@ -217,6 +235,7 @@ int main() {
     }
 
     hlffi_value_free(id);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -224,20 +243,25 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-abstract UserId(Int) {
-    public inline function new(id:Int) {
+abstract UserId(Int)
+{
+    public inline function new(id:Int)
+    {
         this = id;
     }
 }
 
-class User {
+class User
+{
     public var name:String;
 
-    public function new(name:String) {
+    public function new(name:String)
+    {
         this.name = name;
     }
 
-    public static function getById(id:UserId):User {
+    public static function getById(id:UserId):User
+    {
         return new User("User" + id);
     }
 }
@@ -263,8 +287,10 @@ hlffi_value* id = hlffi_value_int(vm, 42);  // Directly create Int
 
 ```c
 // Haxe provides type safety:
-abstract UserId(Int) {}
-abstract ProductId(Int) {}
+abstract UserId(Int)
+{
+abstract ProductId(Int)
+{
 
 // In C, both are just Int:
 hlffi_value* user_id = hlffi_value_int(vm, 1);
@@ -278,7 +304,8 @@ hlffi_value* product_id = hlffi_value_int(vm, 2);
 ```c
 // ✅ GOOD - Verify what the abstract wraps
 hlffi_type* abs = hlffi_abstract_find(vm, "UserId");
-if (abs) {
+if (abs)
+{
     hlffi_type_kind kind = hlffi_type_get_kind(abs);
     // Check if underlying type is I32, F64, OBJ, etc.
 }
@@ -306,7 +333,8 @@ hlffi_value* session_id = hlffi_value_int(vm, 456);
 ### Enum Abstracts
 
 ```haxe
-@:enum abstract Color(Int) {
+@:enum abstract Color(Int)
+{
     var Red = 0xFF0000;
     var Green = 0x00FF00;
     var Blue = 0x0000FF;

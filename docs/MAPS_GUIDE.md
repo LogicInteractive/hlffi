@@ -27,7 +27,8 @@ hlffi_value* map = hlffi_call_static(vm, "MyClass", "getMap", 0, NULL);
 hlffi_value* key = hlffi_value_int(vm, 42);
 hlffi_value* value = hlffi_map_get(vm, map, key);
 
-if (value) {
+if (value)
+{
     char* str = hlffi_value_as_string(value);
     printf("map[42] = %s\n", str);
     free(str);
@@ -89,7 +90,8 @@ hlffi_value* vals_iter = hlffi_map_values(vm, map);
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, argc, argv);
     hlffi_load_file(vm, "test.hl");
@@ -101,7 +103,8 @@ int main() {
     /* Read existing value */
     hlffi_value* key1 = hlffi_value_int(vm, 1);
     hlffi_value* val1 = hlffi_map_get(vm, map, key1);
-    if (val1) {
+    if (val1)
+    {
         char* str = hlffi_value_as_string(val1);
         printf("map[1] = %s\n", str);
         free(str);
@@ -136,8 +139,10 @@ int main() {
 ## Haxe Side Example
 
 ```haxe
-class MyClass {
-    public static function createMap():Map<Int, String> {
+class MyClass
+{
+    public static function createMap():Map<Int, String>
+    {
         var map = new Map<Int, String>();
         map.set(1, "one");
         map.set(2, "two");
@@ -145,9 +150,11 @@ class MyClass {
         return map;
     }
 
-    public static function processMap(map:Map<Int, String>):String {
+    public static function processMap(map:Map<Int, String>):String
+    {
         var result = "";
-        for (key in map.keys()) {
+        for (key in map.keys())
+        {
             result += map.get(key) + " ";
         }
         return result;

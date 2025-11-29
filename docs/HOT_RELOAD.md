@@ -115,11 +115,13 @@ Check if hot reload is enabled for this VM.
 
 ```haxe
 // Version 1: game_v1.hl
-class Game {
+class Game
+{
     static var score:Int = 0;
     static var version:Int = 1;
 
-    public static function getValue():Int {
+    public static function getValue():Int
+    {
         return 100;
     }
 }
@@ -127,11 +129,13 @@ class Game {
 
 ```haxe
 // Version 2: game_v2.hl
-class Game {
+class Game
+{
     static var score:Int = 0;
     static var version:Int = 2;  // This initializer won't run!
 
-    public static function getValue():Int {
+    public static function getValue():Int
+    {
         return 200;  // This WILL change
     }
 }
@@ -148,9 +152,11 @@ After reload:
 
 ```c
 // In your game loop or editor
-if (user_pressed_reload_key()) {
+if (user_pressed_reload_key())
+{
     hlffi_error_code err = hlffi_reload_module(vm, "game.hl");
-    if (err == HLFFI_OK) {
+    if (err == HLFFI_OK)
+    {
         printf("Reloaded successfully!\n");
     }
 }
@@ -160,10 +166,13 @@ if (user_pressed_reload_key()) {
 
 ```c
 // In your game loop - checks file modification time
-void game_loop() {
-    while (running) {
+void game_loop()
+{
+    while (running)
+    {
         // Check for file changes once per frame
-        if (hlffi_check_reload(vm)) {
+        if (hlffi_check_reload(vm))
+        {
             printf("Auto-reloaded!\n");
         }
 
@@ -175,8 +184,10 @@ void game_loop() {
 ### With Reload Callback
 
 ```c
-void on_reload(hlffi_vm* vm, bool changed, void* userdata) {
-    if (changed) {
+void on_reload(hlffi_vm* vm, bool changed, void* userdata)
+{
+    if (changed)
+    {
         printf("[Hot Reload] Code updated!\n");
         // Optionally reinitialize game state
         hlffi_call_static(vm, "Game", "onReload", 0, NULL);
@@ -195,10 +206,12 @@ hlffi_set_reload_callback(vm, on_reload, NULL);
 
 3. **Handle state carefully** - Static initializers don't re-run; use explicit reset functions if needed:
    ```haxe
-   class Game {
+   class Game
+   {
        static var version = 1;
 
-       public static function resetAfterReload() {
+       public static function resetAfterReload()
+       {
            version = 2;  // Explicitly update
        }
    }

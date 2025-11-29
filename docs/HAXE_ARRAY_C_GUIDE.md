@@ -146,34 +146,40 @@ Accessing as `(obj + 1)` gives you `size` first, then `bytes`.
  *       // Use arr->size, hl_aptr(arr, type)
  *   }
  */
-static bool haxe_array_to_varray(vdynamic* haxe_array, varray** out_varray) {
+static bool haxe_array_to_varray(vdynamic* haxe_array, varray** out_varray)
+{
     if (!haxe_array || !out_varray) return false;
 
     /* Unwrap dynamic if needed */
     vdynamic* val = haxe_array;
-    if (val->t->kind == HDYN && val->v.ptr) {
+    if (val->t->kind == HDYN && val->v.ptr)
+    {
         val = (vdynamic*)val->v.ptr;
     }
 
     /* Direct varray (rare - usually you get wrapped arrays) */
-    if (val->t->kind == HARRAY) {
+    if (val->t->kind == HARRAY)
+    {
         *out_varray = (varray*)val;
         return true;
     }
 
     /* Wrapped array (HOBJ) */
-    if (val->t->kind == HOBJ && val->t->obj && val->t->obj->name) {
+    if (val->t->kind == HOBJ && val->t->obj && val->t->obj->name)
+    {
         char type_name[128];
         utostr(type_name, sizeof(type_name), val->t->obj->name);
 
         /* Check if it's a HashLink array type */
-        if (strncmp(type_name, "hl.types.Array", 14) != 0) {
+        if (strncmp(type_name, "hl.types.Array", 14) != 0)
+        {
             return false;  /* Not an array type */
         }
 
         vobj* obj = (vobj*)val;
 
-        if (strstr(type_name, "ArrayObj")) {
+        if (strstr(type_name, "ArrayObj"))
+        {
             /* ArrayObj: field [0] = array (varray*)
              * MUST use runtime field index! */
             hl_runtime_obj* rt = val->t->obj->rt;
@@ -182,7 +188,9 @@ static bool haxe_array_to_varray(vdynamic* haxe_array, varray** out_varray) {
             varray** array_field = (varray**)((char*)obj + field_offset);
             *out_varray = *array_field;
             return true;
-        } else {
+        }
+        else
+        {
             /* ArrayBytes_*: read bytes pointer
              * Memory layout: [size(int), bytes(ptr)] */
             void** bytes_ptr = (void**)((char*)(obj + 1) + sizeof(void*));
@@ -222,22 +230,26 @@ static bool haxe_array_to_varray(vdynamic* haxe_array, varray** out_varray) {
  *       }
  *   }
  */
-static bool haxe_array_get_bytes(vdynamic* haxe_array, void** out_data, int* out_size) {
+static bool haxe_array_get_bytes(vdynamic* haxe_array, void** out_data, int* out_size)
+{
     if (!haxe_array || !out_data || !out_size) return false;
 
     vdynamic* val = haxe_array;
-    if (val->t->kind == HDYN && val->v.ptr) {
+    if (val->t->kind == HDYN && val->v.ptr)
+    {
         val = (vdynamic*)val->v.ptr;
     }
 
-    if (val->t->kind != HOBJ || !val->t->obj || !val->t->obj->name) {
+    if (val->t->kind != HOBJ || !val->t->obj || !val->t->obj->name)
+    {
         return false;
     }
 
     char type_name[128];
     utostr(type_name, sizeof(type_name), val->t->obj->name);
 
-    if (strncmp(type_name, "hl.types.ArrayBytes", 19) != 0) {
+    if (strncmp(type_name, "hl.types.ArrayBytes", 19) != 0)
+    {
         return false;  /* Not ArrayBytes_* */
     }
 
@@ -270,23 +282,35 @@ static bool haxe_array_get_bytes(vdynamic* haxe_array, void** out_data, int* out
  *   vdynamic* haxe_arr = varray_to_haxe_array(code, raw);
  *   // Pass haxe_arr to Haxe functions
  */
-static vdynamic* varray_to_haxe_array(hl_code* code, varray* arr) {
+static vdynamic* varray_to_haxe_array(hl_code* code, varray* arr)
+{
     if (!code || !arr) return NULL;
 
     /* Determine wrapper type based on element type */
     const char* array_type_name;
 
-    if (!arr->at || arr->at->kind == HDYN) {
+    if (!arr->at || arr->at->kind == HDYN)
+    {
         array_type_name = "hl.types.ArrayDyn";
-    } else if (arr->at->kind == HI32) {
+    }
+    else if (arr->at->kind == HI32)
+    {
         array_type_name = "hl.types.ArrayBytes_Int";
-    } else if (arr->at->kind == HF32) {
+    }
+    else if (arr->at->kind == HF32)
+    {
         array_type_name = "hl.types.ArrayBytes_F32";
-    } else if (arr->at->kind == HF64) {
+    }
+    else if (arr->at->kind == HF64)
+    {
         array_type_name = "hl.types.ArrayBytes_F64";
-    } else if (arr->at->kind == HBOOL) {
+    }
+    else if (arr->at->kind == HBOOL)
+    {
         array_type_name = "hl.types.ArrayBytes_UI8";
-    } else {
+    }
+    else
+    {
         /* Pointer types (strings, objects, functions) */
         array_type_name = "hl.types.ArrayObj";
     }
@@ -295,12 +319,15 @@ static vdynamic* varray_to_haxe_array(hl_code* code, varray* arr) {
     int hash = hl_hash_utf8(array_type_name);
     hl_type* array_type = NULL;
 
-    for (int i = 0; i < code->ntypes; i++) {
+    for (int i = 0; i < code->ntypes; i++)
+    {
         hl_type* t = code->types + i;
-        if (t->kind == HOBJ && t->obj && t->obj->name) {
+        if (t->kind == HOBJ && t->obj && t->obj->name)
+        {
             char name_buf[128];
             utostr(name_buf, sizeof(name_buf), t->obj->name);
-            if (hl_hash_utf8(name_buf) == hash) {
+            if (hl_hash_utf8(name_buf) == hash)
+            {
                 array_type = t;
                 break;
             }
@@ -321,13 +348,16 @@ static vdynamic* varray_to_haxe_array(hl_code* code, varray* arr) {
     char name_buf[128];
     utostr(name_buf, sizeof(name_buf), array_type->obj->name);
 
-    if (strstr(name_buf, "ArrayObj")) {
+    if (strstr(name_buf, "ArrayObj"))
+    {
         /* ArrayObj: field [0] = array (varray*)
          * CRITICAL: Use runtime field offset! */
         int field_offset = rt->fields_indexes[0];
         varray** array_field = (varray**)((char*)obj + field_offset);
         *array_field = arr;
-    } else {
+    }
+    else
+    {
         /* ArrayBytes_*: fields are [size, bytes]
          * Memory layout: [size(int), bytes(ptr)] */
         int* size_ptr = (int*)(obj + 1);
@@ -351,12 +381,14 @@ static vdynamic* varray_to_haxe_array(hl_code* code, varray* arr) {
  *   int values[] = {10, 20, 30, 40};
  *   vdynamic* arr = create_haxe_int_array(code, values, 4);
  */
-static vdynamic* create_haxe_int_array(hl_code* code, int* values, int count) {
+static vdynamic* create_haxe_int_array(hl_code* code, int* values, int count)
+{
     varray* arr = hl_alloc_array(&hlt_i32, count);
     if (!arr) return NULL;
 
     int* data = hl_aptr(arr, int);
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
+    {
         data[i] = values[i];
     }
 
@@ -366,12 +398,14 @@ static vdynamic* create_haxe_int_array(hl_code* code, int* values, int count) {
 /**
  * Create a Haxe Array<Float> from C double array
  */
-static vdynamic* create_haxe_float_array(hl_code* code, double* values, int count) {
+static vdynamic* create_haxe_float_array(hl_code* code, double* values, int count)
+{
     varray* arr = hl_alloc_array(&hlt_f64, count);
     if (!arr) return NULL;
 
     double* data = hl_aptr(arr, double);
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
+    {
         data[i] = values[i];
     }
 
@@ -383,12 +417,14 @@ static vdynamic* create_haxe_float_array(hl_code* code, double* values, int coun
  *
  * IMPORTANT: F32 and F64 are DIFFERENT TYPES - no casting!
  */
-static vdynamic* create_haxe_single_array(hl_code* code, float* values, int count) {
+static vdynamic* create_haxe_single_array(hl_code* code, float* values, int count)
+{
     varray* arr = hl_alloc_array(&hlt_f32, count);
     if (!arr) return NULL;
 
     float* data = hl_aptr(arr, float);
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
+    {
         data[i] = values[i];
     }
 
@@ -402,12 +438,14 @@ static vdynamic* create_haxe_single_array(hl_code* code, float* values, int coun
  *   const char* strs[] = {"Hello", "World", "From", "C"};
  *   vdynamic* arr = create_haxe_string_array(code, strs, 4);
  */
-static vdynamic* create_haxe_string_array(hl_code* code, const char** strings, int count) {
+static vdynamic* create_haxe_string_array(hl_code* code, const char** strings, int count)
+{
     varray* arr = hl_alloc_array(&hlt_bytes, count);
     if (!arr) return NULL;
 
     vbyte** data = hl_aptr(arr, vbyte*);
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
+    {
         /* Convert UTF-8 to UTF-16 */
         uchar* utf16 = hl_to_utf16(strings[i]);
         data[i] = (vbyte*)utf16;
@@ -434,11 +472,13 @@ static vdynamic* create_haxe_string_array(hl_code* code, const char** strings, i
  *       free(values);
  *   }
  */
-static bool extract_haxe_int_array(vdynamic* haxe_array, int** out_values, int* out_count) {
+static bool extract_haxe_int_array(vdynamic* haxe_array, int** out_values, int* out_count)
+{
     int* data;
     int size;
 
-    if (!haxe_array_get_bytes(haxe_array, (void**)&data, &size)) {
+    if (!haxe_array_get_bytes(haxe_array, (void**)&data, &size))
+    {
         return false;
     }
 
@@ -459,16 +499,19 @@ static bool extract_haxe_int_array(vdynamic* haxe_array, int** out_values, int* 
 
 ```c
 /* Haxe: function sumArray(arr:Array<Int>):Int */
-HL_PRIM int HL_NAME(sum_array)(vdynamic* haxe_array) {
+HL_PRIM int HL_NAME(sum_array)(vdynamic* haxe_array)
+{
     int* data;
     int size;
 
-    if (!haxe_array_get_bytes(haxe_array, (void**)&data, &size)) {
+    if (!haxe_array_get_bytes(haxe_array, (void**)&data, &size))
+    {
         return 0;  /* Not a valid int array */
     }
 
     int sum = 0;
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < size; i++)
+    {
         sum += data[i];
     }
     return sum;
@@ -480,9 +523,11 @@ DEFINE_PRIM(_I32, sum_array, _DYN);
 
 ```c
 /* Haxe: function generateFloats(count:Int):Array<Float> */
-HL_PRIM vdynamic* HL_NAME(generate_floats)(int count) {
+HL_PRIM vdynamic* HL_NAME(generate_floats)(int count)
+{
     double* values = (double*)malloc(count * sizeof(double));
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
+    {
         values[i] = (double)i * 1.5;
     }
 
@@ -500,16 +545,19 @@ DEFINE_PRIM(_DYN, generate_floats, _I32);
 
 ```c
 /* Haxe: function doubleValues(arr:Array<Int>):Void */
-HL_PRIM void HL_NAME(double_values)(vdynamic* haxe_array) {
+HL_PRIM void HL_NAME(double_values)(vdynamic* haxe_array)
+{
     int* data;
     int size;
 
-    if (!haxe_array_get_bytes(haxe_array, (void**)&data, &size)) {
+    if (!haxe_array_get_bytes(haxe_array, (void**)&data, &size))
+    {
         return;  /* Not a valid int array */
     }
 
     /* Modify in place - changes visible to Haxe */
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < size; i++)
+    {
         data[i] *= 2;
     }
 }
@@ -520,9 +568,11 @@ DEFINE_PRIM(_VOID, double_values, _DYN);
 
 ```c
 /* Haxe: function joinStrings(arr:Array<String>):String */
-HL_PRIM vbyte* HL_NAME(join_strings)(vdynamic* haxe_array) {
+HL_PRIM vbyte* HL_NAME(join_strings)(vdynamic* haxe_array)
+{
     varray* arr;
-    if (!haxe_array_to_varray(haxe_array, &arr)) {
+    if (!haxe_array_to_varray(haxe_array, &arr))
+    {
         return (vbyte*)USTR("");
     }
 
@@ -531,7 +581,8 @@ HL_PRIM vbyte* HL_NAME(join_strings)(vdynamic* haxe_array) {
 
     /* Calculate total length */
     int total_len = 0;
-    for (int i = 0; i < arr->size; i++) {
+    for (int i = 0; i < arr->size; i++)
+    {
         total_len += (int)ustrlen((uchar*)strings[i]);
         if (i < arr->size - 1) total_len += 1;  /* Space separator */
     }
@@ -541,9 +592,11 @@ HL_PRIM vbyte* HL_NAME(join_strings)(vdynamic* haxe_array) {
     result[0] = 0;
 
     /* Concatenate */
-    for (int i = 0; i < arr->size; i++) {
+    for (int i = 0; i < arr->size; i++)
+    {
         ustrcat(result, (uchar*)strings[i]);
-        if (i < arr->size - 1) {
+        if (i < arr->size - 1)
+        {
             ustrcat(result, USTR(" "));
         }
     }
@@ -623,7 +676,8 @@ return varray_to_haxe_array(code, arr);  /* Proper wrapper */
 int* data;
 int size;
 haxe_array_get_bytes(arr, (void**)&data, &size);
-for (int i = 0; i < size; i++) {
+for (int i = 0; i < size; i++)
+{
     result += data[i];  /* Direct memory access - fast! */
 }
 ```
@@ -633,7 +687,8 @@ for (int i = 0; i < size; i++) {
 varray* arr;
 haxe_array_to_varray(haxe_arr, &arr);
 vbyte** strings = hl_aptr(arr, vbyte*);
-for (int i = 0; i < arr->size; i++) {
+for (int i = 0; i < arr->size; i++)
+{
     process_string(strings[i]);  /* Pointer dereference per element */
 }
 ```

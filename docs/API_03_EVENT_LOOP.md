@@ -1,4 +1,4 @@
-# HLFFI API Reference - Event Loop Integration
+﻿# HLFFI API Reference - Event Loop Integration
 
 **[← Integration Modes](API_02_INTEGRATION_MODES.md)** | **[Back to Index](API_REFERENCE.md)** | **[Threading →](API_04_THREADING.md)**
 
@@ -15,7 +15,8 @@ Event loop integration enables Haxe asynchronous features like `haxe.Timer`, `Ma
 **Integration Pattern:**
 ```c
 // Engine tick function (called every frame):
-void on_tick(float delta_time) {
+void on_tick(float delta_time)
+{
     hlffi_update(vm, delta_time);  // Process both UV + Haxe events
 }
 ```
@@ -56,18 +57,21 @@ hlffi_error_code hlffi_update(hlffi_vm* vm, float delta_time)
 **Example:**
 ```c
 // Unreal Engine:
-void AMyActor::Tick(float DeltaTime) {
+void AMyActor::Tick(float DeltaTime)
+{
     Super::Tick(DeltaTime);
     hlffi_update(vm, DeltaTime);
 }
 
 // Unity:
-void Update() {
+void Update()
+{
     hlffi_update(vm, Time.deltaTime);
 }
 
 // Custom Engine:
-while (running) {
+while (running)
+{
     float dt = get_delta_time();
     hlffi_update(vm, dt);
     render();
@@ -95,7 +99,8 @@ Checks if there are pending events in either UV or Haxe event loops.
 
 **Example:**
 ```c
-if (hlffi_has_pending_work(vm)) {
+if (hlffi_has_pending_work(vm))
+{
     hlffi_update(vm, 0);  // Process events
 }
 ```
@@ -143,7 +148,8 @@ Checks if a specific event loop has pending events.
 
 **Example:**
 ```c
-if (hlffi_has_pending_events(vm, HLFFI_EVENTLOOP_HAXE)) {
+if (hlffi_has_pending_events(vm, HLFFI_EVENTLOOP_HAXE))
+{
     printf("Haxe timers/callbacks pending\n");
 }
 ```
@@ -155,7 +161,8 @@ if (hlffi_has_pending_events(vm, HLFFI_EVENTLOOP_HAXE)) {
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     // Setup VM:
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
@@ -164,7 +171,8 @@ int main() {
     hlffi_call_entry(vm);  // Initializes Haxe timers
     
     // Game loop (60 FPS):
-    while (!should_quit()) {
+    while (!should_quit())
+    {
         float dt = 1.0f / 60.0f;
         
         // Process Haxe timers and MainLoop callbacks:
@@ -176,7 +184,8 @@ int main() {
         
         sleep_ms(16);
     }
-    
+
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -184,8 +193,10 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class Main {
-    public static function main() {
+class Main
+{
+    public static function main()
+    {
         trace("Game starting");
         
         // One-shot timer (1 second):
@@ -214,14 +225,17 @@ class Main {
 
 ```c
 // ✅ GOOD
-while (running) {
+while (running)
+{
     hlffi_update(vm, dt);  // Every frame
     render();
 }
 
 // ❌ BAD
-while (running) {
-    if (frame % 60 == 0) {
+while (running)
+{
+    if (frame % 60 == 0)
+    {
         hlffi_update(vm, dt);  // Only every 60 frames - timers will be delayed!
     }
     render();
@@ -242,9 +256,12 @@ hlffi_update(vm, dt);  // Returns immediately
 
 ```c
 // Optimize when no Haxe events:
-if (hlffi_has_pending_work(vm)) {
+if (hlffi_has_pending_work(vm))
+{
     hlffi_update(vm, 0);
-} else {
+}
+else
+{
     // Can skip processing this frame
 }
 ```

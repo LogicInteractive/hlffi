@@ -38,7 +38,8 @@ When you call `hlffi_init()` on a second VM, it skips these already-done initial
 ### Non-Threaded Mode (Mode 1)
 
 ```c
-for (int session = 0; session < 3; session++) {
+for (int session = 0; session < 3; session++)
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -59,7 +60,8 @@ for (int session = 0; session < 3; session++) {
 Haxe `main()` returns immediately, C host drives via sync calls:
 
 ```c
-for (int session = 0; session < 3; session++) {
+for (int session = 0; session < 3; session++)
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_set_integration_mode(vm, HLFFI_MODE_THREADED);
     hlffi_init(vm, 0, NULL);
@@ -81,18 +83,22 @@ for (int session = 0; session < 3; session++) {
 Haxe `main()` runs a loop that eventually exits:
 
 ```haxe
-class Game {
+class Game
+{
     static var running = true;
 
-    public static function main() {
-        while (running) {
+    public static function main()
+    {
+        while (running)
+        {
             // Game loop
             Sys.sleep(0.016);  // ~60 FPS
         }
         trace("main() exiting");
     }
 
-    public static function shutdown() {
+    public static function shutdown()
+    {
         running = false;  // Causes main() to exit
     }
 }

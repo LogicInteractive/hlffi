@@ -1,4 +1,4 @@
-# HLFFI API Reference - Maps (Hash Tables)
+﻿# HLFFI API Reference - Maps (Hash Tables)
 
 **[← Arrays](API_10_ARRAYS.md)** | **[Back to Index](API_REFERENCE.md)** | **[Bytes →](API_12_BYTES.md)**
 
@@ -101,11 +101,14 @@ hlffi_value* hlffi_map_get(hlffi_vm* vm, hlffi_value* map, hlffi_value* key)
 hlffi_value* key = hlffi_value_string(vm, "player1");
 hlffi_value* val = hlffi_map_get(vm, map, key);
 
-if (val) {
+if (val)
+{
     int score = hlffi_value_as_int(val, 0);
     printf("Score: %d\n", score);
     hlffi_value_free(val);
-} else {
+}
+else
+{
     printf("Key not found\n");
 }
 
@@ -129,15 +132,21 @@ bool hlffi_map_exists(hlffi_vm* vm, hlffi_value* map, hlffi_value* key)
 ```c
 hlffi_value* key = hlffi_value_string(vm, "player1");
 
-if (hlffi_map_exists(vm, map, key)) {
+if (hlffi_map_exists(vm, map, key))
+{
     hlffi_value* val = hlffi_map_get(vm, map, key);
-    if (hlffi_value_is_null(val)) {
+    if (hlffi_value_is_null(val))
+    {
         printf("Key exists with null value\n");
-    } else {
+    }
+else
+{
         printf("Key exists with value: %d\n", hlffi_value_as_int(val, 0));
     }
     hlffi_value_free(val);
-} else {
+}
+else
+{
     printf("Key does not exist\n");
 }
 
@@ -159,9 +168,12 @@ bool hlffi_map_remove(hlffi_vm* vm, hlffi_value* map, hlffi_value* key)
 ```c
 hlffi_value* key = hlffi_value_string(vm, "player1");
 
-if (hlffi_map_remove(vm, map, key)) {
+if (hlffi_map_remove(vm, map, key))
+{
     printf("Key removed\n");
-} else {
+}
+else
+{
     printf("Key not found\n");
 }
 
@@ -185,7 +197,8 @@ hlffi_value* keys = hlffi_map_keys(vm, map);
 int count = hlffi_array_length(keys);
 
 printf("Keys (%d):\n", count);
-for (int i = 0; i < count; i++) {
+for (int i = 0; i < count; i++)
+{
     hlffi_value* key = hlffi_array_get(vm, keys, i);
     char* key_str = hlffi_value_as_string(key);
     printf("  %s\n", key_str);
@@ -212,7 +225,8 @@ hlffi_value* hlffi_map_values(hlffi_vm* vm, hlffi_value* map)
 hlffi_value* values = hlffi_map_values(vm, map);
 int len = hlffi_array_length(values);
 
-for (int i = 0; i < len; i++) {
+for (int i = 0; i < len; i++)
+{
     hlffi_value* val = hlffi_array_get(vm, values, i);
     int score = hlffi_value_as_int(val, 0);
     printf("Value: %d\n", score);
@@ -265,7 +279,8 @@ printf("Size after clear: %d\n", hlffi_map_size(map));  // 0
 ```c
 #include "hlffi.h"
 
-int main() {
+int main()
+{
     hlffi_vm* vm = hlffi_create();
     hlffi_init(vm, 0, NULL);
     hlffi_load_file(vm, "game.hl");
@@ -290,7 +305,8 @@ int main() {
     // Get score:
     hlffi_value* key = hlffi_value_string(vm, "Alice");
     hlffi_value* val = hlffi_map_get(vm, scores, key);
-    if (val) {
+    if (val)
+    {
         printf("Alice's score: %d\n", hlffi_value_as_int(val, 0));
         hlffi_value_free(val);
     }
@@ -302,7 +318,8 @@ int main() {
     int count = hlffi_array_length(keys);
 
     printf("All scores (%d):\n", count);
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
+    {
         hlffi_value* k = hlffi_array_get(vm, keys, i);
         hlffi_value* v = hlffi_array_get(vm, values, i);
 
@@ -320,6 +337,7 @@ int main() {
 
     // Cleanup:
     hlffi_value_free(scores);
+    hlffi_close(vm);
     hlffi_destroy(vm);
     return 0;
 }
@@ -327,8 +345,10 @@ int main() {
 
 **Haxe Side:**
 ```haxe
-class Main {
-    public static function main() {
+class Main
+{
+    public static function main()
+    {
         var scores = new Map<String, Int>();
         scores["Alice"] = 1000;
         scores["Bob"] = 1500;
@@ -344,19 +364,24 @@ class Main {
 
 ```c
 // ✅ GOOD - Distinguish missing key from null value
-if (hlffi_map_exists(vm, map, key)) {
+if (hlffi_map_exists(vm, map, key))
+{
     hlffi_value* val = hlffi_map_get(vm, map, key);
-    if (hlffi_value_is_null(val)) {
+    if (hlffi_value_is_null(val))
+    {
         printf("Key exists, value is null\n");
     }
     hlffi_value_free(val);
-} else {
+}
+else
+{
     printf("Key doesn't exist\n");
 }
 
 // ❌ AMBIGUOUS
 hlffi_value* val = hlffi_map_get(vm, map, key);
-if (!val) {
+if (!val)
+{
     // Could be missing key OR null value
 }
 ```
@@ -386,7 +411,8 @@ hlffi_value* keys = hlffi_map_keys(vm, map);
 hlffi_value* values = hlffi_map_values(vm, map);
 int len = hlffi_array_length(keys);
 
-for (int i = 0; i < len; i++) {
+for (int i = 0; i < len; i++)
+{
     hlffi_value* k = hlffi_array_get(vm, keys, i);
     hlffi_value* v = hlffi_array_get(vm, values, i);
     // ... process ...
