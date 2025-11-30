@@ -134,6 +134,10 @@ bool UHLFFISubsystem::StartVM(const FString& HLFilePath)
 		return false;
 	}
 
+	// Step 2b: Fix GC stack_top immediately after init
+	// hlffi_init registers thread with heap address, must update to stack address
+	HLFFI_ENTER_SCOPE();
+
 	// Step 3: Set NON_THREADED mode (engine controls event loop)
 	hlffi_set_integration_mode(VM, HLFFI_MODE_NON_THREADED);
 
