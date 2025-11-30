@@ -18,6 +18,7 @@ public class HLFFIPlugin : ModuleRules
 		PrivateIncludePaths.AddRange(
 			new string[] {
 				Path.Combine(ModuleDirectory, "../../ThirdParty/hlffi"),
+				Path.Combine(ModuleDirectory, "../../ThirdParty/hlffi/src"),
 				Path.Combine(ModuleDirectory, "../../ThirdParty/hashlink/include"),
 			}
 		);

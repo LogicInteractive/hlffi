@@ -56,9 +56,11 @@ void UHLFFISubsystem::Tick(float DeltaTime)
 {
 	if (VM && !bIsInitializing)
 	{
-		// Update GC stack top for this frame - required for GC to work correctly
-		// when timers/MainLoop callbacks trigger garbage collection
-		HLFFI_ENTER_SCOPE();
+		// CRITICAL: Update GC stack top for this frame.
+		// The stack marker MUST stay in scope for the entire duration of HashLink calls.
+		// DO NOT use HLFFI_ENTER_SCOPE() macro - it creates a nested scope that ends immediately.
+		int StackMarker;
+		hlffi_update_stack_top(&StackMarker);
 
 		// Process MainLoop callbacks at frame rate (~60fps / ~16ms)
 		// This handles haxe.MainLoop.add() callbacks
@@ -135,8 +137,10 @@ bool UHLFFISubsystem::StartVM(const FString& HLFilePath)
 	}
 
 	// Step 2b: Fix GC stack_top immediately after init
-	// hlffi_init registers thread with heap address, must update to stack address
-	HLFFI_ENTER_SCOPE();
+	// CRITICAL: hlffi_init registers thread with heap address, must update to stack address.
+	// This marker must stay in scope for the remainder of this function.
+	int StackMarker;
+	hlffi_update_stack_top(&StackMarker);
 
 	// Step 3: Set NON_THREADED mode (engine controls event loop)
 	hlffi_set_integration_mode(VM, HLFFI_MODE_NON_THREADED);
@@ -250,8 +254,9 @@ bool UHLFFISubsystem::OnHighFrequencyTick(float DeltaTime)
 	// This is called at ~1ms intervals for precise timer support
 	if (VM && !bIsInitializing)
 	{
-		// Update GC stack top - required for GC to work correctly
-		HLFFI_ENTER_SCOPE();
+		// CRITICAL: Update GC stack top - must stay in scope for entire function
+		int StackMarker;
+		hlffi_update_stack_top(&StackMarker);
 
 		hlffi_process_events(VM, HLFFI_EVENTLOOP_TIMERS);
 	}
