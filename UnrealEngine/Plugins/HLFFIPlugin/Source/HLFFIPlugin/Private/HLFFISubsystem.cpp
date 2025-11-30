@@ -56,6 +56,10 @@ void UHLFFISubsystem::Tick(float DeltaTime)
 {
 	if (VM && !bIsInitializing)
 	{
+		// Update GC stack top for this frame - required for GC to work correctly
+		// when timers/MainLoop callbacks trigger garbage collection
+		HLFFI_ENTER_SCOPE();
+
 		// Process MainLoop callbacks at frame rate (~60fps / ~16ms)
 		// This handles haxe.MainLoop.add() callbacks
 		hlffi_process_events(VM, HLFFI_EVENTLOOP_MAINLOOP);
@@ -242,6 +246,9 @@ bool UHLFFISubsystem::OnHighFrequencyTick(float DeltaTime)
 	// This is called at ~1ms intervals for precise timer support
 	if (VM && !bIsInitializing)
 	{
+		// Update GC stack top - required for GC to work correctly
+		HLFFI_ENTER_SCOPE();
+
 		hlffi_process_events(VM, HLFFI_EVENTLOOP_TIMERS);
 	}
 
