@@ -824,8 +824,8 @@ int hlffi_array_length(hlffi_value* arr) {
                     if (!rt) rt = hl_get_obj_proto(val->t);
                     int field_offset = rt->fields_indexes[0];
                     varray** array_field = (varray**)((char*)obj + field_offset);
-                    varray* arr = *array_field;
-                    return arr ? arr->size : 0;
+                    varray* inner_arr = *array_field;
+                    return inner_arr ? inner_arr->size : 0;
                 } else {
                     /* ArrayBytes_*: memory layout is [size(int), bytes(ptr)] */
                     int* size_ptr = (int*)(obj + 1);

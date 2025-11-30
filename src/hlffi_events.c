@@ -38,13 +38,25 @@ static hlffi_error_code process_timers_only(hlffi_vm* vm) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
 
     /* Process sys.thread.EventLoop for haxe.Timer support
-     * Try calling a helper method that calls Thread.current().events.progress()
+     * Try calling helper methods that call Thread.current().events.progress()
      * This is needed for haxe.Timer.delay() to fire */
-    hlffi_value* result = hlffi_call_static(vm, "Timers", "processEventLoop", 0, NULL);
+
+    /* Try hlffi.EventLoop.tick() first (recommended for HLFFI projects) */
+    hlffi_value* result = hlffi_call_static(vm, "hlffi.EventLoop", "tick", 0, NULL);
+    if (result) {
+        hlffi_value_free(result);
+        return HLFFI_OK;
+    }
+
+    /* Clear error and try legacy Timers.processEventLoop */
+    vm->error_msg[0] = '\0';
+    vm->last_error = HLFFI_OK;
+
+    result = hlffi_call_static(vm, "Timers", "processEventLoop", 0, NULL);
     if (result) {
         hlffi_value_free(result);
     } else {
-        /* Clear error - processEventLoop might not exist in all bytecode */
+        /* Clear error - neither helper exists, timers won't work */
         vm->error_msg[0] = '\0';
         vm->last_error = HLFFI_OK;
     }

@@ -250,18 +250,19 @@ hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_val
 #endif
 
             bool isException = false;
-            vdynamic* result = hl_dyn_call_safe(&cl, hl_args, total_args, &isException);
+            vdynamic* ctor_result = hl_dyn_call_safe(&cl, hl_args, total_args, &isException);
 
             if (isException) {
                 set_obj_error(vm, "Exception thrown in constructor");
 #ifdef HLFFI_DEBUG
-                if (result) {
-                    printf("[HLFFI] Exception result: %p\n", (void*)result);
-                    hl_print_uncaught_exception(result);
+                if (ctor_result) {
+                    printf("[HLFFI] Exception result: %p\n", (void*)ctor_result);
+                    hl_print_uncaught_exception(ctor_result);
                 }
 #endif
                 return NULL;
             }
+            (void)ctor_result;  /* Suppress unused warning in non-debug builds */
 
 #ifdef HLFFI_DEBUG
             printf("[HLFFI] Constructor completed successfully (dynamic call)\n");
@@ -636,7 +637,7 @@ float hlffi_get_field_float(hlffi_value* obj, const char* field_name, float fall
     hlffi_value* field = hlffi_get_field(obj, field_name);
     if (!field) return fallback;
 
-    float value = hlffi_value_as_float(field, fallback);
+    float value = (float)hlffi_value_as_float(field, (double)fallback);
     hlffi_value_free(field);
     return value;
 }
@@ -727,7 +728,7 @@ float hlffi_call_method_float(hlffi_value* obj, const char* method_name, int arg
     hlffi_value* result = hlffi_call_method(obj, method_name, argc, argv);
     if (!result) return fallback;
 
-    float value = hlffi_value_as_float(result, fallback);
+    float value = (float)hlffi_value_as_float(result, (double)fallback);
     hlffi_value_free(result);
     return value;
 }

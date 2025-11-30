@@ -87,6 +87,7 @@ static bool g_hl_globals_initialized = false;
 static bool g_main_thread_registered = false;
 
 hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
+    (void)argc; (void)argv;  /* Currently unused but reserved for future use */
     if (!vm) return HLFFI_ERROR_NULL_VM;
 
     if (vm->hl_initialized) {
@@ -109,14 +110,20 @@ hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
     hl_sys_init();
 
     /* Register this thread with HashLink GC (only once per process)
-     * CRITICAL: stack_context must persist for VM lifetime!
-     * We use the vm pointer itself as the stack marker
+     *
+     * IMPORTANT: We pass NULL to let HashLink handle stack_top internally.
+     * Previously we passed &vm->stack_context (a heap address) which caused
+     * GC crashes when using timers/callbacks because GC scanned invalid memory.
+     *
+     * When integrating with engines (UE, Unity), the host should call
+     * hlffi_update_stack_top() at the start of each tick/update to set
+     * stack_top to a valid stack address for proper GC scanning.
      *
      * For VM restart support, we only register once since HashLink
      * doesn't support unregister/re-register cleanly.
      */
     if (!g_main_thread_registered) {
-        hl_register_thread(&vm->stack_context);
+        hl_register_thread(NULL);
         g_main_thread_registered = true;
     }
 
@@ -320,4 +327,19 @@ void hlffi_update_stack_top(void* stack_marker) {
      * If stack_top points to heap memory, GC scanning is incorrect.
      */
     t->stack_top = stack_marker;
+}
+
+void hlffi_gc_block(void) {
+    /* Mark thread as blocked (not executing HashLink code).
+     * GC will not wait for this thread during collection.
+     * See: https://github.com/HaxeFoundation/hashlink/issues/752
+     */
+    hl_blocking(true);
+}
+
+void hlffi_gc_unblock(void) {
+    /* Mark thread as unblocked (actively executing HashLink code).
+     * Must be balanced with hlffi_gc_block().
+     */
+    hl_blocking(false);
 }

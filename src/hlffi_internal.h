@@ -93,7 +93,7 @@ struct hlffi_value {
 /* ========== INTERNAL GC STACK FIX ========== */
 
 /**
- * Internal macro to update GC stack_top before any GC allocation.
+ * Internal helper to update GC stack_top before any GC allocation.
  * This ensures proper stack scanning when HLFFI is embedded.
  *
  * THE PROBLEM:
@@ -104,20 +104,29 @@ struct hlffi_value {
  *   - Release builds: Random crashes, memory corruption
  *
  * THE FIX:
- * Update stack_top to point to the current stack frame before any GC allocation.
- * This way the GC scans the actual call stack where vdynamic* pointers live.
+ * Update stack_top to point to the caller's stack frame before any GC allocation.
+ * We use a static inline function so the stack_marker lives in the caller's frame.
  *
  * See: docs/GC_STACK_SCANNING.md
  * See: https://github.com/HaxeFoundation/hashlink/issues/752
  */
+static inline void hlffi_internal_update_stack_top(void* stack_addr) {
+    hl_thread_info* t = hl_get_thread();
+    if (t) {
+        t->stack_top = stack_addr;
+    }
+}
+
+/*
+ * CRITICAL: This macro updates stack_top to the current function's stack.
+ * The variable declaration happens in the CALLER'S scope (not inside do-while).
+ * This ensures stack_top points to valid memory for the duration of the calling function.
+ *
+ * Usage: Place at the START of any function that calls HashLink APIs.
+ */
 #define HLFFI_UPDATE_STACK_TOP() \
-    do { \
-        hl_thread_info* _t = hl_get_thread(); \
-        if (_t) { \
-            int _stack_marker; \
-            _t->stack_top = &_stack_marker; \
-        } \
-    } while(0)
+    int _hlffi_stack_marker_; \
+    hlffi_internal_update_stack_top(&_hlffi_stack_marker_)
 
 /* ========== INTERNAL HELPER DECLARATIONS ========== */
 

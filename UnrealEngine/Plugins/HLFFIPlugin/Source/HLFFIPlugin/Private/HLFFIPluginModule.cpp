@@ -5,8 +5,7 @@
 #include "Misc/Paths.h"
 #include "HAL/PlatformProcess.h"
 
-// Define HLFFI_IMPLEMENTATION in this compilation unit only
-#define HLFFI_IMPLEMENTATION
+// Include HLFFI header (implementation linked via hlffi.lib)
 #include "hlffi.h"
 
 DEFINE_LOG_CATEGORY(LogHLFFI);

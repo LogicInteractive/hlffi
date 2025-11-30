@@ -46,14 +46,18 @@ public class HLFFIPlugin : ModuleRules
 			}
 		);
 
-		// HashLink library linking
+		// HashLink and HLFFI library linking
 		string ThirdPartyPath = Path.Combine(ModuleDirectory, "../../ThirdParty");
 		string HashLinkLibPath = Path.Combine(ThirdPartyPath, "hashlink/lib/Win64");
+		string HLFFILibPath = Path.Combine(ThirdPartyPath, "hlffi/lib/Win64");
 
 		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
 			// Link against libhl.lib
 			PublicAdditionalLibraries.Add(Path.Combine(HashLinkLibPath, "libhl.lib"));
+
+			// Link against hlffi.lib
+			PublicAdditionalLibraries.Add(Path.Combine(HLFFILibPath, "hlffi.lib"));
 
 			// Copy DLL to binaries folder
 			string DLLPath = Path.Combine(HashLinkLibPath, "libhl.dll");
