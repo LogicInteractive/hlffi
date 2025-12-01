@@ -1004,6 +1004,16 @@ void test_hlffi(void) {
 6. **Entry point**: Direct `hl_entry_point()` call
 7. **Caching**: Pre-compute hashes, cache class references
 
+### Internal Helpers
+
+Some internal static helper functions use `code->types[]` but can simply delegate to
+the public functions that already have HLC support:
+
+| Helper | File | Solution |
+|--------|------|----------|
+| `find_haxe_array_type()` | `hlffi_values.c` | Call `hlffi_find_type(vm, array_type_name)` |
+| `find_type_by_name()` | `hlffi_objects.c` | Call `hlffi_find_type(vm, name)` |
+
 ### Files to Modify/Create
 
 | File | Action |
@@ -1012,7 +1022,7 @@ void test_hlffi(void) {
 | `hlffi_hlc.c` | **NEW** - HLC initialization |
 | `hlffi_types.c` | Add HLC path to `hlffi_find_type`, `hlffi_list_types` |
 | `hlffi_objects.c` | Add HLC path to `hlffi_new`, `find_type_by_name` |
-| `hlffi_values.c` | Add HLC path to static field/method functions |
+| `hlffi_values.c` | Add HLC path to static field/method functions, `find_haxe_array_type` |
 | `hlffi_lifecycle.c` | Add HLC path to `hlffi_call_entry`, `hlffi_load_*` |
 | `hlffi_reload.c` | Return errors in HLC mode |
 | `hlffi_cache.c` | Add HLC path for cached calls |
