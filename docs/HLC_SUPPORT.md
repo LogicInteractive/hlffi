@@ -1,6 +1,19 @@
 # HLC (HashLink/C) Support for HLFFI
 
-This document describes how to add HLC compilation support to HLFFI, enabling ARM and other non-x86 platforms.
+Complete guide for adding HLC compilation support to HLFFI, enabling ARM and other non-x86 platforms.
+
+## Table of Contents
+
+1. [Background](#background)
+2. [Architecture Overview](#architecture-overview)
+3. [Functions Requiring HLC Support](#functions-requiring-hlc-support)
+4. [Implementation Details](#implementation-details)
+5. [New Functions for HLC](#new-functions-for-hlc)
+6. [Build System Integration](#build-system-integration)
+7. [Usage Guide](#usage-guide)
+8. [Testing](#testing)
+
+---
 
 ## Background
 
@@ -18,424 +31,823 @@ This document describes how to add HLC compilation support to HLFFI, enabling AR
 - **Performance**: Native compilation can be faster than JIT
 - **No JIT restrictions**: Some platforms prohibit JIT (iOS App Store)
 
-## The Problem
+### Core Architectural Difference
 
-HLFFI's type lookup currently relies on JIT-only structures:
-
-```c
-// Current code in hlffi_types.c - FAILS in HLC mode
-hl_code* code = vm->module->code;  // NULL in HLC!
-for (int i = 0; i < code->ntypes; i++) {
-    hl_type* t = code->types + i;
-    // ...
-}
+**JIT Mode:**
+```
+.hl bytecode → hl_code_read() → hl_module_alloc() → hl_module_init() → runtime
+                                      ↓
+                              code->types[]      ← Type metadata
+                              code->functions[]  ← Function metadata
+                              module->functions_ptrs[] ← JIT'd code
 ```
 
-In HLC mode:
-- No `hl_module` structure exists
-- No `hl_code` structure exists
-- No `code->types[]` array exists
-- Types are compiled as static C structures
+**HLC Mode:**
+```
+.hx source → haxe --hl output.c → gcc → native binary
+                                           ↓
+                                   Static hl_type symbols (t$ClassName)
+                                   Static function symbols
+                                   No hl_code/hl_module structures
+```
 
-## The Solution
+---
 
-### Key Discovery: Type.allTypes Registry
+## Architecture Overview
 
-Haxe's standard library maintains a runtime type registry that works in **both** JIT and HLC modes:
+### The Problem
+
+HLFFI relies on JIT-only structures that don't exist in HLC:
+
+```c
+// These work in JIT, fail in HLC
+vm->module          // NULL in HLC
+vm->module->code    // NULL in HLC
+code->types[]       // Doesn't exist in HLC
+code->functions[]   // Doesn't exist in HLC
+code->ntypes        // Doesn't exist in HLC
+```
+
+### The Solution: Type.allTypes Registry
+
+Haxe's standard library maintains a runtime type registry that works in **both** modes:
 
 ```haxe
-// std/hl/_std/Type.hx
+// std/hl/_std/Type.hx - works in JIT and HLC!
 class Type {
-    static var allTypes:hl.types.BytesMap;  // Registry of all types!
+    static var allTypes:hl.types.BytesMap;
 
     public static function resolveClass(name:String):Class<Dynamic> {
         return allTypes.get(name.bytes);
     }
+
+    public static function createInstance<T>(cl:Class<T>, args:Array<Dynamic>):T {
+        // Creates instances dynamically
+    }
 }
 ```
 
-After `hl_entry_point()` runs, `Type.allTypes` is fully populated with all types.
+### HLC Symbol Naming Convention
 
-### HLC Symbol Access
-
-HLC generates stable C symbols for types following the pattern `t$<ClassName>`:
+HLC generates stable C symbols following the pattern `t$<ClassName>`:
 
 ```c
-// These symbols exist in HLC-compiled code
-extern hl_type t$Type;    // The Type class
-extern hl_type t$String;  // The String class
-extern hl_type t$Player;  // User's Player class
+extern hl_type t$Type;           // Type class
+extern hl_type t$String;         // String class
+extern hl_type t$Array;          // Array class
+extern hl_type t$my$pkg$Player;  // my.pkg.Player class
 ```
 
-### Architecture: Dual-Path Approach
+### Dual-Path Strategy
 
-**Keep existing JIT code** (simple, direct, proven) and **add HLC path** using Type.resolveClass:
+Keep existing JIT code (proven, simple) and add HLC path using Haxe reflection:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    hlffi_find_type()                        │
+│                      HLFFI Function                         │
 ├─────────────────────────────────────────────────────────────┤
-│                                                             │
 │  #ifdef HLFFI_HLC_MODE                                      │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │ HLC Path:                                            │   │
-│  │ 1. extern hl_type t$Type (known symbol)              │   │
-│  │ 2. Get Type.resolveClass method                      │   │
-│  │ 3. Call resolveClass(name)                           │   │
-│  │ 4. Extract __type__ from result                      │   │
+│  │ HLC: Use Type.resolveClass / Reflect.* APIs         │   │
 │  └─────────────────────────────────────────────────────┘   │
 │  #else                                                      │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │ JIT Path (existing code):                            │   │
-│  │ 1. Iterate code->types[]                             │   │
-│  │ 2. Compare names                                     │   │
-│  │ 3. Return matching hl_type*                          │   │
+│  │ JIT: Use code->types[] / code->functions[] (existing)│   │
 │  └─────────────────────────────────────────────────────┘   │
 │  #endif                                                     │
-│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Implementation Guide
+---
 
-### Step 1: Add HLC Mode Detection
+## Functions Requiring HLC Support
 
-In `hlffi_internal.h`:
+### Category 1: Functions Needing HLC Alternatives
+
+These functions use `vm->module->code` and need completely different implementations for HLC:
+
+| Function | File | JIT Implementation | HLC Implementation |
+|----------|------|-------------------|-------------------|
+| `hlffi_find_type()` | hlffi_types.c | Scan `code->types[]` | `Type.resolveClass()` |
+| `hlffi_list_types()` | hlffi_types.c | Iterate `code->types[]` | `Type.allTypes.values()` |
+| `hlffi_new()` | hlffi_objects.c | Find ctor in `code->functions[]` | `Type.createInstance()` |
+| `hlffi_call_static()` | hlffi_values.c | Find in `code->functions[]` | `Reflect.callMethod()` |
+| `hlffi_get_static_field()` | hlffi_values.c | Find class, access field | `Reflect.field()` |
+| `hlffi_set_static_field()` | hlffi_values.c | Find class, set field | `Reflect.setField()` |
+| `hlffi_call_entry()` | hlffi_lifecycle.c | `code->entrypoint` lookup | `hl_entry_point()` direct |
+| `hlffi_load_file()` | hlffi_lifecycle.c | Parse & JIT bytecode | No-op (code is linked) |
+| `hlffi_load_memory()` | hlffi_lifecycle.c | Parse & JIT bytecode | No-op (code is linked) |
+| `find_type_by_name()` | hlffi_objects.c | Scan `code->types[]` | Use cached Type class |
+| `hlffi_cached_call_init()` | hlffi_cache.c | Find function ptr | Use reflection |
+
+### Category 2: Functions That Work Unchanged
+
+These use runtime APIs (`hl_dyn_*`) that work identically in both modes:
+
+| Function | File | Why It Works |
+|----------|------|--------------|
+| `hlffi_get_field()` | hlffi_objects.c | Uses `hl_dyn_getp()` on object |
+| `hlffi_set_field()` | hlffi_objects.c | Uses `hl_dyn_setp()` on object |
+| `hlffi_call_method()` | hlffi_objects.c | Uses `hl_dyn_call_safe()` |
+| `hlffi_is_instance_of()` | hlffi_objects.c | Compares `obj->t` |
+| `hlffi_value_int/float/bool/string()` | hlffi_values.c | Creates vdynamic |
+| `hlffi_value_as_int/float/bool/string()` | hlffi_values.c | Reads vdynamic |
+| `hlffi_value_free()` | hlffi_values.c | Frees wrapper |
+| All `hlffi_get_field_*()` | hlffi_objects.c | Wrapper around hlffi_get_field |
+| All `hlffi_set_field_*()` | hlffi_objects.c | Wrapper around hlffi_set_field |
+| All `hlffi_call_method_*()` | hlffi_objects.c | Wrapper around hlffi_call_method |
+| `hlffi_process_events()` | hlffi_events.c | Uses runtime event APIs |
+| `hlffi_enum_*()` | hlffi_enums.c | Uses hl_type metadata |
+| `hlffi_abstract_*()` | hlffi_abstracts.c | Uses hl_type metadata |
+
+### Category 3: Functions That Must Be Disabled
+
+These features are impossible in HLC:
+
+| Function | File | HLC Behavior |
+|----------|------|--------------|
+| `hlffi_enable_hot_reload()` | hlffi_reload.c | Return `HLFFI_ERROR_RELOAD_NOT_SUPPORTED` |
+| `hlffi_reload_module()` | hlffi_reload.c | Return `HLFFI_ERROR_RELOAD_NOT_SUPPORTED` |
+| `hlffi_reload_module_memory()` | hlffi_reload.c | Return `HLFFI_ERROR_RELOAD_NOT_SUPPORTED` |
+| `hlffi_check_reload()` | hlffi_reload.c | Return `false` |
+| `hlffi_is_hot_reload_enabled()` | hlffi_reload.c | Return `false` |
+
+---
+
+## Implementation Details
+
+### 1. HLC Mode Detection and Cache
+
+Add to `hlffi_internal.h`:
 
 ```c
-/*
- * HLC Mode Detection
- *
- * HLFFI_HLC_MODE should be defined when building for HLC targets.
- * This changes how type lookup works since there's no hl_code structure.
- */
+/*============================================================================
+ * HLC Mode Support
+ *============================================================================*/
+
 #ifdef HLFFI_HLC_MODE
-    /* HLC mode: No hl_module/hl_code, types are static C symbols */
     #define HLFFI_HAS_BYTECODE 0
 #else
-    /* JIT mode: Full hl_module/hl_code available */
     #define HLFFI_HAS_BYTECODE 1
 #endif
-```
 
-### Step 2: Add HLC Type Lookup Cache
-
-In `hlffi_internal.h` or a new `hlffi_hlc.c`:
-
-```c
-#ifdef HLFFI_HLC_MODE
-
-/* Cached references for HLC type lookup (initialized once) */
-typedef struct {
-    hl_type* type_class;           /* The Type class's hl_type */
-    vdynamic* type_class_global;   /* Type class global instance */
-    int resolve_class_hash;        /* Hash of "resolveClass" */
-    int type_field_hash;           /* Hash of "__type__" */
-    bool initialized;
-} hlffi_hlc_cache;
-
-static hlffi_hlc_cache g_hlc_cache = {0};
-
-#endif
-```
-
-### Step 3: Implement HLC Initialization
-
-```c
 #ifdef HLFFI_HLC_MODE
 
 /**
- * Initialize HLC type lookup.
- * Must be called after hlffi_call_entry().
+ * Cached references for HLC operations.
+ * Initialized once after hlffi_call_entry().
  */
-static hlffi_error_code hlffi_hlc_init(hlffi_vm* vm) {
-    if (g_hlc_cache.initialized) return HLFFI_OK;
+typedef struct {
+    /* Type class access */
+    hl_type* type_class;           /* hl_type for Type class */
+    vdynamic* type_global;         /* Type class global instance */
 
-    /* Access the Type class via known HLC symbol */
-    extern hl_type t$Type;
-    g_hlc_cache.type_class = &t$Type;
+    /* Reflect class access */
+    hl_type* reflect_class;        /* hl_type for Reflect class */
+    vdynamic* reflect_global;      /* Reflect class global instance */
 
-    /* Verify Type class is initialized */
-    if (!g_hlc_cache.type_class->obj ||
-        !g_hlc_cache.type_class->obj->global_value) {
-        return HLFFI_ERROR_NOT_INITIALIZED;
-    }
+    /* Pre-computed hashes */
+    int hash_resolveClass;
+    int hash_createInstance;
+    int hash_field;
+    int hash_setField;
+    int hash_callMethod;
+    int hash_allTypes;
+    int hash_values;
+    int hash___type__;
+    int hash___constructor__;
 
-    /* Get Type class global instance (where static methods live) */
-    g_hlc_cache.type_class_global =
-        *(vdynamic**)g_hlc_cache.type_class->obj->global_value;
+    bool initialized;
+} hlffi_hlc_cache;
 
-    if (!g_hlc_cache.type_class_global) {
-        return HLFFI_ERROR_NOT_INITIALIZED;
-    }
+/* Global HLC cache - initialized by hlffi_hlc_init() */
+extern hlffi_hlc_cache g_hlc;
 
-    /* Cache field hashes for performance */
-    g_hlc_cache.resolve_class_hash = hl_hash_utf8("resolveClass");
-    g_hlc_cache.type_field_hash = hl_hash_utf8("__type__");
-    g_hlc_cache.initialized = true;
+/**
+ * Initialize HLC support.
+ * Called automatically by functions that need it, after entry point.
+ */
+hlffi_error_code hlffi_hlc_init(hlffi_vm* vm);
 
-    return HLFFI_OK;
+/**
+ * Check if HLC is initialized.
+ */
+static inline bool hlffi_hlc_is_ready(void) {
+    return g_hlc.initialized;
 }
 
-#endif
+#endif /* HLFFI_HLC_MODE */
 ```
 
-### Step 4: Implement Unified hlffi_find_type
+### 2. HLC Initialization Implementation
+
+Create `hlffi_hlc.c`:
 
 ```c
-hlffi_type* hlffi_find_type(hlffi_vm* vm, const char* name) {
-    if (!vm) return NULL;
-    if (!name) {
-        hlffi_set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Type name is NULL");
-        return NULL;
-    }
+#include "hlffi_internal.h"
 
 #ifdef HLFFI_HLC_MODE
-    /*========================================
-     * HLC MODE: Use Type.resolveClass()
-     *========================================*/
 
-    /* Ensure HLC lookup is initialized */
-    if (!g_hlc_cache.initialized) {
-        if (hlffi_hlc_init(vm) != HLFFI_OK) {
-            hlffi_set_error(vm, HLFFI_ERROR_NOT_INITIALIZED,
-                "HLC type lookup not initialized - call hlffi_call_entry() first");
-            return NULL;
-        }
+/* Global HLC cache */
+hlffi_hlc_cache g_hlc = {0};
+
+hlffi_error_code hlffi_hlc_init(hlffi_vm* vm) {
+    if (g_hlc.initialized) return HLFFI_OK;
+
+    if (!vm || !vm->entry_called) {
+        return HLFFI_ERROR_NOT_INITIALIZED;
     }
 
     HLFFI_UPDATE_STACK_TOP();
 
-    /* Get resolveClass method from Type class */
-    vclosure* resolve_method = (vclosure*)hl_dyn_getp(
-        g_hlc_cache.type_class_global,
-        g_hlc_cache.resolve_class_hash,
-        &hlt_dyn
-    );
+    /*=== Access Type class via known HLC symbol ===*/
+    extern hl_type t$Type;
+    g_hlc.type_class = &t$Type;
 
-    if (!resolve_method) {
+    if (!g_hlc.type_class->obj || !g_hlc.type_class->obj->global_value) {
+        hlffi_set_error(vm, HLFFI_ERROR_NOT_INITIALIZED,
+            "Type class not initialized");
+        return HLFFI_ERROR_NOT_INITIALIZED;
+    }
+
+    g_hlc.type_global = *(vdynamic**)g_hlc.type_class->obj->global_value;
+    if (!g_hlc.type_global) {
+        hlffi_set_error(vm, HLFFI_ERROR_NOT_INITIALIZED,
+            "Type class global is NULL");
+        return HLFFI_ERROR_NOT_INITIALIZED;
+    }
+
+    /*=== Access Reflect class ===*/
+    extern hl_type t$Reflect;
+    g_hlc.reflect_class = &t$Reflect;
+
+    if (g_hlc.reflect_class->obj && g_hlc.reflect_class->obj->global_value) {
+        g_hlc.reflect_global = *(vdynamic**)g_hlc.reflect_class->obj->global_value;
+    }
+
+    /*=== Pre-compute hashes for performance ===*/
+    g_hlc.hash_resolveClass = hl_hash_utf8("resolveClass");
+    g_hlc.hash_createInstance = hl_hash_utf8("createInstance");
+    g_hlc.hash_field = hl_hash_utf8("field");
+    g_hlc.hash_setField = hl_hash_utf8("setField");
+    g_hlc.hash_callMethod = hl_hash_utf8("callMethod");
+    g_hlc.hash_allTypes = hl_hash_utf8("allTypes");
+    g_hlc.hash_values = hl_hash_utf8("values");
+    g_hlc.hash___type__ = hl_hash_utf8("__type__");
+    g_hlc.hash___constructor__ = hl_hash_utf8("__constructor__");
+
+    g_hlc.initialized = true;
+    return HLFFI_OK;
+}
+
+#endif /* HLFFI_HLC_MODE */
+```
+
+### 3. Type Lookup (hlffi_find_type)
+
+```c
+hlffi_type* hlffi_find_type(hlffi_vm* vm, const char* name) {
+    if (!vm || !name) return NULL;
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC: Use Type.resolveClass() ===*/
+
+    if (!g_hlc.initialized && hlffi_hlc_init(vm) != HLFFI_OK) {
+        return NULL;
+    }
+
+    HLFFI_UPDATE_STACK_TOP();
+
+    /* Get resolveClass method */
+    vclosure* resolve = (vclosure*)hl_dyn_getp(
+        g_hlc.type_global, g_hlc.hash_resolveClass, &hlt_dyn);
+    if (!resolve) {
         hlffi_set_error(vm, HLFFI_ERROR_METHOD_NOT_FOUND,
             "Type.resolveClass not found");
         return NULL;
     }
 
-    /* Create Haxe String from C string */
-    int name_len = (int)strlen(name);
-    uchar* name_utf16 = hl_from_utf8((vbyte*)name);
+    /* Create String argument */
+    vdynamic* name_str = hlffi_create_hl_string(name);
+    if (!name_str) return NULL;
 
-    /* Allocate String object */
-    vdynamic* name_str = hl_alloc_dynamic(&hlt_bytes);
-    name_str->v.ptr = name_utf16;
-
-    /* Call Type.resolveClass(name) */
+    /* Call resolveClass(name) */
     vdynamic* args[1] = { name_str };
     bool isExc = false;
-    vdynamic* cls_result = hl_dyn_call_safe(resolve_method, args, 1, &isExc);
+    vdynamic* cls = hl_dyn_call_safe(resolve, args, 1, &isExc);
 
-    if (isExc || !cls_result) {
-        char error_buf[256];
-        snprintf(error_buf, sizeof(error_buf), "Type not found: %s", name);
-        hlffi_set_error(vm, HLFFI_ERROR_TYPE_NOT_FOUND, error_buf);
+    if (isExc || !cls) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Type not found: %s", name);
+        hlffi_set_error(vm, HLFFI_ERROR_TYPE_NOT_FOUND, buf);
         return NULL;
     }
 
-    /* Extract hl_type* from Class<T> result
-     * Class extends BaseType which has __type__ field */
-    hl_type* found_type = (hl_type*)hl_dyn_getp(
-        cls_result,
-        g_hlc_cache.type_field_hash,
-        &hlt_dyn
-    );
-
-    return (hlffi_type*)found_type;
+    /* Extract __type__ from Class (BaseType.__type__ is hl_type*) */
+    hl_type* result = (hl_type*)hl_dyn_getp(cls, g_hlc.hash___type__, &hlt_dyn);
+    return (hlffi_type*)result;
 
 #else
-    /*========================================
-     * JIT MODE: Iterate code->types[] (existing)
-     *========================================*/
+    /*=== JIT: Existing code->types[] scan ===*/
 
     if (!vm->module || !vm->module->code) {
         hlffi_set_error(vm, HLFFI_ERROR_NOT_INITIALIZED,
-            "VM not initialized or no bytecode loaded");
+            "VM not initialized");
         return NULL;
     }
 
     hl_code* code = vm->module->code;
     int target_hash = hl_hash_utf8(name);
 
-    /* Search all types in loaded module */
     for (int i = 0; i < code->ntypes; i++) {
         hl_type* t = code->types + i;
 
         if (t->kind == HOBJ && t->obj && t->obj->name) {
-            char* type_name_utf8 = hl_to_utf8(t->obj->name);
-            if (type_name_utf8) {
-                int type_hash = hl_hash_utf8(type_name_utf8);
-                if (type_hash == target_hash) {
-                    return (hlffi_type*)t;
-                }
+            char* tname = hl_to_utf8(t->obj->name);
+            if (tname && hl_hash_utf8(tname) == target_hash) {
+                return (hlffi_type*)t;
             }
         }
         else if (t->kind == HENUM && t->tenum && t->tenum->name) {
-            char* type_name_utf8 = hl_to_utf8(t->tenum->name);
-            if (type_name_utf8) {
-                int type_hash = hl_hash_utf8(type_name_utf8);
-                if (type_hash == target_hash) {
-                    return (hlffi_type*)t;
-                }
-            }
-        }
-        else if (t->kind == HABSTRACT && t->abs_name) {
-            char* type_name_utf8 = hl_to_utf8(t->abs_name);
-            if (type_name_utf8) {
-                int type_hash = hl_hash_utf8(type_name_utf8);
-                if (type_hash == target_hash) {
-                    return (hlffi_type*)t;
-                }
+            char* tname = hl_to_utf8(t->tenum->name);
+            if (tname && hl_hash_utf8(tname) == target_hash) {
+                return (hlffi_type*)t;
             }
         }
     }
 
-    char error_buf[256];
-    snprintf(error_buf, sizeof(error_buf), "Type not found: %s", name);
-    hlffi_set_error(vm, HLFFI_ERROR_TYPE_NOT_FOUND, error_buf);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "Type not found: %s", name);
+    hlffi_set_error(vm, HLFFI_ERROR_TYPE_NOT_FOUND, buf);
     return NULL;
 
-#endif /* HLFFI_HLC_MODE */
+#endif
 }
 ```
 
-### Step 5: Update hlffi_list_types for HLC
+### 4. Object Creation (hlffi_new)
 
 ```c
-hlffi_error_code hlffi_list_types(hlffi_vm* vm, hlffi_type_callback callback, void* userdata) {
-    if (!vm) return HLFFI_ERROR_NULL_VM;
-    if (!callback) return HLFFI_ERROR_INVALID_ARGUMENT;
+hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name,
+                       int argc, hlffi_value** argv) {
+    if (!vm || !class_name) return NULL;
 
-#ifdef HLFFI_HLC_MODE
-    /*========================================
-     * HLC MODE: Iterate Type.allTypes.values()
-     *========================================*/
-
-    if (!g_hlc_cache.initialized) {
-        if (hlffi_hlc_init(vm) != HLFFI_OK) {
-            return HLFFI_ERROR_NOT_INITIALIZED;
-        }
+    if (!vm->entry_called) {
+        hlffi_set_error(vm, HLFFI_ERROR_NOT_INITIALIZED,
+            "Entry point must be called first");
+        return NULL;
     }
 
     HLFFI_UPDATE_STACK_TOP();
 
-    /* Get allTypes field from Type class */
-    int allTypes_hash = hl_hash_utf8("allTypes");
-    vdynamic* all_types_map = hl_dyn_getp(
-        g_hlc_cache.type_class_global,
-        allTypes_hash,
-        &hlt_dyn
-    );
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC: Use Type.createInstance() ===*/
 
-    if (!all_types_map) {
+    if (!g_hlc.initialized && hlffi_hlc_init(vm) != HLFFI_OK) {
+        return NULL;
+    }
+
+    /* First resolve the class */
+    vclosure* resolve = (vclosure*)hl_dyn_getp(
+        g_hlc.type_global, g_hlc.hash_resolveClass, &hlt_dyn);
+
+    vdynamic* name_str = hlffi_create_hl_string(class_name);
+    vdynamic* resolve_args[1] = { name_str };
+    bool isExc = false;
+    vdynamic* cls = hl_dyn_call_safe(resolve, resolve_args, 1, &isExc);
+
+    if (isExc || !cls) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Class not found: %s", class_name);
+        hlffi_set_error(vm, HLFFI_ERROR_TYPE_NOT_FOUND, buf);
+        return NULL;
+    }
+
+    /* Get createInstance method */
+    vclosure* create = (vclosure*)hl_dyn_getp(
+        g_hlc.type_global, g_hlc.hash_createInstance, &hlt_dyn);
+
+    if (!create) {
+        hlffi_set_error(vm, HLFFI_ERROR_METHOD_NOT_FOUND,
+            "Type.createInstance not found");
+        return NULL;
+    }
+
+    /* Build args array for Haxe */
+    varray* args_array = (varray*)hl_alloc_array(&hlt_dyn, argc);
+    for (int i = 0; i < argc; i++) {
+        hl_aptr(args_array, vdynamic*)[i] = argv[i] ? argv[i]->hl_value : NULL;
+    }
+
+    /* Call createInstance(cls, args) */
+    vdynamic* create_args[2] = { cls, (vdynamic*)args_array };
+    isExc = false;
+    vdynamic* instance = hl_dyn_call_safe(create, create_args, 2, &isExc);
+
+    if (isExc) {
+        hlffi_set_error(vm, HLFFI_ERROR_EXCEPTION_THROWN,
+            "Exception in constructor");
+        return NULL;
+    }
+
+    /* Wrap result */
+    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
+    if (!wrapped) return NULL;
+
+    wrapped->hl_value = instance;
+    wrapped->is_rooted = true;
+    hl_add_root(&wrapped->hl_value);
+
+    return wrapped;
+
+#else
+    /*=== JIT: Existing implementation ===*/
+    /* ... existing hlffi_new code ... */
+#endif
+}
+```
+
+### 5. Static Method Calls (hlffi_call_static)
+
+```c
+hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name,
+                               const char* method_name,
+                               int argc, hlffi_value** argv) {
+    if (!vm || !class_name || !method_name) return NULL;
+
+    HLFFI_UPDATE_STACK_TOP();
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC: Use Reflect.callMethod() ===*/
+
+    if (!g_hlc.initialized && hlffi_hlc_init(vm) != HLFFI_OK) {
+        return NULL;
+    }
+
+    /* Resolve class first */
+    vclosure* resolve = (vclosure*)hl_dyn_getp(
+        g_hlc.type_global, g_hlc.hash_resolveClass, &hlt_dyn);
+
+    vdynamic* class_str = hlffi_create_hl_string(class_name);
+    vdynamic* resolve_args[1] = { class_str };
+    bool isExc = false;
+    vdynamic* cls = hl_dyn_call_safe(resolve, resolve_args, 1, &isExc);
+
+    if (isExc || !cls) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Class not found: %s", class_name);
+        hlffi_set_error(vm, HLFFI_ERROR_TYPE_NOT_FOUND, buf);
+        return NULL;
+    }
+
+    /* Get the static method via Reflect.field(cls, methodName) */
+    vclosure* field_fn = (vclosure*)hl_dyn_getp(
+        g_hlc.reflect_global, g_hlc.hash_field, &hlt_dyn);
+
+    vdynamic* method_str = hlffi_create_hl_string(method_name);
+    vdynamic* field_args[2] = { cls, method_str };
+    isExc = false;
+    vdynamic* method = hl_dyn_call_safe(field_fn, field_args, 2, &isExc);
+
+    if (isExc || !method) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Method not found: %s.%s",
+                 class_name, method_name);
+        hlffi_set_error(vm, HLFFI_ERROR_METHOD_NOT_FOUND, buf);
+        return NULL;
+    }
+
+    /* Call Reflect.callMethod(null, method, args) for static call */
+    vclosure* call_fn = (vclosure*)hl_dyn_getp(
+        g_hlc.reflect_global, g_hlc.hash_callMethod, &hlt_dyn);
+
+    varray* args_array = (varray*)hl_alloc_array(&hlt_dyn, argc);
+    for (int i = 0; i < argc; i++) {
+        hl_aptr(args_array, vdynamic*)[i] = argv[i] ? argv[i]->hl_value : NULL;
+    }
+
+    vdynamic* call_args[3] = { NULL, method, (vdynamic*)args_array };
+    isExc = false;
+    vdynamic* result = hl_dyn_call_safe(call_fn, call_args, 3, &isExc);
+
+    if (isExc) {
+        hlffi_set_error(vm, HLFFI_ERROR_EXCEPTION_THROWN,
+            "Exception in static method");
+        return NULL;
+    }
+
+    /* Wrap result */
+    hlffi_value* wrapped = (hlffi_value*)malloc(sizeof(hlffi_value));
+    if (!wrapped) return NULL;
+
+    wrapped->hl_value = result;
+    wrapped->is_rooted = false;
+
+    return wrapped;
+
+#else
+    /*=== JIT: Existing implementation ===*/
+    /* ... existing hlffi_call_static code ... */
+#endif
+}
+```
+
+### 6. Entry Point (hlffi_call_entry)
+
+```c
+hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC: Call hl_entry_point() directly ===*/
+
+    if (!vm->hl_initialized) {
+        hlffi_set_error(vm, HLFFI_ERROR_NOT_INITIALIZED,
+            "VM not initialized");
         return HLFFI_ERROR_NOT_INITIALIZED;
     }
 
-    /* Get values() method from BytesMap */
-    int values_hash = hl_hash_utf8("values");
-    vclosure* values_method = (vclosure*)hl_dyn_getp(
-        all_types_map, values_hash, &hlt_dyn);
+    /* In HLC, entry point is a known symbol */
+    extern void hl_entry_point(void);
 
-    if (!values_method) {
-        return HLFFI_ERROR_METHOD_NOT_FOUND;
-    }
+    /* Setup closure for safe call */
+    hl_type_fun tf = { 0 };
+    hl_type clt = { 0 };
+    vclosure cl = { 0 };
 
-    /* Call values() to get array of all registered types */
+    tf.ret = &hlt_void;
+    clt.kind = HFUN;
+    clt.fun = &tf;
+    cl.t = &clt;
+    cl.fun = hl_entry_point;
+
     bool isExc = false;
-    varray* values = (varray*)hl_dyn_call_safe(values_method, NULL, 0, &isExc);
+    vdynamic* ret = hl_dyn_call_safe(&cl, NULL, 0, &isExc);
 
-    if (isExc || !values) {
-        return HLFFI_ERROR_CALL_FAILED;
+    if (isExc) {
+        hlffi_set_error(vm, HLFFI_ERROR_EXCEPTION_THROWN,
+            "Exception in entry point");
+        hl_print_uncaught_exception(ret);
+        return HLFFI_ERROR_EXCEPTION_THROWN;
     }
 
-    /* Iterate values array, extract __type__ from each BaseType */
-    for (int i = 0; i < values->size; i++) {
-        vdynamic* base_type = hl_aptr(values, vdynamic*)[i];
-        if (base_type) {
-            hl_type* t = (hl_type*)hl_dyn_getp(
-                base_type,
-                g_hlc_cache.type_field_hash,
-                &hlt_dyn
-            );
-            if (t) {
-                callback((hlffi_type*)t, userdata);
-            }
-        }
-    }
+    vm->entry_called = true;
+    vm->module_loaded = true;  /* In HLC, code is always "loaded" */
 
     return HLFFI_OK;
 
 #else
-    /*========================================
-     * JIT MODE: Iterate code->types[] (existing)
-     *========================================*/
+    /*=== JIT: Existing implementation ===*/
 
-    if (!vm->module || !vm->module->code) {
+    if (!vm->module_loaded) {
+        hlffi_set_error(vm, HLFFI_ERROR_NOT_INITIALIZED,
+            "No module loaded");
         return HLFFI_ERROR_NOT_INITIALIZED;
     }
 
     hl_code* code = vm->module->code;
+    int entry_index = code->entrypoint;
 
-    for (int i = 0; i < code->ntypes; i++) {
-        hl_type* t = code->types + i;
-        callback((hlffi_type*)t, userdata);
+    vclosure cl;
+    cl.t = code->functions[vm->module->functions_indexes[entry_index]].type;
+    cl.fun = vm->module->functions_ptrs[entry_index];
+    cl.hasValue = 0;
+
+    bool isExc = false;
+    vdynamic* ret = hl_dyn_call_safe(&cl, NULL, 0, &isExc);
+
+    if (isExc) {
+        hlffi_set_error(vm, HLFFI_ERROR_EXCEPTION_THROWN,
+            "Exception in entry point");
+        hl_print_uncaught_exception(ret);
+        return HLFFI_ERROR_EXCEPTION_THROWN;
     }
 
+    vm->entry_called = true;
     return HLFFI_OK;
 
-#endif /* HLFFI_HLC_MODE */
+#endif
 }
 ```
 
-### Step 6: Update Other Affected Functions
+### 7. Module Loading (hlffi_load_file)
 
-Functions that use `vm->module->code` need HLC alternatives:
+```c
+hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path) {
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC: No loading needed, code is statically linked ===*/
 
-| Function | JIT Implementation | HLC Implementation |
-|----------|-------------------|-------------------|
-| `hlffi_find_type` | Scan `code->types[]` | `Type.resolveClass()` |
-| `hlffi_list_types` | Iterate `code->types[]` | `Type.allTypes.values()` |
-| `hlffi_new` | Find ctor in `code->functions[]` | Use `Type.createInstance()` |
-| `hlffi_call_static` | Find method in `code->functions[]` | Use `Reflect.callMethod()` |
-| `hlffi_reload_*` | `hl_module_patch()` | Return `HLFFI_ERROR_RELOAD_NOT_SUPPORTED` |
+    if (!vm) return HLFFI_ERROR_NULL_VM;
 
-### Step 7: Update CMake Build System
+    /* In HLC mode, just mark as loaded */
+    vm->module_loaded = true;
+    vm->loaded_file = path;  /* Store for reference */
+
+    return HLFFI_OK;
+
+#else
+    /*=== JIT: Existing bytecode loading ===*/
+    /* ... existing implementation ... */
+#endif
+}
+
+hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size) {
+#ifdef HLFFI_HLC_MODE
+    /* HLC: No loading from memory */
+    (void)data;
+    (void)size;
+
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+    vm->module_loaded = true;
+
+    return HLFFI_OK;
+
+#else
+    /*=== JIT: Existing implementation ===*/
+    /* ... existing implementation ... */
+#endif
+}
+```
+
+### 8. Hot Reload (Disabled in HLC)
+
+```c
+hlffi_error_code hlffi_enable_hot_reload(hlffi_vm* vm, bool enable) {
+#ifdef HLFFI_HLC_MODE
+    (void)enable;
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+    hlffi_set_error(vm, HLFFI_ERROR_RELOAD_NOT_SUPPORTED,
+        "Hot reload not supported in HLC mode");
+    return HLFFI_ERROR_RELOAD_NOT_SUPPORTED;
+#else
+    /* ... existing implementation ... */
+#endif
+}
+
+hlffi_error_code hlffi_reload_module(hlffi_vm* vm, const char* path) {
+#ifdef HLFFI_HLC_MODE
+    (void)path;
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+    return HLFFI_ERROR_RELOAD_NOT_SUPPORTED;
+#else
+    /* ... existing implementation ... */
+#endif
+}
+
+bool hlffi_is_hot_reload_enabled(hlffi_vm* vm) {
+#ifdef HLFFI_HLC_MODE
+    (void)vm;
+    return false;
+#else
+    return vm && vm->hot_reload_enabled;
+#endif
+}
+
+bool hlffi_check_reload(hlffi_vm* vm) {
+#ifdef HLFFI_HLC_MODE
+    (void)vm;
+    return false;
+#else
+    /* ... existing implementation ... */
+#endif
+}
+```
+
+---
+
+## New Functions for HLC
+
+### Helper: Create Haxe String
+
+```c
+/**
+ * Create a Haxe String from a C string.
+ * Used internally for calling Haxe methods.
+ */
+static vdynamic* hlffi_create_hl_string(const char* str) {
+    if (!str) return NULL;
+
+    int len = (int)strlen(str);
+    uchar* utf16 = hl_from_utf8((vbyte*)str);
+
+    /* Allocate String object */
+    vstring* s = (vstring*)hl_alloc_obj(&hlt_bytes);
+    s->bytes = (vbyte*)utf16;
+    s->length = len;
+
+    return (vdynamic*)s;
+}
+```
+
+### Query: Is HLC Mode
+
+```c
+/**
+ * Check if running in HLC mode.
+ */
+bool hlffi_is_hlc_mode(void) {
+#ifdef HLFFI_HLC_MODE
+    return true;
+#else
+    return false;
+#endif
+}
+```
+
+### Query: Features Available
+
+```c
+/**
+ * Check if hot reload is available (false in HLC).
+ */
+bool hlffi_hot_reload_available(void) {
+#ifdef HLFFI_HLC_MODE
+    return false;
+#else
+    return true;
+#endif
+}
+
+/**
+ * Check if bytecode loading is available (false in HLC).
+ */
+bool hlffi_bytecode_loading_available(void) {
+#ifdef HLFFI_HLC_MODE
+    return false;
+#else
+    return true;
+#endif
+}
+```
+
+---
+
+## Build System Integration
+
+### CMake Configuration
 
 ```cmake
-# In CMakeLists.txt
+# CMakeLists.txt additions
 
 option(HLFFI_HLC_MODE "Build for HLC (HashLink/C) instead of JIT" OFF)
 
 if(HLFFI_HLC_MODE)
     add_definitions(-DHLFFI_HLC_MODE)
-    message(STATUS "HLFFI: Building for HLC mode (ARM/cross-platform)")
+    message(STATUS "HLFFI: Building for HLC mode")
 
     # Disable features not available in HLC
     set(HLFFI_ENABLE_HOT_RELOAD OFF CACHE BOOL "" FORCE)
+
+    # HLC requires these additional sources
+    list(APPEND HLFFI_SOURCES src/hlffi_hlc.c)
 else()
-    message(STATUS "HLFFI: Building for JIT mode (x86/x64)")
+    message(STATUS "HLFFI: Building for JIT mode")
+endif()
+
+# Source files
+set(HLFFI_SOURCES
+    src/hlffi_lifecycle.c
+    src/hlffi_types.c
+    src/hlffi_values.c
+    src/hlffi_objects.c
+    src/hlffi_events.c
+    src/hlffi_callbacks.c
+    src/hlffi_enums.c
+    src/hlffi_abstracts.c
+    src/hlffi_maps.c
+    src/hlffi_bytes.c
+    src/hlffi_cache.c
+    src/hlffi_integration.c
+    src/hlffi_threading.c
+)
+
+if(NOT HLFFI_HLC_MODE)
+    list(APPEND HLFFI_SOURCES src/hlffi_reload.c)
+endif()
+
+if(HLFFI_HLC_MODE)
+    list(APPEND HLFFI_SOURCES src/hlffi_hlc.c)
 endif()
 ```
 
-## Usage Guide
+### Building for Different Targets
 
-### Building for JIT (Default)
-
+**JIT Mode (default):**
 ```bash
 cmake -B build -DHASHLINK_DIR="/path/to/hashlink"
 cmake --build build
 ```
 
-### Building for HLC
-
+**HLC Mode:**
 ```bash
-# Cross-compile for ARM
+cmake -B build-hlc \
+    -DHLFFI_HLC_MODE=ON \
+    -DHASHLINK_DIR="/path/to/hashlink"
+cmake --build build-hlc
+```
+
+**Cross-compile for ARM:**
+```bash
 cmake -B build-arm \
     -DHLFFI_HLC_MODE=ON \
     -DCMAKE_TOOLCHAIN_FILE=arm-toolchain.cmake \
@@ -443,160 +855,175 @@ cmake -B build-arm \
 cmake --build build-arm
 ```
 
-### Linking HLC Application
+---
 
-```bash
-# 1. Compile Haxe to C
-haxe -hl output/main.c -main Main
+## Usage Guide
 
-# 2. Compile with HLFFI (HLC mode)
-gcc -o myapp \
-    -DHLFFI_HLC_MODE \
-    -I/path/to/hlffi/include \
-    -I/path/to/hashlink/src \
-    output/main.c \
-    output/hl/*.c \
-    /path/to/hashlink/src/hlc_main.c \
-    -lhl -lm
-```
-
-## API Differences
-
-### Functions That Work Identically
-
-These use runtime APIs that are the same in both modes:
-
-- `hlffi_create()` / `hlffi_destroy()`
-- `hlffi_init()`
-- `hlffi_call_entry()`
-- `hlffi_get_field()` / `hlffi_set_field()`
-- `hlffi_call_method()`
-- `hlffi_value_*()` functions
-- GC functions
-
-### Functions With Different Behavior
-
-| Function | JIT | HLC |
-|----------|-----|-----|
-| `hlffi_load_file()` | Loads .hl bytecode | Returns error (code is linked) |
-| `hlffi_load_memory()` | Loads bytecode from buffer | Returns error |
-| `hlffi_enable_hot_reload()` | Enables hot reload | Returns error |
-| `hlffi_reload_module()` | Patches running module | Returns error |
-
-### HLC-Only Initialization
-
-In HLC mode, there's no bytecode to load. Initialization is simpler:
-
-```c
-// JIT mode
-hlffi_vm* vm = hlffi_create();
-hlffi_init(vm, argc, argv);
-hlffi_load_file(vm, "game.hl");  // Load bytecode
-hlffi_call_entry(vm);
-
-// HLC mode
-hlffi_vm* vm = hlffi_create();
-hlffi_init(vm, argc, argv);
-// No load needed - code is statically linked
-hlffi_call_entry(vm);  // Calls hl_entry_point()
-```
-
-## Technical Details
-
-### How Type.resolveClass Works
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                  Type.resolveClass("Player")             │
-├──────────────────────────────────────────────────────────┤
-│ 1. Convert "Player" to UTF-16 bytes                      │
-│ 2. Look up in Type.allTypes BytesMap (O(1) hash lookup)  │
-│ 3. Return Class<Player> object (extends BaseType)        │
-│ 4. Class.__type__ contains raw hl_type* pointer          │
-└──────────────────────────────────────────────────────────┘
-```
-
-### HLC Symbol Naming Convention
-
-HLC generates stable C symbols:
-
-| Haxe Type | HLC Symbol |
-|-----------|------------|
-| `Type` | `t$Type` |
-| `String` | `t$String` |
-| `my.package.Player` | `t$my$package$Player` |
-
-### BaseType Structure
-
-```c
-// Haxe: class BaseType
-struct BaseType {
-    hl_type* $type;              // Standard HL object header
-    hl_type* __type__;           // The wrapped type (what we need!)
-    vdynamic* __meta__;          // Metadata
-    varray* __implementedBy__;   // Implementing types
-};
-
-// Haxe: class Class extends BaseType
-struct Class {
-    // BaseType fields...
-    vbyte* __name__;             // Class name
-    vclosure* __constructor__;   // Constructor function
-};
-```
-
-## Limitations
-
-### Hot Reload Not Supported
-
-HLC compiles to static native code - there's no way to patch it at runtime.
-
-```c
-#ifdef HLFFI_HLC_MODE
-hlffi_error_code hlffi_enable_hot_reload(hlffi_vm* vm, bool enable) {
-    return HLFFI_ERROR_RELOAD_NOT_SUPPORTED;
-}
-#endif
-```
-
-### Type Enumeration Differences
-
-- **JIT**: Returns ALL types including primitives and internal types
-- **HLC**: Returns only types registered in `Type.allTypes` (user classes, enums)
-
-### Initialization Timing
-
-In HLC mode, `hlffi_find_type()` requires `hlffi_call_entry()` to have been called first (to populate `Type.allTypes`). This is the same requirement as JIT mode.
-
-## Testing
-
-### Verify HLC Build
+### JIT Mode (Existing Workflow)
 
 ```c
 #include "hlffi.h"
 
-int main() {
-    #ifdef HLFFI_HLC_MODE
-    printf("HLFFI running in HLC mode\n");
-    #else
-    printf("HLFFI running in JIT mode\n");
-    #endif
-
+int main(int argc, char** argv) {
     hlffi_vm* vm = hlffi_create();
-    hlffi_init(vm, 0, NULL);
+    hlffi_init(vm, argc, argv);
+
+    // Load bytecode
+    hlffi_load_file(vm, "game.hl");
+
+    // Run entry point
     hlffi_call_entry(vm);
 
-    // This should work in both modes
-    hlffi_type* player = hlffi_find_type(vm, "Player");
-    printf("Found Player type: %p\n", player);
+    // Use HLFFI APIs...
+    hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
 
     hlffi_destroy(vm);
     return 0;
 }
 ```
 
+### HLC Mode (New Workflow)
+
+```c
+#define HLFFI_HLC_MODE  // Or set via compiler flag
+#include "hlffi.h"
+
+int main(int argc, char** argv) {
+    hlffi_vm* vm = hlffi_create();
+    hlffi_init(vm, argc, argv);
+
+    // No load needed - code is statically linked!
+    // hlffi_load_file() is a no-op in HLC mode
+
+    // Run entry point (calls hl_entry_point)
+    hlffi_call_entry(vm);
+
+    // Use HLFFI APIs - works identically!
+    hlffi_value* player = hlffi_new(vm, "Player", 0, NULL);
+
+    hlffi_destroy(vm);
+    return 0;
+}
+```
+
+### Compiling HLC Application
+
+```bash
+# 1. Compile Haxe to C
+haxe -hl output/main.c -main Main
+
+# 2. Compile everything together
+gcc -o myapp \
+    -DHLFFI_HLC_MODE \
+    -I/path/to/hlffi/include \
+    -I/path/to/hashlink/src \
+    your_app.c \
+    output/main.c \
+    output/hl/*.c \
+    /path/to/hashlink/src/hlc_main.c \
+    /path/to/hlffi/lib/libhlffi_hlc.a \
+    -lhl -lm -lpthread
+```
+
+---
+
+## Testing
+
+### Compile-Time Mode Check
+
+```c
+#include "hlffi.h"
+#include <stdio.h>
+
+int main() {
+    printf("HLFFI Mode: %s\n", hlffi_is_hlc_mode() ? "HLC" : "JIT");
+    printf("Hot reload available: %s\n",
+           hlffi_hot_reload_available() ? "yes" : "no");
+    printf("Bytecode loading available: %s\n",
+           hlffi_bytecode_loading_available() ? "yes" : "no");
+    return 0;
+}
+```
+
+### Functionality Test
+
+```c
+void test_hlffi(void) {
+    hlffi_vm* vm = hlffi_create();
+    assert(vm != NULL);
+
+    hlffi_init(vm, 0, NULL);
+
+    #ifndef HLFFI_HLC_MODE
+    hlffi_load_file(vm, "test.hl");
+    #endif
+
+    hlffi_error_code err = hlffi_call_entry(vm);
+    assert(err == HLFFI_OK);
+
+    // Type lookup should work in both modes
+    hlffi_type* t = hlffi_find_type(vm, "TestClass");
+    assert(t != NULL);
+
+    // Object creation should work in both modes
+    hlffi_value* obj = hlffi_new(vm, "TestClass", 0, NULL);
+    assert(obj != NULL);
+
+    // Field access should work in both modes
+    hlffi_set_field_int(vm, obj, "value", 42);
+    int val = hlffi_get_field_int(obj, "value", 0);
+    assert(val == 42);
+
+    hlffi_value_free(obj);
+    hlffi_destroy(vm);
+
+    printf("All tests passed!\n");
+}
+```
+
+---
+
+## Summary
+
+### Functions by Category
+
+| Category | Count | Examples |
+|----------|-------|----------|
+| Need HLC alternative | 11 | `hlffi_find_type`, `hlffi_new`, `hlffi_call_static` |
+| Work unchanged | 25+ | `hlffi_get_field`, `hlffi_call_method`, `hlffi_value_*` |
+| Disabled in HLC | 5 | `hlffi_reload_*`, `hlffi_enable_hot_reload` |
+| New for HLC | 4 | `hlffi_hlc_init`, `hlffi_is_hlc_mode`, etc. |
+
+### Key Implementation Points
+
+1. **Compile-time switch**: `#ifdef HLFFI_HLC_MODE`
+2. **Bootstrap**: `extern hl_type t$Type` and `extern hl_type t$Reflect`
+3. **Type lookup**: `Type.resolveClass(name)` → `BaseType.__type__`
+4. **Object creation**: `Type.createInstance(cls, args)`
+5. **Static calls**: `Reflect.field()` + `Reflect.callMethod()`
+6. **Entry point**: Direct `hl_entry_point()` call
+7. **Caching**: Pre-compute hashes, cache class references
+
+### Files to Modify/Create
+
+| File | Action |
+|------|--------|
+| `hlffi_internal.h` | Add HLC cache structure and macros |
+| `hlffi_hlc.c` | **NEW** - HLC initialization |
+| `hlffi_types.c` | Add HLC path to `hlffi_find_type`, `hlffi_list_types` |
+| `hlffi_objects.c` | Add HLC path to `hlffi_new`, `find_type_by_name` |
+| `hlffi_values.c` | Add HLC path to static field/method functions |
+| `hlffi_lifecycle.c` | Add HLC path to `hlffi_call_entry`, `hlffi_load_*` |
+| `hlffi_reload.c` | Return errors in HLC mode |
+| `hlffi_cache.c` | Add HLC path for cached calls |
+| `CMakeLists.txt` | Add `HLFFI_HLC_MODE` option |
+
+---
+
 ## References
 
 - [HashLink/C Compilation](https://haxe.org/manual/target-hl-c-compilation.html)
 - [HashLink GitHub](https://github.com/HaxeFoundation/hashlink)
 - [Working with C in HashLink](https://aramallo.com/blog/hashlink/calling-c.html)
+- [Haxe Type API](https://api.haxe.org/Type.html)
+- [Haxe Reflect API](https://api.haxe.org/Reflect.html)
