@@ -36,28 +36,6 @@ option(HLFFI_BUILD_EXAMPLES "Build example programs" ON)
 option(HLFFI_BUILD_TESTS "Build test programs" ON)
 option(HLFFI_ENABLE_HOT_RELOAD "Enable hot reload support (requires HL 1.12+)" ON)
 option(HLFFI_HLC_MODE "Build for HLC (HashLink/C) mode instead of JIT" OFF)
-option(HLFFI_BUILD_LIBHL "Build libhl from vendor/hashlink" OFF)
-
-# ========== Build libhl from vendor ==========
-
-if(HLFFI_BUILD_LIBHL)
-    # Build HashLink as a subdirectory - only libhl DLL, no hdll plugins
-    set(WITH_VM OFF CACHE BOOL "Don't build HL VM executable" FORCE)
-    set(BUILD_SHARED_LIBS ON CACHE BOOL "Build libhl as DLL" FORCE)
-    set(BUILD_TESTING OFF CACHE BOOL "Don't build HashLink tests" FORCE)
-    # Disable all optional hdll libraries (we only need libhl core)
-    set(WITH_FMT OFF CACHE BOOL "" FORCE)
-    set(WITH_OPENAL OFF CACHE BOOL "" FORCE)
-    set(WITH_SDL OFF CACHE BOOL "" FORCE)
-    set(WITH_SQLITE OFF CACHE BOOL "" FORCE)
-    set(WITH_SSL OFF CACHE BOOL "" FORCE)
-    set(WITH_UI OFF CACHE BOOL "" FORCE)
-    set(WITH_UV OFF CACHE BOOL "" FORCE)
-    set(WITH_VIDEO OFF CACHE BOOL "" FORCE)
-    set(WITH_HEAPS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(vendor/hashlink)
-    message(STATUS "Building libhl.dll from vendor/hashlink")
-endif()
 
 # ========== Find HashLink ==========
 

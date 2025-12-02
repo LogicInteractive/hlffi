@@ -97,7 +97,13 @@ This builds:
 - `hlffi_jit.lib` - JIT mode library (for loading .hl bytecode)
 - `hlffi_hlc.lib` - HLC mode library (for Haxe compiled to C)
 
-**Note:** You need `libhl.dll` from a HashLink installation to run JIT mode applications. Download from [hashlink.haxe.org](https://hashlink.haxe.org/) or build from vendor/hashlink with `-DHLFFI_BUILD_LIBHL=ON`.
+**Note:** You need `libhl.dll` to run applications. Either download HashLink from [hashlink.haxe.org](https://hashlink.haxe.org/) or build from the vendor submodule:
+
+```bash
+cd vendor && mkdir build && cd build
+cmake .. -G "Visual Studio 17 2022" -A x64
+cmake --build . --config Release
+```
 
 ### Integration Example: Non-Threaded Mode (Recommended)
 
@@ -258,15 +264,14 @@ int main()
 | `HLFFI_BUILD_TESTS` | `ON` | Build test suite |
 | `HLFFI_ENABLE_HOT_RELOAD` | `ON` | Enable hot reload (requires HL 1.12+) |
 | `HLFFI_HLC_MODE` | `OFF` | Set default `hlffi` alias to HLC mode |
-| `HLFFI_BUILD_LIBHL` | `OFF` | Also build libhl from vendor/hashlink |
 
 Example:
 ```bash
-# Build HLFFI only (requires external libhl.dll)
+# Build with all defaults
 cmake ..
 
-# Build HLFFI + libhl from vendor/hashlink
-cmake .. -DHLFFI_BUILD_LIBHL=ON
+# Build without examples/tests
+cmake .. -DHLFFI_BUILD_EXAMPLES=OFF -DHLFFI_BUILD_TESTS=OFF
 ```
 
 ---
