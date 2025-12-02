@@ -18,6 +18,14 @@
 /* Use hlffi_set_error from internal header, create local alias */
 #define set_error hlffi_set_error
 
+/* HLC mode: hl_entry_point is declared in hlc.h and defined by HLC-generated code */
+#ifdef HLFFI_HLC_MODE
+extern void hl_entry_point(void);
+/* HLC callbacks needed for dynamic calls - defined in HLC-generated reflect.c */
+extern void* hlc_static_call(void *fun, hl_type *t, void **args, vdynamic *out);
+extern void* hlc_get_wrapper(hl_type *t);
+#endif
+
 static hl_code* load_code_from_file(const char* path, char** error_msg) {
     FILE* f = fopen(path, "rb");
     if (!f) {
@@ -87,6 +95,7 @@ static bool g_hl_globals_initialized = false;
 static bool g_main_thread_registered = false;
 
 hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
+    (void)argc; (void)argv;  /* Currently unused but reserved for future use */
     if (!vm) return HLFFI_ERROR_NULL_VM;
 
     if (vm->hl_initialized) {
@@ -105,18 +114,34 @@ hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
      * For now, we skip this - it's not critical for basic VM operation
      */
 
+#ifdef HLFFI_HLC_MODE
+    /* HLC mode: Set up static_call and get_wrapper callbacks
+     * These are required for dynamic calls to work in HLC mode
+     * The functions are defined in the HLC-generated reflect.c
+     * We set the hl_setup struct fields directly (same as hlc_main.c does)
+     */
+    hl_setup.static_call = hlc_static_call;
+    hl_setup.get_wrapper = hlc_get_wrapper;
+#endif
+
     /* Initialize system (file I/O, etc.) */
     hl_sys_init();
 
     /* Register this thread with HashLink GC (only once per process)
-     * CRITICAL: stack_context must persist for VM lifetime!
-     * We use the vm pointer itself as the stack marker
+     *
+     * IMPORTANT: We pass NULL to let HashLink handle stack_top internally.
+     * Previously we passed &vm->stack_context (a heap address) which caused
+     * GC crashes when using timers/callbacks because GC scanned invalid memory.
+     *
+     * When integrating with engines (UE, Unity), the host should call
+     * hlffi_update_stack_top() at the start of each tick/update to set
+     * stack_top to a valid stack address for proper GC scanning.
      *
      * For VM restart support, we only register once since HashLink
      * doesn't support unregister/re-register cleanly.
      */
     if (!g_main_thread_registered) {
-        hl_register_thread(&vm->stack_context);
+        hl_register_thread(NULL);
         g_main_thread_registered = true;
     }
 
@@ -129,6 +154,20 @@ hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
 
 hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: No loading needed, code is statically linked ===*/
+
+    /* In HLC mode, just mark as loaded. The code is already linked. */
+    vm->module_loaded = true;
+    vm->loaded_file = path;  /* Store for reference */
+
+    set_error(vm, HLFFI_OK, NULL);
+    return HLFFI_OK;
+
+#else
+    /*=== JIT Mode: Load bytecode file ===*/
+
     if (!path) {
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Null file path");
         return HLFFI_ERROR_INVALID_ARGUMENT;
@@ -183,10 +222,25 @@ hlffi_error_code hlffi_load_file(hlffi_vm* vm, const char* path) {
 
     set_error(vm, HLFFI_OK, NULL);
     return HLFFI_OK;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Memory loading not supported ===*/
+    (void)data; (void)size;
+
+    /* In HLC mode, code is statically linked - can't load from memory */
+    set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT,
+              "Memory loading not supported in HLC mode - code is statically linked");
+    return HLFFI_ERROR_INVALID_ARGUMENT;
+
+#else
+    /*=== JIT Mode: Load bytecode from memory ===*/
+
     if (!data || size == 0) {
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Null data or zero size");
         return HLFFI_ERROR_INVALID_ARGUMENT;
@@ -238,6 +292,8 @@ hlffi_error_code hlffi_load_memory(hlffi_vm* vm, const void* data, size_t size) 
 
     set_error(vm, HLFFI_OK, NULL);
     return HLFFI_OK;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
@@ -247,6 +303,39 @@ hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
         set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "No module loaded - call hlffi_load_file first");
         return HLFFI_ERROR_NOT_INITIALIZED;
     }
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Call hl_entry_point() via hl_dyn_call_safe ===*/
+    /* Following the same pattern as vendor/hashlink/src/hlc_main.c */
+
+    /* Set up closure for entry point call */
+    hl_type_fun tf = { 0 };
+    hl_type clt = { 0 };
+    vclosure cl = { 0 };
+    bool isExc = false;
+
+    tf.ret = &hlt_void;
+    clt.kind = HFUN;
+    clt.fun = &tf;
+    cl.t = &clt;
+    cl.fun = hl_entry_point;
+
+    /* Call entry point with exception handling */
+    (void)hl_dyn_call_safe(&cl, NULL, 0, &isExc);
+
+    if (isExc) {
+        /* In HLC mode, we skip hl_print_uncaught_exception to avoid DLL dependency
+         * The caller can handle the error appropriately */
+        set_error(vm, HLFFI_ERROR_EXCEPTION_THROWN, "Exception in entry point");
+        return HLFFI_ERROR_EXCEPTION_THROWN;
+    }
+
+    vm->entry_called = true;
+    set_error(vm, HLFFI_OK, NULL);
+    return HLFFI_OK;
+
+#else
+    /*=== JIT Mode: Call via module entry point ===*/
 
     /* Get entry point function */
     hl_code* code = vm->module->code;
@@ -274,10 +363,15 @@ hlffi_error_code hlffi_call_entry(hlffi_vm* vm) {
 
     set_error(vm, HLFFI_OK, NULL);
     return HLFFI_OK;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 void hlffi_destroy(hlffi_vm* vm) {
     if (!vm) return;
+
+#ifndef HLFFI_HLC_MODE
+    /* JIT Mode: Free module and code */
 
     /* Free module if loaded */
     if (vm->module) {
@@ -290,6 +384,7 @@ void hlffi_destroy(hlffi_vm* vm) {
         hl_code_free(vm->code);
         vm->code = NULL;
     }
+#endif /* !HLFFI_HLC_MODE */
 
     /* NOTE: Do NOT call hl_unregister_thread() or hl_global_free()
      * This matches HashLink's own behavior in main.c
@@ -320,4 +415,19 @@ void hlffi_update_stack_top(void* stack_marker) {
      * If stack_top points to heap memory, GC scanning is incorrect.
      */
     t->stack_top = stack_marker;
+}
+
+void hlffi_gc_block(void) {
+    /* Mark thread as blocked (not executing HashLink code).
+     * GC will not wait for this thread during collection.
+     * See: https://github.com/HaxeFoundation/hashlink/issues/752
+     */
+    hl_blocking(true);
+}
+
+void hlffi_gc_unblock(void) {
+    /* Mark thread as unblocked (actively executing HashLink code).
+     * Must be balanced with hlffi_gc_block().
+     */
+    hl_blocking(false);
 }

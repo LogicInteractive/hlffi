@@ -178,14 +178,22 @@ typedef enum {
 /**
  * Event loop type for hlffi_process_events().
  *
- * UV: libuv event loop (async I/O, HTTP, file watch, timers)
- * HAXE: haxe.EventLoop (haxe.Timer, haxe.MainLoop callbacks)
- * ALL: Both UV + Haxe (default for hlffi_update)
+ * UV:       libuv event loop (async I/O, HTTP, file watch)
+ * HAXE:     Both Timers + MainLoop together (legacy, for compatibility)
+ * ALL:      UV + Haxe (default for hlffi_update)
+ * TIMERS:   sys.thread.EventLoop only (haxe.Timer, high-frequency ~1ms)
+ * MAINLOOP: haxe.MainLoop only (MainLoop.add callbacks, frame-rate ~16ms)
+ *
+ * For game engines with separate update rates:
+ *   - Call hlffi_process_events(vm, HLFFI_EVENTLOOP_TIMERS) at 1ms intervals
+ *   - Call hlffi_process_events(vm, HLFFI_EVENTLOOP_MAINLOOP) at frame rate
  */
 typedef enum {
     HLFFI_EVENTLOOP_UV = 0,
     HLFFI_EVENTLOOP_HAXE = 1,
-    HLFFI_EVENTLOOP_ALL = 2
+    HLFFI_EVENTLOOP_ALL = 2,
+    HLFFI_EVENTLOOP_TIMERS = 3,
+    HLFFI_EVENTLOOP_MAINLOOP = 4
 } hlffi_eventloop_type;
 
 /* ========== CALLBACKS ========== */
@@ -355,21 +363,48 @@ void hlffi_update_stack_top(void* stack_marker);
  * Macro to update stack top using current stack frame.
  * Automatically creates a local variable and updates stack_top.
  *
- * CURRENT STATUS:
- * Not normally needed - HLFFI handles this internally. Provided as a fallback
- * if you encounter GC issues in edge cases.
+ * IMPORTANT: This macro declares a variable, so it MUST be placed at the
+ * start of a block/function (not after other statements in some compilers).
  *
  * Usage:
  *   void my_update_loop(hlffi_vm* vm) {
  *       HLFFI_ENTER_SCOPE();  // Must be early in the function
- *       // ... now safe to call hlffi functions in loop ...
+ *       // ... now safe to call hlffi functions ...
  *   }
+ *
+ * @note See: https://github.com/HaxeFoundation/hashlink/issues/752
  */
 #define HLFFI_ENTER_SCOPE() \
-    do { \
-        int _hlffi_stack_marker; \
-        hlffi_update_stack_top(&_hlffi_stack_marker); \
-    } while(0)
+    int _hlffi_stack_marker_; \
+    hlffi_update_stack_top(&_hlffi_stack_marker_)
+
+/**
+ * Mark thread as blocked (not executing HashLink code).
+ * Call this when leaving HashLink scope to return to engine code.
+ * The GC will not wait for this thread during collection.
+ *
+ * IMPORTANT: Must be balanced with hlffi_gc_unblock().
+ * Do NOT allocate GC memory between block/unblock calls.
+ *
+ * Usage:
+ *   void engine_tick() {
+ *       HLFFI_ENTER_SCOPE();
+ *       hlffi_gc_unblock();  // Entering HL scope
+ *       hlffi_update(vm, dt);
+ *       hlffi_gc_block();    // Leaving HL scope
+ *   }
+ *
+ * @note See: https://github.com/HaxeFoundation/hashlink/issues/752
+ */
+void hlffi_gc_block(void);
+
+/**
+ * Mark thread as unblocked (actively executing HashLink code).
+ * Call this when entering HashLink scope.
+ *
+ * IMPORTANT: Must be balanced with hlffi_gc_block().
+ */
+void hlffi_gc_unblock(void);
 
 /* ========== INTEGRATION MODE SETUP ========== */
 

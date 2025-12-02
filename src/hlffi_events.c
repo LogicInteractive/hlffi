@@ -31,8 +31,63 @@ static hlffi_error_code process_uv_loop(hlffi_vm* vm) {
 }
 
 /**
+ * Process sys.thread.EventLoop ONLY (haxe.Timer)
+ * Call this at high frequency (~1ms) for precise timer support.
+ */
+static hlffi_error_code process_timers_only(hlffi_vm* vm) {
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+
+    /* Process sys.thread.EventLoop for haxe.Timer support
+     * Try calling helper methods that call Thread.current().events.progress()
+     * This is needed for haxe.Timer.delay() to fire */
+
+    /* Try hlffi.EventLoop.tick() first (recommended for HLFFI projects) */
+    hlffi_value* result = hlffi_call_static(vm, "hlffi.EventLoop", "tick", 0, NULL);
+    if (result) {
+        hlffi_value_free(result);
+        return HLFFI_OK;
+    }
+
+    /* Clear error and try legacy Timers.processEventLoop */
+    vm->error_msg[0] = '\0';
+    vm->last_error = HLFFI_OK;
+
+    result = hlffi_call_static(vm, "Timers", "processEventLoop", 0, NULL);
+    if (result) {
+        hlffi_value_free(result);
+    } else {
+        /* Clear error - neither helper exists, timers won't work */
+        vm->error_msg[0] = '\0';
+        vm->last_error = HLFFI_OK;
+    }
+
+    return HLFFI_OK;
+}
+
+/**
+ * Process haxe.MainLoop ONLY (MainLoop.add callbacks)
+ * Call this at frame rate (~16ms / 60fps).
+ */
+static hlffi_error_code process_mainloop_only(hlffi_vm* vm) {
+    if (!vm) return HLFFI_ERROR_NULL_VM;
+
+    /* Process MainLoop for MainLoop.add() callbacks */
+    hlffi_value* result = hlffi_call_static(vm, "haxe.MainLoop", "tick", 0, NULL);
+    if (result) {
+        hlffi_value_free(result);
+    } else {
+        /* Clear error - MainLoop might not be available */
+        vm->error_msg[0] = '\0';
+        vm->last_error = HLFFI_OK;
+    }
+
+    return HLFFI_OK;
+}
+
+/**
  * Process Haxe EventLoop (timers, MainLoop callbacks, thread messages)
  * This handles haxe.Timer, MainLoop.add(), runInMainThread(), etc.
+ * Legacy: Processes both Timers and MainLoop together.
  */
 static hlffi_error_code process_haxe_eventloop(hlffi_vm* vm) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
@@ -46,27 +101,15 @@ static hlffi_error_code process_haxe_eventloop(hlffi_vm* vm) {
      * Both are needed for complete event processing!
      */
 
-    /* First: Process sys.thread.EventLoop for haxe.Timer support
-     * Try calling a helper method that calls Thread.current().events.progress()
-     * This is needed for haxe.Timer.delay() to fire */
-    hlffi_value* result = hlffi_call_static(vm, "Timers", "processEventLoop", 0, NULL);
-    if (result) {
-        hlffi_value_free(result);
-    } else {
-        /* Clear error - processEventLoop might not exist in all bytecode */
-        vm->error_msg[0] = '\0';
-        vm->last_error = HLFFI_OK;
-    }
+    hlffi_error_code err;
 
-    /* Second: Process MainLoop for MainLoop.add() callbacks */
-    result = hlffi_call_static(vm, "haxe.MainLoop", "tick", 0, NULL);
-    if (result) {
-        hlffi_value_free(result);
-    } else {
-        /* Clear error - MainLoop might not be available */
-        vm->error_msg[0] = '\0';
-        vm->last_error = HLFFI_OK;
-    }
+    /* First: Process timers */
+    err = process_timers_only(vm);
+    if (err != HLFFI_OK) return err;
+
+    /* Second: Process MainLoop */
+    err = process_mainloop_only(vm);
+    if (err != HLFFI_OK) return err;
 
     return HLFFI_OK;
 }
@@ -122,9 +165,25 @@ hlffi_error_code hlffi_process_events(hlffi_vm* vm, hlffi_eventloop_type type) {
         }
     }
 
-    /* Process Haxe EventLoop */
+    /* Process Haxe EventLoop (both Timers + MainLoop) */
     if (type == HLFFI_EVENTLOOP_HAXE || type == HLFFI_EVENTLOOP_ALL) {
         result = process_haxe_eventloop(vm);
+        if (result != HLFFI_OK) {
+            return result;
+        }
+    }
+
+    /* Process ONLY sys.thread.EventLoop (haxe.Timer) - high frequency */
+    if (type == HLFFI_EVENTLOOP_TIMERS) {
+        result = process_timers_only(vm);
+        if (result != HLFFI_OK) {
+            return result;
+        }
+    }
+
+    /* Process ONLY haxe.MainLoop - frame rate */
+    if (type == HLFFI_EVENTLOOP_MAINLOOP) {
+        result = process_mainloop_only(vm);
         if (result != HLFFI_OK) {
             return result;
         }

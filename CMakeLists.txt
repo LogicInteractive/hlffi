@@ -35,6 +35,29 @@ option(HLFFI_BUILD_SHARED "Build shared library" OFF)
 option(HLFFI_BUILD_EXAMPLES "Build example programs" ON)
 option(HLFFI_BUILD_TESTS "Build test programs" ON)
 option(HLFFI_ENABLE_HOT_RELOAD "Enable hot reload support (requires HL 1.12+)" ON)
+option(HLFFI_HLC_MODE "Build for HLC (HashLink/C) mode instead of JIT" OFF)
+option(HLFFI_BUILD_LIBHL "Build libhl from vendor/hashlink" ON)
+
+# ========== Build libhl from vendor ==========
+
+if(HLFFI_BUILD_LIBHL)
+    # Build HashLink as a subdirectory - only libhl DLL, no hdll plugins
+    set(WITH_VM OFF CACHE BOOL "Don't build HL VM executable" FORCE)
+    set(BUILD_SHARED_LIBS ON CACHE BOOL "Build libhl as DLL" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "Don't build HashLink tests" FORCE)
+    # Disable all optional hdll libraries (we only need libhl core)
+    set(WITH_FMT OFF CACHE BOOL "" FORCE)
+    set(WITH_OPENAL OFF CACHE BOOL "" FORCE)
+    set(WITH_SDL OFF CACHE BOOL "" FORCE)
+    set(WITH_SQLITE OFF CACHE BOOL "" FORCE)
+    set(WITH_SSL OFF CACHE BOOL "" FORCE)
+    set(WITH_UI OFF CACHE BOOL "" FORCE)
+    set(WITH_UV OFF CACHE BOOL "" FORCE)
+    set(WITH_VIDEO OFF CACHE BOOL "" FORCE)
+    set(WITH_HEAPS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(vendor/hashlink)
+    message(STATUS "Building libhl.dll from vendor/hashlink")
+endif()
 
 # ========== Find HashLink ==========
 
@@ -95,13 +118,14 @@ else()
     endif()
 endif()
 
-# ========== HLFFI Library ==========
+# ========== HLFFI Libraries ==========
 
 set(HLFFI_HEADERS
     include/hlffi.h
 )
 
-set(HLFFI_SOURCES
+# Common sources for both JIT and HLC
+set(HLFFI_COMMON_SOURCES
     src/hlffi_core.c
     src/hlffi_lifecycle.c
     src/hlffi_integration.c
@@ -113,45 +137,71 @@ set(HLFFI_SOURCES
     src/hlffi_objects.c
 )
 
-# Create library target (will be populated in Phase 1)
-if(HLFFI_BUILD_SHARED)
-    add_library(hlffi SHARED ${HLFFI_HEADERS} ${HLFFI_SOURCES})
-    target_compile_definitions(hlffi PRIVATE HLFFI_EXPORTS)
-    target_compile_definitions(hlffi PUBLIC HLFFI_SHARED)
-else()
-    add_library(hlffi STATIC ${HLFFI_HEADERS} ${HLFFI_SOURCES})
-endif()
-
-target_include_directories(hlffi
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
+# JIT-specific sources (HashLink module loading)
+set(HLFFI_JIT_SOURCES
+    ${HLFFI_COMMON_SOURCES}
+    vendor/hashlink/src/code.c
+    vendor/hashlink/src/module.c
+    vendor/hashlink/src/jit.c
 )
 
-# Link HashLink if found
-if(HASHLINK_INCLUDE_DIR AND HASHLINK_LIBRARY)
-    target_include_directories(hlffi PRIVATE ${HASHLINK_INCLUDE_DIR})
-    target_link_libraries(hlffi PRIVATE ${HASHLINK_LIBRARY})
+# HLC-specific sources
+set(HLFFI_HLC_SOURCES
+    ${HLFFI_COMMON_SOURCES}
+    src/hlffi_hlc.c
+)
+
+# Disable warnings-as-errors for HashLink vendor sources (they have known warnings)
+if(MSVC)
+    set_source_files_properties(
+        vendor/hashlink/src/code.c
+        vendor/hashlink/src/module.c
+        vendor/hashlink/src/jit.c
+        PROPERTIES COMPILE_FLAGS "/W3"
+    )
 endif()
 
-# Platform-specific settings
+# Common include directories
+set(HLFFI_INCLUDE_DIRS
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+set(HLFFI_PRIVATE_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/hashlink/src
+)
+
+# ========== hlffi_jit (JIT mode library) ==========
+add_library(hlffi_jit STATIC ${HLFFI_HEADERS} ${HLFFI_JIT_SOURCES})
+target_include_directories(hlffi_jit PUBLIC ${HLFFI_INCLUDE_DIRS} PRIVATE ${HLFFI_PRIVATE_INCLUDE_DIRS})
 if(WIN32)
-    # Windows: Link against system libraries
-    target_link_libraries(hlffi PRIVATE ws2_32)
-
-    # Visual Studio specific settings
+    target_link_libraries(hlffi_jit PRIVATE ws2_32)
     if(MSVC)
-        # Warning level 4, treat warnings as errors
-        target_compile_options(hlffi PRIVATE /W4 /WX)
-
-        # Multi-threaded runtime
-        set_property(TARGET hlffi PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-
-        # Enable all cores for building
-        target_compile_options(hlffi PRIVATE /MP)
+        target_compile_options(hlffi_jit PRIVATE /W4 /WX /MP)
+        set_property(TARGET hlffi_jit PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
+endif()
+
+# ========== hlffi_hlc (HLC mode library) ==========
+add_library(hlffi_hlc STATIC ${HLFFI_HEADERS} ${HLFFI_HLC_SOURCES})
+target_include_directories(hlffi_hlc PUBLIC ${HLFFI_INCLUDE_DIRS} PRIVATE ${HLFFI_PRIVATE_INCLUDE_DIRS})
+target_compile_definitions(hlffi_hlc PUBLIC HLFFI_HLC_MODE=1)
+if(WIN32)
+    target_link_libraries(hlffi_hlc PRIVATE ws2_32)
+    if(MSVC)
+        target_compile_options(hlffi_hlc PRIVATE /W4 /WX /MP)
+        set_property(TARGET hlffi_hlc PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+endif()
+
+# ========== Alias for backward compatibility ==========
+# 'hlffi' target points to JIT by default, or HLC if HLFFI_HLC_MODE is set
+if(HLFFI_HLC_MODE)
+    add_library(hlffi ALIAS hlffi_hlc)
+    message(STATUS "Default hlffi target: hlffi_hlc (HLC mode)")
+else()
+    add_library(hlffi ALIAS hlffi_jit)
+    message(STATUS "Default hlffi target: hlffi_jit (JIT mode)")
 endif()
 
 # ========== Examples ==========
@@ -164,12 +214,12 @@ endif()
 
 if(HLFFI_BUILD_TESTS)
     enable_testing()
-    add_subdirectory(tests)
+    add_subdirectory(test)
 endif()
 
 # ========== Install ==========
 
-install(TARGETS hlffi
+install(TARGETS hlffi_jit hlffi_hlc
     EXPORT HLFFITargets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
@@ -219,6 +269,7 @@ message(STATUS "Build shared: ${HLFFI_BUILD_SHARED}")
 message(STATUS "Build examples: ${HLFFI_BUILD_EXAMPLES}")
 message(STATUS "Build tests: ${HLFFI_BUILD_TESTS}")
 message(STATUS "Hot reload: ${HLFFI_ENABLE_HOT_RELOAD}")
+message(STATUS "HLC mode: ${HLFFI_HLC_MODE}")
 message(STATUS "HashLink dir: ${HASHLINK_DIR}")
 message(STATUS "C compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "CXX compiler: ${CMAKE_CXX_COMPILER}")

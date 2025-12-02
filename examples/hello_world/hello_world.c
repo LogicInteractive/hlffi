@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     printf("[2] Initializing HashLink runtime...\n");
     const char* init_args[] = {"hello_world"};
     hlffi_error_code err = hlffi_init(vm, 1, (char**)init_args);
-    if (err != HLFFI_ERROR_NONE) {
+    if (err != HLFFI_OK) {
         fprintf(stderr, "ERROR: Failed to initialize VM: %s\n",
                 hlffi_get_error_string(err));
         hlffi_destroy(vm);
@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     // Step 3: Load bytecode file
     printf("[3] Loading bytecode file: %s\n", hl_file);
     err = hlffi_load_file(vm, hl_file);
-    if (err != HLFFI_ERROR_NONE) {
+    if (err != HLFFI_OK) {
         fprintf(stderr, "ERROR: Failed to load bytecode: %s\n",
                 hlffi_get_error_string(err));
         hlffi_destroy(vm);
@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
     // Step 4: Set integration mode (non-threaded)
     printf("[4] Setting integration mode (NON_THREADED)...\n");
     err = hlffi_set_integration_mode(vm, HLFFI_MODE_NON_THREADED);
-    if (err != HLFFI_ERROR_NONE) {
+    if (err != HLFFI_OK) {
         fprintf(stderr, "ERROR: Failed to set integration mode: %s\n",
                 hlffi_get_error_string(err));
         hlffi_destroy(vm);
@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
     printf("[5] Calling Haxe main() entry point...\n");
     printf("----------------------------------------\n");
     err = hlffi_call_entry(vm);
-    if (err != HLFFI_ERROR_NONE) {
+    if (err != HLFFI_OK) {
         fprintf(stderr, "ERROR: Failed to call entry point: %s\n",
                 hlffi_get_error_string(err));
         hlffi_destroy(vm);
@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
 
     while (frames < max_frames && hlffi_has_pending_work(vm)) {
         err = hlffi_update(vm, delta_time);
-        if (err != HLFFI_ERROR_NONE) {
+        if (err != HLFFI_OK) {
             fprintf(stderr, "ERROR: Failed to update: %s\n",
                     hlffi_get_error_string(err));
             break;

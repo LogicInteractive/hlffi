@@ -93,7 +93,7 @@ struct hlffi_value {
 /* ========== INTERNAL GC STACK FIX ========== */
 
 /**
- * Internal macro to update GC stack_top before any GC allocation.
+ * Internal helper to update GC stack_top before any GC allocation.
  * This ensures proper stack scanning when HLFFI is embedded.
  *
  * THE PROBLEM:
@@ -104,20 +104,29 @@ struct hlffi_value {
  *   - Release builds: Random crashes, memory corruption
  *
  * THE FIX:
- * Update stack_top to point to the current stack frame before any GC allocation.
- * This way the GC scans the actual call stack where vdynamic* pointers live.
+ * Update stack_top to point to the caller's stack frame before any GC allocation.
+ * We use a static inline function so the stack_marker lives in the caller's frame.
  *
  * See: docs/GC_STACK_SCANNING.md
  * See: https://github.com/HaxeFoundation/hashlink/issues/752
  */
+static inline void hlffi_internal_update_stack_top(void* stack_addr) {
+    hl_thread_info* t = hl_get_thread();
+    if (t) {
+        t->stack_top = stack_addr;
+    }
+}
+
+/*
+ * CRITICAL: This macro updates stack_top to the current function's stack.
+ * The variable declaration happens in the CALLER'S scope (not inside do-while).
+ * This ensures stack_top points to valid memory for the duration of the calling function.
+ *
+ * Usage: Place at the START of any function that calls HashLink APIs.
+ */
 #define HLFFI_UPDATE_STACK_TOP() \
-    do { \
-        hl_thread_info* _t = hl_get_thread(); \
-        if (_t) { \
-            int _stack_marker; \
-            _t->stack_top = &_stack_marker; \
-        } \
-    } while(0)
+    int _hlffi_stack_marker_; \
+    hlffi_internal_update_stack_top(&_hlffi_stack_marker_)
 
 /* ========== INTERNAL HELPER DECLARATIONS ========== */
 
@@ -135,11 +144,139 @@ static inline void hlffi_set_error(hlffi_vm* vm, hlffi_error_code code, const ch
     }
 }
 
-/* HashLink internal function - declared as extern to access it
- * Defined as static in vendor/hashlink/src/std/obj.c:64
- * But exported via our patch in libhl and can be accessed via extern declaration
- * Pattern discovered from working FFI code - this is the KEY to static field access!
+/* HashLink internal function for field lookup.
+ *
+ * This function is normally static in vendor/hashlink/src/std/obj.c, but can be
+ * exported via a patch to libhl. If the patched libhl is available, it will be used
+ * via extern linkage. Otherwise, we provide a fallback implementation below.
+ *
+ * The fallback uses hl_lookup_find() which IS exported from libhl.
  */
+#ifdef HLFFI_HAS_PATCHED_LIBHL
 extern hl_field_lookup* obj_resolve_field(hl_type_obj *o, int hfield);
+#else
+/* Fallback implementation using exported hl_lookup_find() */
+static inline hl_field_lookup* obj_resolve_field(hl_type_obj *o, int hfield) {
+    hl_runtime_obj *rt = o->rt;
+    do {
+        hl_field_lookup *f = hl_lookup_find(rt->lookup, rt->nlookup, hfield);
+        if (f) return f;
+        rt = rt->parent;
+    } while (rt);
+    return NULL;
+}
+#endif
+
+/* ========== HLC MODE SUPPORT ========== */
+
+/*
+ * HLC (HashLink/C) mode compiles Haxe to C instead of bytecode.
+ * In HLC mode:
+ * - No vm->module->code (bytecode doesn't exist)
+ * - Types accessed via extern symbols: t$ClassName
+ * - Use Type.resolveClass() and Reflect.* APIs for dynamic access
+ * - Hot reload is impossible (code is statically linked)
+ *
+ * Define HLFFI_HLC_MODE at compile time to enable HLC support.
+ */
+
+#ifdef HLFFI_HLC_MODE
+    #define HLFFI_HAS_BYTECODE 0
+#else
+    #define HLFFI_HAS_BYTECODE 1
+#endif
+
+#ifdef HLFFI_HLC_MODE
+
+/**
+ * Cached references for HLC operations.
+ * Initialized once after hlffi_call_entry().
+ *
+ * In HLC mode, we use Haxe's Type and Reflect APIs to dynamically
+ * resolve classes and call methods. This cache stores the necessary
+ * references and pre-computed hashes for performance.
+ */
+typedef struct {
+    /* Type class access */
+    hl_type* type_class;           /* hl_type for Type class */
+    vdynamic* type_global;         /* Type class global instance */
+
+    /* Reflect class access */
+    hl_type* reflect_class;        /* hl_type for Reflect class */
+    vdynamic* reflect_global;      /* Reflect class global instance */
+
+    /* Pre-computed field hashes for performance */
+    int hash_resolveClass;
+    int hash_createInstance;
+    int hash_field;
+    int hash_setField;
+    int hash_callMethod;
+    int hash_allTypes;
+    int hash_values;
+    int hash___type__;
+    int hash___constructor__;
+
+    bool initialized;
+} hlffi_hlc_cache;
+
+/* Global HLC cache - initialized by hlffi_hlc_init() */
+extern hlffi_hlc_cache g_hlc;
+
+/**
+ * Initialize HLC support.
+ * Called automatically by functions that need it, after entry point.
+ * Returns HLFFI_OK on success.
+ */
+hlffi_error_code hlffi_hlc_init(hlffi_vm* vm);
+
+/**
+ * Check if HLC is initialized.
+ */
+static inline bool hlffi_hlc_is_ready(void) {
+    return g_hlc.initialized;
+}
+
+/**
+ * Create a HashLink string from a C string.
+ * Used internally for calling Haxe methods that expect String arguments.
+ */
+vdynamic* hlffi_hlc_create_string(const char* str);
+
+#endif /* HLFFI_HLC_MODE */
+
+/* ========== MODE QUERY FUNCTIONS ========== */
+
+/**
+ * Check if running in HLC mode.
+ */
+static inline bool hlffi_is_hlc_mode(void) {
+#ifdef HLFFI_HLC_MODE
+    return true;
+#else
+    return false;
+#endif
+}
+
+/**
+ * Check if hot reload is available (false in HLC).
+ */
+static inline bool hlffi_hot_reload_available(void) {
+#ifdef HLFFI_HLC_MODE
+    return false;
+#else
+    return true;
+#endif
+}
+
+/**
+ * Check if bytecode loading is available (false in HLC).
+ */
+static inline bool hlffi_bytecode_loading_available(void) {
+#ifdef HLFFI_HLC_MODE
+    return false;
+#else
+    return true;
+#endif
+}
 
 #endif /* HLFFI_INTERNAL_H */

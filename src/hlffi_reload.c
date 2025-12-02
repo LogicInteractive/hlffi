@@ -12,13 +12,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/* Forward declaration for bytecode loading */
+#ifndef HLFFI_HLC_MODE
+/* Forward declaration for bytecode loading (JIT mode only) */
 static hl_code* load_code_from_file(const char* path, char** error_msg);
+#endif
 
 /* ========== HOT RELOAD API ========== */
 
 hlffi_error_code hlffi_enable_hot_reload(hlffi_vm* vm, bool enable) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Hot reload not supported ===*/
+    (void)enable;
+    hlffi_set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT,
+                   "Hot reload not supported in HLC mode - code is statically linked");
+    return HLFFI_ERROR_INVALID_ARGUMENT;
+#else
+    /*=== JIT Mode: Hot reload supported ===*/
 
     /* Can only enable before module is loaded */
     if (vm->module_loaded) {
@@ -30,6 +41,7 @@ hlffi_error_code hlffi_enable_hot_reload(hlffi_vm* vm, bool enable) {
     vm->hot_reload_enabled = enable;
     hlffi_set_error(vm, HLFFI_OK, NULL);
     return HLFFI_OK;
+#endif /* HLFFI_HLC_MODE */
 }
 
 bool hlffi_is_hot_reload_enabled(hlffi_vm* vm) {
@@ -39,6 +51,15 @@ bool hlffi_is_hot_reload_enabled(hlffi_vm* vm) {
 
 hlffi_error_code hlffi_reload_module(hlffi_vm* vm, const char* path) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Hot reload not supported ===*/
+    (void)path;
+    hlffi_set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT,
+                   "Hot reload not supported in HLC mode - code is statically linked");
+    return HLFFI_ERROR_INVALID_ARGUMENT;
+#else
+    /*=== JIT Mode: Hot reload supported ===*/
 
     if (!vm->module_loaded) {
         hlffi_set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "No module loaded");
@@ -80,10 +101,21 @@ hlffi_error_code hlffi_reload_module(hlffi_vm* vm, const char* path) {
 
     hlffi_set_error(vm, HLFFI_OK, NULL);
     return HLFFI_OK;
+#endif /* HLFFI_HLC_MODE */
 }
 
 hlffi_error_code hlffi_reload_module_memory(hlffi_vm* vm, const void* data, size_t size) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Hot reload not supported ===*/
+    (void)data; (void)size;
+    hlffi_set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT,
+                   "Hot reload not supported in HLC mode - code is statically linked");
+    return HLFFI_ERROR_INVALID_ARGUMENT;
+#else
+    /*=== JIT Mode: Hot reload supported ===*/
+
     if (!data || size == 0) {
         hlffi_set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Invalid bytecode data");
         return HLFFI_ERROR_INVALID_ARGUMENT;
@@ -122,6 +154,7 @@ hlffi_error_code hlffi_reload_module_memory(hlffi_vm* vm, const void* data, size
 
     hlffi_set_error(vm, HLFFI_OK, NULL);
     return HLFFI_OK;
+#endif /* HLFFI_HLC_MODE */
 }
 
 void hlffi_set_reload_callback(hlffi_vm* vm, hlffi_reload_callback callback, void* userdata) {
@@ -131,6 +164,13 @@ void hlffi_set_reload_callback(hlffi_vm* vm, hlffi_reload_callback callback, voi
 }
 
 bool hlffi_check_reload(hlffi_vm* vm) {
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Hot reload not supported ===*/
+    (void)vm;
+    return false;
+#else
+    /*=== JIT Mode: Hot reload supported ===*/
+
     if (!vm) return false;
     if (!vm->hot_reload_enabled || !vm->module_loaded) return false;
     if (!vm->loaded_file) return false;
@@ -154,9 +194,11 @@ bool hlffi_check_reload(hlffi_vm* vm) {
     }
 
     return false;
+#endif /* HLFFI_HLC_MODE */
 }
 
-/* ========== INTERNAL HELPERS ========== */
+#ifndef HLFFI_HLC_MODE
+/* ========== INTERNAL HELPERS (JIT Mode Only) ========== */
 
 /**
  * Load bytecode from file (same as in hlffi_lifecycle.c)
@@ -200,3 +242,4 @@ static hl_code* load_code_from_file(const char* path, char** error_msg) {
 
     return code;
 }
+#endif /* !HLFFI_HLC_MODE */
