@@ -11,6 +11,15 @@
 /* Use hlffi_set_error from internal header, create local alias */
 #define set_error hlffi_set_error
 
+/* HLC mode: Forward declarations for functions implemented in hlffi_hlc.c */
+#ifdef HLFFI_HLC_MODE
+extern hlffi_value* hlffi_hlc_get_static_field(hlffi_vm* vm, const char* class_name, const char* field_name);
+extern hlffi_error_code hlffi_hlc_set_static_field(hlffi_vm* vm, const char* class_name,
+    const char* field_name, hlffi_value* value);
+extern hlffi_value* hlffi_hlc_call_static(hlffi_vm* vm, const char* class_name,
+    const char* method_name, int argc, hlffi_value** argv);
+#endif
+
 /* ========== VALUE BOXING ========== */
 
 hlffi_value* hlffi_value_int(hlffi_vm* vm, int value) {
@@ -254,12 +263,20 @@ bool hlffi_value_is_null(hlffi_value* value) {
 
 hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const char* field_name) {
     if (!vm) return NULL;
-    if (!vm->module || !vm->module->code) {
-        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
-        return NULL;
-    }
     if (!class_name || !field_name) {
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Class name or field name is NULL");
+        return NULL;
+    }
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Use Reflect.field() ===*/
+    return hlffi_hlc_get_static_field(vm, class_name, field_name);
+
+#else
+    /*=== JIT Mode: Access via global_value ===*/
+
+    if (!vm->module || !vm->module->code) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
         return NULL;
     }
 
@@ -381,17 +398,27 @@ hlffi_value* hlffi_get_static_field(hlffi_vm* vm, const char* class_name, const 
     wrapped->is_rooted = false;
 
     return wrapped;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, const char* field_name, hlffi_value* value) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
-    if (!vm->module || !vm->module->code) {
-        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
-        return HLFFI_ERROR_NOT_INITIALIZED;
-    }
     if (!class_name || !field_name || !value) {
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Class name, field name, or value is NULL");
         return HLFFI_ERROR_INVALID_ARGUMENT;
+    }
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Use Reflect.setField() ===*/
+    return hlffi_hlc_set_static_field(vm, class_name, field_name, value);
+
+#else
+    /*=== JIT Mode: Access via global_value ===*/
+
+    if (!vm->module || !vm->module->code) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
+        return HLFFI_ERROR_NOT_INITIALIZED;
     }
 
     HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning */
@@ -497,18 +524,28 @@ hlffi_error_code hlffi_set_static_field(hlffi_vm* vm, const char* class_name, co
     }
 
     return HLFFI_OK;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 /* ========== STATIC METHOD CALLS ========== */
 
 hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char* method_name, int argc, hlffi_value** argv) {
     if (!vm) return NULL;
-    if (!vm->module || !vm->module->code) {
-        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
-        return NULL;
-    }
     if (!class_name || !method_name) {
         set_error(vm, HLFFI_ERROR_INVALID_ARGUMENT, "Class name or method name is NULL");
+        return NULL;
+    }
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Use Reflect.callMethod() ===*/
+    return hlffi_hlc_call_static(vm, class_name, method_name, argc, argv);
+
+#else
+    /*=== JIT Mode: Access via global_value ===*/
+
+    if (!vm->module || !vm->module->code) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
         return NULL;
     }
 
@@ -634,6 +671,8 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
     wrapped->is_rooted = false;
 
     return wrapped;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 /* ========== PHASE 5: ARRAY OPERATIONS ========== */
@@ -643,6 +682,11 @@ hlffi_value* hlffi_call_static(hlffi_vm* vm, const char* class_name, const char*
  * Returns hl.types.ArrayBytes_Int, ArrayBytes_F64, ArrayObj, etc.
  */
 static hl_type* find_haxe_array_type(hlffi_vm* vm, hl_type* element_type) {
+#ifdef HLFFI_HLC_MODE
+    /* In HLC mode, use hlffi_find_type to locate array types */
+    (void)element_type;  /* Unused for now - HLC arrays work differently */
+    return (hl_type*)hlffi_find_type(vm, "Array");
+#else
     if (!vm || !vm->module || !vm->module->code) {
         return NULL;
     }
@@ -681,6 +725,7 @@ static hl_type* find_haxe_array_type(hlffi_vm* vm, hl_type* element_type) {
     }
 
     return NULL;
+#endif /* HLFFI_HLC_MODE */
 }
 
 /**

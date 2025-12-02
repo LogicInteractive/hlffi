@@ -35,6 +35,7 @@ option(HLFFI_BUILD_SHARED "Build shared library" OFF)
 option(HLFFI_BUILD_EXAMPLES "Build example programs" ON)
 option(HLFFI_BUILD_TESTS "Build test programs" ON)
 option(HLFFI_ENABLE_HOT_RELOAD "Enable hot reload support (requires HL 1.12+)" ON)
+option(HLFFI_HLC_MODE "Build for HLC (HashLink/C) mode instead of JIT" OFF)
 
 # ========== Find HashLink ==========
 
@@ -113,6 +114,23 @@ set(HLFFI_SOURCES
     src/hlffi_objects.c
 )
 
+# Add HLC-specific sources when in HLC mode
+if(HLFFI_HLC_MODE)
+    list(APPEND HLFFI_SOURCES src/hlffi_hlc.c)
+else()
+    # JIT mode: Include HashLink module loading sources (not exported from libhl.dll)
+    set(HASHLINK_JIT_SOURCES
+        vendor/hashlink/src/code.c
+        vendor/hashlink/src/module.c
+        vendor/hashlink/src/jit.c
+    )
+    list(APPEND HLFFI_SOURCES ${HASHLINK_JIT_SOURCES})
+    # Disable warnings-as-errors for HashLink vendor sources (they have known warnings)
+    if(MSVC)
+        set_source_files_properties(${HASHLINK_JIT_SOURCES} PROPERTIES COMPILE_FLAGS "/W3")
+    endif()
+endif()
+
 # Create library target (will be populated in Phase 1)
 if(HLFFI_BUILD_SHARED)
     add_library(hlffi SHARED ${HLFFI_HEADERS} ${HLFFI_SOURCES})
@@ -132,10 +150,25 @@ target_include_directories(hlffi
 
 # Link HashLink if found
 if(HASHLINK_INCLUDE_DIR AND HASHLINK_LIBRARY)
-    target_include_directories(hlffi PRIVATE ${HASHLINK_INCLUDE_DIR})
-    # Also include vendor/hashlink/src for hlmodule.h and other internal headers
+    # IMPORTANT: Include vendor/hashlink/src FIRST so code uses vendor headers (matching API)
+    # The installed HashLink headers may have different API (e.g., HL 1.13 vs vendor)
     target_include_directories(hlffi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vendor/hashlink/src)
-    target_link_libraries(hlffi PRIVATE ${HASHLINK_LIBRARY})
+    target_include_directories(hlffi PRIVATE ${HASHLINK_INCLUDE_DIR})
+    # PUBLIC link so consumers also link to HashLink (needed for JIT mode symbols)
+    target_link_libraries(hlffi PUBLIC ${HASHLINK_LIBRARY})
+endif()
+
+# HLC mode configuration
+if(HLFFI_HLC_MODE)
+    target_compile_definitions(hlffi PUBLIC HLFFI_HLC_MODE=1)
+    message(STATUS "HLC Mode: ENABLED (code is statically linked, no bytecode loading)")
+    # Hot reload is not available in HLC mode
+    if(HLFFI_ENABLE_HOT_RELOAD)
+        message(WARNING "Hot reload is not available in HLC mode - disabling")
+        set(HLFFI_ENABLE_HOT_RELOAD OFF)
+    endif()
+else()
+    message(STATUS "HLC Mode: DISABLED (JIT mode with bytecode loading)")
 endif()
 
 # Platform-specific settings
@@ -221,6 +254,7 @@ message(STATUS "Build shared: ${HLFFI_BUILD_SHARED}")
 message(STATUS "Build examples: ${HLFFI_BUILD_EXAMPLES}")
 message(STATUS "Build tests: ${HLFFI_BUILD_TESTS}")
 message(STATUS "Hot reload: ${HLFFI_ENABLE_HOT_RELOAD}")
+message(STATUS "HLC mode: ${HLFFI_HLC_MODE}")
 message(STATUS "HashLink dir: ${HASHLINK_DIR}")
 message(STATUS "C compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "CXX compiler: ${CMAKE_CXX_COMPILER}")

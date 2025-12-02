@@ -22,9 +22,22 @@ static void set_obj_error(hlffi_vm* vm, const char* msg) {
     }
 }
 
+/* HLC mode: Forward declarations for functions implemented in hlffi_hlc.c */
+#ifdef HLFFI_HLC_MODE
+extern hlffi_value* hlffi_hlc_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_value** argv);
+#endif
+
 /* Helper: Find type by name */
 static hl_type* find_type_by_name(hlffi_vm* vm, const char* class_name) {
-    if (!vm || !vm->module || !vm->module->code || !class_name) return NULL;
+    if (!vm || !class_name) return NULL;
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Use hlffi_find_type which uses Type.resolveClass() ===*/
+    return (hl_type*)hlffi_find_type(vm, class_name);
+
+#else
+    /*=== JIT Mode: Scan code->types[] ===*/
+    if (!vm->module || !vm->module->code) return NULL;
 
     hl_code* code = vm->module->code;
 
@@ -42,6 +55,8 @@ static hl_type* find_type_by_name(hlffi_vm* vm, const char* class_name) {
         }
     }
     return NULL;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 /* ========== OBJECT CREATION ========== */
@@ -69,6 +84,13 @@ hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_val
         set_obj_error(vm, "Entry point must be called before creating instances");
         return NULL;
     }
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Use Type.createInstance() ===*/
+    return hlffi_hlc_new(vm, class_name, argc, argv);
+
+#else
+    /*=== JIT Mode: Direct object allocation and constructor call ===*/
 
     HLFFI_UPDATE_STACK_TOP();  /* Fix GC stack scanning (Phase 3 fix!) */
 
@@ -288,6 +310,8 @@ hlffi_value* hlffi_new(hlffi_vm* vm, const char* class_name, int argc, hlffi_val
     hl_add_root(&wrapped->hl_value);  /* Keep object alive! */
 
     return wrapped;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 /* ========== INSTANCE FIELD ACCESS ========== */

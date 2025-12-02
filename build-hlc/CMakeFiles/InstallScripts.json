@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Logic interactive Dropbox/tommy _/dev/haxe/hlffi/build-hlc/cmake_install.cmake",
+		"C:/Logic interactive Dropbox/tommy _/dev/haxe/hlffi/build-hlc/examples/cmake_install.cmake",
+		"C:/Logic interactive Dropbox/tommy _/dev/haxe/hlffi/build-hlc/tests/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

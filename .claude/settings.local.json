@@ -6,7 +6,14 @@
       "Bash(git revert:*)",
       "Bash(git checkout:*)",
       "Bash(cmake --build:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nClean up repo: move outdated docs, remove UE plugin (moved to separate repo)\n\n- Move all docs to docs/old_outdated/ for archival\n- Remove UnrealEngine/Plugins/HLFFIPlugin/ (now maintained separately)\n- Add hlvm.vcxproj for Visual Studio\n- Update hashlink submodule\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git fetch:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git commit:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

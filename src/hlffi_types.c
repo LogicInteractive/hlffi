@@ -11,16 +11,29 @@
 /* Use hlffi_set_error from internal header, create local alias */
 #define set_error hlffi_set_error
 
+/* HLC mode: Forward declarations for functions implemented in hlffi_hlc.c */
+#ifdef HLFFI_HLC_MODE
+extern hl_type* hlffi_hlc_find_type(hlffi_vm* vm, const char* name);
+#endif
+
 /* ========== TYPE LOOKUP ========== */
 
 hlffi_type* hlffi_find_type(hlffi_vm* vm, const char* name) {
     if (!vm) return NULL;
-    if (!vm->module || !vm->module->code) {
-        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
-        return NULL;
-    }
     if (!name) {
         set_error(vm, HLFFI_ERROR_INVALID_TYPE, "Type name is NULL");
+        return NULL;
+    }
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Use Type.resolveClass() ===*/
+    return (hlffi_type*)hlffi_hlc_find_type(vm, name);
+
+#else
+    /*=== JIT Mode: Scan code->types[] ===*/
+
+    if (!vm->module || !vm->module->code) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
         return NULL;
     }
 
@@ -73,6 +86,8 @@ hlffi_type* hlffi_find_type(hlffi_vm* vm, const char* name) {
     snprintf(error_buf, sizeof(error_buf), "Type not found: %s", name);
     set_error(vm, HLFFI_ERROR_TYPE_NOT_FOUND, error_buf);
     return NULL;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 /* ========== TYPE INSPECTION ========== */
@@ -158,13 +173,81 @@ const char* hlffi_type_get_name(hlffi_type* type) {
 
 hlffi_error_code hlffi_list_types(hlffi_vm* vm, hlffi_type_callback callback, void* userdata) {
     if (!vm) return HLFFI_ERROR_NULL_VM;
-    if (!vm->module || !vm->module->code) {
-        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
-        return HLFFI_ERROR_NOT_INITIALIZED;
-    }
     if (!callback) {
         set_error(vm, HLFFI_ERROR_INVALID_TYPE, "Callback is NULL");
         return HLFFI_ERROR_INVALID_TYPE;
+    }
+
+#ifdef HLFFI_HLC_MODE
+    /*=== HLC Mode: Use Type.allTypes.values() ===*/
+
+    /*
+     * In HLC mode, we access the internal Type.allTypes registry.
+     * This is a BytesMap that contains all registered types.
+     *
+     * Note: This requires the HLC cache to be initialized.
+     * The implementation iterates Type.allTypes and calls the callback
+     * for each type found.
+     */
+    extern hlffi_hlc_cache g_hlc;
+
+    if (!g_hlc.initialized) {
+        hlffi_error_code err = hlffi_hlc_init(vm);
+        if (err != HLFFI_OK) return err;
+    }
+
+    HLFFI_UPDATE_STACK_TOP();
+
+    /* Get allTypes from Type class */
+    vdynamic* all_types = (vdynamic*)hl_dyn_getp(
+        g_hlc.type_global, g_hlc.hash_allTypes, &hlt_dyn);
+
+    if (!all_types) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "Type.allTypes not available");
+        return HLFFI_ERROR_NOT_INITIALIZED;
+    }
+
+    /* Get values() method from allTypes (BytesMap) */
+    vclosure* values_fn = (vclosure*)hl_dyn_getp(all_types, g_hlc.hash_values, &hlt_dyn);
+    if (!values_fn) {
+        set_error(vm, HLFFI_ERROR_METHOD_NOT_FOUND, "allTypes.values() not found");
+        return HLFFI_ERROR_METHOD_NOT_FOUND;
+    }
+
+    /* Call values() to get iterator or array */
+    bool isExc = false;
+    vdynamic* values = hl_dyn_call_safe(values_fn, NULL, 0, &isExc);
+
+    if (isExc || !values) {
+        set_error(vm, HLFFI_ERROR_EXCEPTION_THROWN, "Exception calling allTypes.values()");
+        return HLFFI_ERROR_EXCEPTION_THROWN;
+    }
+
+    /* The result is typically an iterator or array - iterate and call callback
+     * This is a simplified implementation; full implementation would need to
+     * handle the BytesMap iterator protocol properly */
+    if (values->t->kind == HARRAY) {
+        varray* arr = (varray*)values;
+        for (int i = 0; i < arr->size; i++) {
+            vdynamic* item = hl_aptr(arr, vdynamic*)[i];
+            if (item) {
+                /* Extract __type__ from each BaseType */
+                hl_type* t = (hl_type*)hl_dyn_getp(item, g_hlc.hash___type__, &hlt_dyn);
+                if (t) {
+                    callback((hlffi_type*)t, userdata);
+                }
+            }
+        }
+    }
+
+    return HLFFI_OK;
+
+#else
+    /*=== JIT Mode: Iterate code->types[] ===*/
+
+    if (!vm->module || !vm->module->code) {
+        set_error(vm, HLFFI_ERROR_NOT_INITIALIZED, "VM not initialized or no bytecode loaded");
+        return HLFFI_ERROR_NOT_INITIALIZED;
     }
 
     hl_code* code = vm->module->code;
@@ -176,6 +259,8 @@ hlffi_error_code hlffi_list_types(hlffi_vm* vm, hlffi_type_callback callback, vo
     }
 
     return HLFFI_OK;
+
+#endif /* HLFFI_HLC_MODE */
 }
 
 /* ========== CLASS INSPECTION ========== */
