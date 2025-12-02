@@ -11,7 +11,7 @@
 
 ---
 
-HLFFI is a C/C++ library that embeds the [HashLink](https://hashlink.haxe.org/) virtual machine into any application. It provides a clean, production-ready API for running, controlling and interfacing with [Haxe](https://haxe.org/) code from C/C++ hosts.
+HLFFI is a C/C++ library that embeds [HashLink](https://hashlink.haxe.org/) into any application. It supports both **JIT mode** (runtime `.hl` bytecode loading) and **HLC mode** (HashLink/C - Haxe compiled to C). This makes it ideal for embedding Haxe in game engines, tools, and applications across desktop and mobile platforms.
 
 ```c
 #include "hlffi.h"
@@ -38,57 +38,82 @@ int main()
 
 HashLink provides a high-performance runtime for Haxe, but embedding it in C/C++ applications requires working with its internal APIs directly. HLFFI provides a production-ready abstraction layer that handles the complexity of VM lifecycle management, garbage collection, type conversions, and threading.
 
-**What it does:**
+### Two Execution Modes
+
+| Mode | Library | Use Case | Platforms |
+|------|---------|----------|-----------|
+| **JIT** | `hlffi_jit.lib` | Load `.hl` bytecode at runtime | Windows, Linux, macOS |
+| **HLC** | `hlffi_hlc.lib` | Compile Haxe to C, link statically | All platforms including iOS, Android, consoles |
+
+**JIT Mode**: Best for development - fast iteration with hot reload support. Load `.hl` bytecode files at runtime.
+
+**HLC Mode**: Best for production/mobile - Haxe compiles to C code that gets compiled and linked with your application. Required for platforms that don't allow JIT (iOS, consoles).
+
+### What it does
+
 - Manages HashLink VM initialization, bytecode loading, and cleanup
 - Provides automatic GC root management for values passed between C and Haxe
 - Handles type conversions between C primitives and HashLink's type system
 - Integrates with libuv and Haxe's event loop automatically
 - Supports both engine-controlled and threaded integration modes
-- Enables hot reload of Haxe modules without application restart
+- Enables hot reload of Haxe modules without application restart (JIT mode)
 
 **Problem solved:** Without HLFFI, embedding HashLink requires manual management of GC roots (`hl_add_root`/`hl_remove_root`), raw `vdynamic*` pointer manipulation, manual thread registration, and integration of multiple event loops. HLFFI encapsulates these operations into a consistent API with clear error handling and automatic resource management.
 
 ---
 
-## ✨ Key Features
+## Key Features
 
+- **Dual Mode Support**: JIT (`.hl` bytecode) and HLC (Haxe-to-C) in the same API
 - **Two Integration Modes**: Non-threaded (engine controls loop) and Threaded (dedicated VM thread)
 - **Event Loop Integration**: Automatic UV and haxe.EventLoop processing
-- **Hot Reload Support**: Reload Haxe modules without restarting your app (HL 1.12+)
-- **VM Restart Support**: Experimental support for restarting the VM within a single process
-- **Clean C API**: Explicit error codes, no hidden state, C++17 RAII wrappers
+- **Hot Reload Support**: Reload Haxe modules without restarting your app (JIT mode, HL 1.12+)
+- **Clean C API**: Explicit error codes, no hidden state
 - **Automatic GC Root Management**: No manual dispose needed
 - **Full Object Control**: Create, destroy, call methods, and access members on Haxe objects from C
 - **Complete Type System**: Arrays, Maps, Bytes, Enums, Abstracts, and Callbacks
 - **Performance Caching**: Cache method lookups for 60x speedup in hot paths
-- **Cross-Platform**: Windows (Visual Studio) first, Linux/macOS/Android/WASM planned
+- **Cross-Platform**: Windows, Linux, macOS, with HLC enabling iOS/Android/consoles
 
 ---
 
-## 🚀 Quick Start (Windows/Visual Studio)
+## Quick Start
 
 ### Prerequisites
 
 1. **Haxe**: Install from [haxe.org](https://haxe.org/download/)
-2. **HashLink**: Install from [hashlink.haxe.org](https://hashlink.haxe.org/) (1.12+ for hot reload)
-3. **Visual Studio 2019 or 2022**
-4. **CMake 3.15+**
+2. **Visual Studio 2019 or 2022** (Windows) or GCC/Clang (Linux/macOS)
+3. **CMake 3.15+**
 
 ### Build HLFFI
 
 ```bash
-# Set HashLink location (if not in standard path)
-set HASHLINK_DIR=C:\HashLink
-
-# Configure and build
-mkdir build
-cd build
+mkdir build && cd build
 cmake .. -G "Visual Studio 17 2022" -A x64
 cmake --build . --config Release
-
-# Optional: Install
-cmake --install . --prefix C:\HLFFI
 ```
+
+This builds:
+- `hlffi_jit.lib` - JIT mode library (for loading .hl bytecode)
+- `hlffi_hlc.lib` - HLC mode library (for Haxe compiled to C)
+
+### HashLink Runtime (libhl)
+
+HLFFI requires the HashLink runtime library. Get it from [hashlink.haxe.org](https://hashlink.haxe.org/) or build from the vendor submodule:
+
+```bash
+cd vendor && mkdir build && cd build
+cmake .. -G "Visual Studio 17 2022" -A x64
+cmake --build . --config Release
+# Output: libhl.dll + libhl.lib
+```
+
+| Platform | Required Files | Notes |
+|----------|---------------|-------|
+| Windows | `libhl.dll` + `libhl.lib` | DLL at runtime, .lib for linking |
+| Linux | `libhl.so` | Shared library |
+| macOS | `libhl.dylib` | Shared library |
+| iOS/Android | Static link or HLC | No JIT, use HLC mode |
 
 ### Integration Example: Non-Threaded Mode (Recommended)
 
@@ -185,7 +210,7 @@ int main()
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 ### User Guide (Start Here!)
 
@@ -237,46 +262,47 @@ int main()
 
 ### Additional Resources
 
-- **[HLFFI Manual](docs/hlffi_manual.md)** - Complete developer manual
-- **[Callback Guide](docs/CALLBACK_GUIDE.md)** - In-depth callback patterns
-- **[VM Restart](docs/VM_RESTART.md)** - Experimental VM restart support
-- **[Event Loop Quickstart](docs/EVENTLOOP_QUICKSTART.md)** - Quick event loop guide
+- **[HLC Support](docs/HLC_SUPPORT.md)** - Complete guide to HLC mode and ARM/mobile platforms
 
 ---
 
-## 🔧 CMake Options
+## CMake Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `HLFFI_BUILD_SHARED` | `ON` | Build shared library (.dll/.so) |
-| `HLFFI_BUILD_STATIC` | `ON` | Build static library (.lib/.a) |
 | `HLFFI_BUILD_EXAMPLES` | `ON` | Build example programs |
 | `HLFFI_BUILD_TESTS` | `ON` | Build test suite |
 | `HLFFI_ENABLE_HOT_RELOAD` | `ON` | Enable hot reload (requires HL 1.12+) |
-| `HASHLINK_DIR` | Auto-detect | HashLink installation path |
+| `HLFFI_HLC_MODE` | `OFF` | Set default `hlffi` alias to HLC mode |
 
 Example:
 ```bash
-cmake .. -DHLFFI_BUILD_SHARED=OFF -DHASHLINK_DIR=C:\HashLink
+# Build with all defaults
+cmake ..
+
+# Build without examples/tests
+cmake .. -DHLFFI_BUILD_EXAMPLES=OFF -DHLFFI_BUILD_TESTS=OFF
 ```
 
 ---
 
-## 🔑 Key Design Decisions
+## Key Design Decisions
 
-### 1. VM Restart Support (Experimental)
+### 1. JIT vs HLC Mode Selection
 
-HLFFI supports restarting the HashLink VM within a single process. This is experimental and works around HashLink's design which assumes single-initialization per process.
+Choose based on your target platform and development stage:
 
-**Use for**: Hot reload scenarios, game level reloading, testing multiple configurations
+| Consideration | JIT Mode | HLC Mode |
+|---------------|----------|----------|
+| Development iteration | Fast (just recompile .hl) | Slower (recompile C) |
+| Hot reload | Supported | Not supported |
+| iOS/Android/Consoles | Not available | Required |
+| Binary size | Smaller (bytecode separate) | Larger (code embedded) |
+| Startup time | Slightly slower (JIT compile) | Faster |
 
-See [VM_RESTART.md](docs/VM_RESTART.md) for details and limitations.
+### 2. Main Thread is Safe
 
-### 2. Main Thread is Safe (100% Verified)
-
-**Myth**: "HashLink must run on a dedicated thread"
-
-**Reality**: VM core does NOT block unless Haxe code has a while loop. Non-threaded mode is the recommended approach for most integrations.
+VM core does NOT block unless Haxe code has a blocking while loop. Non-threaded mode is the recommended approach for most integrations.
 
 ### 3. haxe.MainLoop is OPTIONAL
 
@@ -328,29 +354,29 @@ See [API_17_PERFORMANCE.md](docs/API_17_PERFORMANCE.md) for details.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 HLFFI is in active development. Contributions welcome!
 
 ---
 
-## 📝 License
+## License
 
 MIT License - Same as HashLink. See [LICENSE](LICENSE) for details.
 
 ---
 
-## 🙏 Acknowledgements
+## Acknowledgements
 
 - [HashLink](https://github.com/HaxeFoundation/hashlink) by Haxe Foundation / Nicolas Cannasse
 - [hashlink-embed](https://github.com/lalawue/hashlink-embed) Ruby library (research reference)
 
 ---
 
-## 📧 Contact
+## Contact
 
 Created by [LogicInteractive](https://github.com/LogicInteractive)
 
 ---
 
-**HLFFI v3.0.0** | Windows/Visual Studio Focus 🪟 | HashLink 1.12+ Recommended
+**HLFFI v3.0.0** | JIT + HLC Support | Windows, Linux, macOS + mobile via HLC
