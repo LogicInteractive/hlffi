@@ -97,13 +97,23 @@ This builds:
 - `hlffi_jit.lib` - JIT mode library (for loading .hl bytecode)
 - `hlffi_hlc.lib` - HLC mode library (for Haxe compiled to C)
 
-**Note:** You need `libhl.dll` to run applications. Either download HashLink from [hashlink.haxe.org](https://hashlink.haxe.org/) or build from the vendor submodule:
+### HashLink Runtime (libhl)
+
+HLFFI requires the HashLink runtime library. Get it from [hashlink.haxe.org](https://hashlink.haxe.org/) or build from the vendor submodule:
 
 ```bash
 cd vendor && mkdir build && cd build
 cmake .. -G "Visual Studio 17 2022" -A x64
 cmake --build . --config Release
+# Output: libhl.dll + libhl.lib
 ```
+
+| Platform | Required Files | Notes |
+|----------|---------------|-------|
+| Windows | `libhl.dll` + `libhl.lib` | DLL at runtime, .lib for linking |
+| Linux | `libhl.so` | Shared library |
+| macOS | `libhl.dylib` | Shared library |
+| iOS/Android | Static link or HLC | No JIT, use HLC mode |
 
 ### Integration Example: Non-Threaded Mode (Recommended)
 
