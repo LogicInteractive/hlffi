@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git revert:*)",
+      "Bash(git checkout:*)",
+      "Bash(cmake --build:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

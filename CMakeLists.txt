@@ -133,6 +133,8 @@ target_include_directories(hlffi
 # Link HashLink if found
 if(HASHLINK_INCLUDE_DIR AND HASHLINK_LIBRARY)
     target_include_directories(hlffi PRIVATE ${HASHLINK_INCLUDE_DIR})
+    # Also include vendor/hashlink/src for hlmodule.h and other internal headers
+    target_include_directories(hlffi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vendor/hashlink/src)
     target_link_libraries(hlffi PRIVATE ${HASHLINK_LIBRARY})
 endif()
 
