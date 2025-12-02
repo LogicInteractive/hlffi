@@ -36,7 +36,7 @@ option(HLFFI_BUILD_EXAMPLES "Build example programs" ON)
 option(HLFFI_BUILD_TESTS "Build test programs" ON)
 option(HLFFI_ENABLE_HOT_RELOAD "Enable hot reload support (requires HL 1.12+)" ON)
 option(HLFFI_HLC_MODE "Build for HLC (HashLink/C) mode instead of JIT" OFF)
-option(HLFFI_BUILD_LIBHL "Build libhl from vendor/hashlink" ON)
+option(HLFFI_BUILD_LIBHL "Build libhl from vendor/hashlink" OFF)
 
 # ========== Build libhl from vendor ==========
 
