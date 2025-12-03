@@ -1,0 +1,3 @@
+--debug
+-hl debug_test.hl
+-main DebugTest
