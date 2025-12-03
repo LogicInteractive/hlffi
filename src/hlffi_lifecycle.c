@@ -129,19 +129,22 @@ hlffi_error_code hlffi_init(hlffi_vm* vm, int argc, char** argv) {
 
     /* Register this thread with HashLink GC (only once per process)
      *
-     * IMPORTANT: We pass NULL to let HashLink handle stack_top internally.
-     * Previously we passed &vm->stack_context (a heap address) which caused
-     * GC crashes when using timers/callbacks because GC scanned invalid memory.
+     * CRITICAL: We must pass a valid STACK address to hl_register_thread().
+     * The GC scans from stack_cur to stack_top during collection. If stack_top
+     * is invalid (NULL or heap address), the GC either:
+     *   - Doesn't scan the stack at all (NULL) - objects get collected too early
+     *   - Scans invalid memory (heap address) - crashes or corruption
      *
-     * When integrating with engines (UE, Unity), the host should call
-     * hlffi_update_stack_top() at the start of each tick/update to set
-     * stack_top to a valid stack address for proper GC scanning.
+     * We use the address of a local variable here, which is on the stack.
+     * The HLFFI_UPDATE_STACK_TOP() macro in hlffi_internal.h should be called
+     * at the start of any function making HashLink calls to keep stack_top current.
      *
      * For VM restart support, we only register once since HashLink
      * doesn't support unregister/re-register cleanly.
      */
     if (!g_main_thread_registered) {
-        hl_register_thread(NULL);
+        int stack_marker;  /* Local variable on the stack */
+        hl_register_thread(&stack_marker);
         g_main_thread_registered = true;
     }
 
