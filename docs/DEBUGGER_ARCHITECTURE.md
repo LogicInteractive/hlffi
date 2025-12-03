@@ -16,9 +16,9 @@ The HashLink debugger enables source-level debugging of Haxe code running in the
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        VSCode IDE                                │
+│                        VSCode IDE                               │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │          HashLink Debugger Extension                     │    │
+│  │          HashLink Debugger Extension                    │    │
 │  │  - Parses .hl bytecode for debug symbols                │    │
 │  │  - Manages breakpoints, stepping, variable display      │    │
 │  │  - Communicates via Debug Adapter Protocol (DAP)        │    │
@@ -29,24 +29,24 @@ The HashLink debugger enables source-level debugging of Haxe code running in the
                               │ Custom binary protocol
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    HashLink Process                              │
+│                    HashLink Process                             │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │              Debug Server Thread                         │    │
+│  │              Debug Server Thread                        │    │
 │  │  - Accepts TCP connection from VSCode                   │    │
 │  │  - Sends module info (types, functions, addresses)      │    │
 │  │  - Receives breakpoint/step commands                    │    │
 │  │  - Reports execution state changes                      │    │
 │  │                                                         │    │
-│  │  Source: vendor/hashlink/src/debugger.c                │    │
+│  │  Source: vendor/hashlink/src/debugger.c                 │    │
 │  └─────────────────────────────────────────────────────────┘    │
-│                              │                                   │
-│                              │ DebugActiveProcess (Windows)      │
-│                              │ ptrace (Linux/Mac)                │
-│                              ▼                                   │
+│                              │                                  │
+│                              │ DebugActiveProcess (Windows)     │
+│                              │ ptrace (Linux/Mac)               │
+│                              ▼                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │                  JIT Code Memory                         │    │
+│  │                  JIT Code Memory                        │    │
 │  │  - Contains compiled machine code                       │    │
-│  │  - Breakpoints written as INT3 (0xCC) instructions     │    │
+│  │  - Breakpoints written as INT3 (0xCC) instructions      │    │
 │  │  - Exception handlers catch breakpoint exceptions       │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
